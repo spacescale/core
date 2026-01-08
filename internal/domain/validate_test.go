@@ -34,7 +34,7 @@ func TestValidateAppName(t *testing.T) {
 				assert.NoError(t, err, "expected valid name: %q", tc.name)
 			}
 			if !tc.ok {
-				assert.Error(t, err, "expected invalid bame: %q", tc.name)
+				assert.Error(t, err, "expected invalid name: %q", tc.name)
 			}
 		})
 	}
