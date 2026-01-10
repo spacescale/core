@@ -8,7 +8,7 @@ import (
 
 var (
 	ErrInvalidAppName = errors.New("invalid app name")
-	ErrInvalidImage   = errors.New("invalid imag ref")
+	ErrInvalidImage   = errors.New("invalid image ref")
 	ErrInvalidPort    = errors.New("invalid port")
 
 	// lowercase letters + digits, seperated by single hyphens
