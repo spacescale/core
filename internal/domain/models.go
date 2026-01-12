@@ -11,9 +11,9 @@ type AppStatus string
 const (
 	AppStatusCreated  AppStatus = "CREATED"
 	AppStatusBuilding AppStatus = "BUILDING"
-	AppStatusRunning AppStatus = "RUNNING"
-	AppStatusFailed  AppStatus = "FAILED"
-	AppStatusPaused  AppStatus = "PAUSED"
+	AppStatusRunning  AppStatus = "RUNNING"
+	AppStatusFailed   AppStatus = "FAILED"
+	AppStatusPaused   AppStatus = "PAUSED"
 )
 
 type DeploymentStatus string
