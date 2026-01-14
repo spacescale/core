@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/t0gun/paas/internal/adapters/store"
 	"github.com/t0gun/paas/internal/contracts"
 	"github.com/t0gun/paas/internal/domain"
@@ -101,21 +102,100 @@ func TestMemoryStore_CreateDeployment_And_GetByID_OK(t *testing.T) {
 	assert.Equal(t, domain.DeploymentStatusQueued, got.Status)
 }
 
-func TestMemoryStore_ListDeploymentsByAppID_Count(t *testing.T) {
+func TestMemoryStore_ListDeploymentsByAppID_OrderAndReflectsUpdates(t *testing.T) {
 	ctx := context.Background()
 	st := store.NewMemoryStore()
 
 	app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: 8080})
-	assert.NoError(t, err)
-	assert.NoError(t, st.CreateApp(ctx, app))
+	require.NoError(t, err)
+	require.NoError(t, st.CreateApp(ctx, app))
 
 	d1 := domain.NewDeployment(app.ID)
 	d2 := domain.NewDeployment(app.ID)
 
-	assert.NoError(t, st.CreateDeployment(ctx, d1))
-	assert.NoError(t, st.CreateDeployment(ctx, d2))
+	require.NoError(t, st.CreateDeployment(ctx, d1))
+	require.NoError(t, st.CreateDeployment(ctx, d2))
+
+	updatedURL := "https://example.com"
+	d1.Status = domain.DeploymentStatusRunning
+	d1.URL = &updatedURL
+	require.NoError(t, st.UpdateDeployment(ctx, d1))
 
 	deps, err := st.ListDeploymentsByAppID(ctx, app.ID)
+	require.NoError(t, err)
+	require.Len(t, deps, 2)
+	assert.Equal(t, d1.ID, deps[0].ID)
+	assert.Equal(t, domain.DeploymentStatusRunning, deps[0].Status)
+	require.NotNil(t, deps[0].URL)
+	assert.Equal(t, updatedURL, *deps[0].URL)
+	assert.Equal(t, d2.ID, deps[1].ID)
+}
+
+func TestMemoryStore_ListDeploymentsByAppID_EmptySlice(t *testing.T) {
+	ctx := context.Background()
+	st := store.NewMemoryStore()
+
+	deps, err := st.ListDeploymentsByAppID(ctx, "missing-app")
 	assert.NoError(t, err)
-	assert.Len(t, deps, 2)
+	assert.Empty(t, deps)
+}
+
+func TestMemoryStore_TakeNextQueuedDeployment_FIFO(t *testing.T) {
+	ctx := context.Background()
+	st := store.NewMemoryStore()
+
+	app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: 8080})
+	require.NoError(t, err)
+	require.NoError(t, st.CreateApp(ctx, app))
+
+	first := domain.NewDeployment(app.ID)
+	second := domain.NewDeployment(app.ID)
+	require.NoError(t, st.CreateDeployment(ctx, first))
+	require.NoError(t, st.CreateDeployment(ctx, second))
+
+	dep, err := st.TakeNextQueuedDeployment(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, first.ID, dep.ID)
+
+	dep, err = st.TakeNextQueuedDeployment(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, second.ID, dep.ID)
+
+	_, err = st.TakeNextQueuedDeployment(ctx)
+	assert.ErrorIs(t, err, contracts.ErrNotFound)
+}
+
+func TestMemoryStore_TakeNextQueuedDeployment_SkipsNonQueued(t *testing.T) {
+	ctx := context.Background()
+	st := store.NewMemoryStore()
+
+	app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: 8080})
+	require.NoError(t, err)
+	require.NoError(t, st.CreateApp(ctx, app))
+
+	skip := domain.NewDeployment(app.ID)
+	next := domain.NewDeployment(app.ID)
+	require.NoError(t, st.CreateDeployment(ctx, skip))
+	require.NoError(t, st.CreateDeployment(ctx, next))
+
+	skip.Status = domain.DeploymentStatusRunning
+	require.NoError(t, st.UpdateDeployment(ctx, skip))
+
+	dep, err := st.TakeNextQueuedDeployment(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, next.ID, dep.ID)
+
+	_, err = st.TakeNextQueuedDeployment(ctx)
+	assert.ErrorIs(t, err, contracts.ErrNotFound)
+}
+
+func TestMemoryStore_UpdateDeployment_NotFound(t *testing.T) {
+	ctx := context.Background()
+	st := store.NewMemoryStore()
+
+	dep := domain.NewDeployment("missing-app")
+
+	err := st.UpdateDeployment(ctx, dep)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, contracts.ErrNotFound)
 }
