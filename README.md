@@ -24,7 +24,7 @@ internal/
 
 ### Prerequisites
 
-- Go 1.2.5 or higher
+- Go 1.25.5 or higher
 - Make
 
 ### Installation
