@@ -37,7 +37,8 @@ go mod download
 
 ## Building and Development
 
-A make file has been provided to make testing and building easy.Read the make file to see all commands. make is availabe
+A make file has been provided to make testing and building easy.Read the make file to see all commands. make is
+available
 by default on all UNIX/Linux OS. To run a quick
 test outside a container. You can use
 
