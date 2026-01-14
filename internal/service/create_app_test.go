@@ -1,4 +1,4 @@
-package usecase_test
+package service_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/t0gun/paas/internal/adapters/store"
-	"github.com/t0gun/paas/internal/usecase"
+	"github.com/t0gun/paas/internal/service"
 )
 
 func TestCreateApp(t *testing.T) {
@@ -19,16 +19,16 @@ func TestCreateApp(t *testing.T) {
 		err   error
 	}{
 		{label: "valid", name: "hello", image: "nginx:latest", port: 8080, ok: true},
-		{label: "invalid name", name: "Bad_Name", image: "nginx:latest", port: 8080, ok: false, err: usecase.ErrInvalidInput},
-		{label: "empty image", name: "hello", image: "", port: 8080, ok: false, err: usecase.ErrInvalidInput},
-		{label: "invalid port", name: "hello", image: "nginx:latest", port: 0, ok: false, err: usecase.ErrInvalidInput},
+		{label: "invalid name", name: "Bad_Name", image: "nginx:latest", port: 8080, ok: false, err: service.ErrInvalidInput},
+		{label: "empty image", name: "hello", image: "", port: 8080, ok: false, err: service.ErrInvalidInput},
+		{label: "invalid port", name: "hello", image: "nginx:latest", port: 0, ok: false, err: service.ErrInvalidInput},
 	}
 	for _, tt := range tests {
 		t.Run(tt.label, func(t *testing.T) {
 			ctx := context.Background()
 			st := store.NewMemoryStore()
-			svc := usecase.NewAppService(st)
-			app, err := svc.CreateApp(ctx, usecase.CreateAppParams{
+			svc := service.NewAppService(st)
+			app, err := svc.CreateApp(ctx, service.CreateAppParams{
 				Name:  tt.name,
 				Image: tt.image,
 				Port:  tt.port,
@@ -54,20 +54,20 @@ func TestCreateApp(t *testing.T) {
 func TestCreateApp_DuplicateName(t *testing.T) {
 	ctx := context.Background()
 	st := store.NewMemoryStore()
-	svc := usecase.NewAppService(st)
+	svc := service.NewAppService(st)
 
-	_, err := svc.CreateApp(ctx, usecase.CreateAppParams{
+	_, err := svc.CreateApp(ctx, service.CreateAppParams{
 		Name:  "hello",
 		Image: "nginx:latest",
 		Port:  8080,
 	})
 	assert.NoError(t, err)
 
-	_, err = svc.CreateApp(ctx, usecase.CreateAppParams{
+	_, err = svc.CreateApp(ctx, service.CreateAppParams{
 		Name:  "hello",
 		Image: "nginx:latest",
 		Port:  8080,
 	})
 	assert.Error(t, err)
-	assert.ErrorIs(t, err, usecase.ErrConflict)
+	assert.ErrorIs(t, err, service.ErrConflict)
 }

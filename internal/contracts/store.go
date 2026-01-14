@@ -15,4 +15,7 @@ type Store interface {
 	CreateDeployment(ctx context.Context, dep domain.Deployment) error
 	GetDeploymentByID(ctx context.Context, id string) (domain.Deployment, error)
 	ListDeploymentsByAppID(ctx context.Context, appID string) ([]domain.Deployment, error)
+
+	TakeNextQueuedDeployment(ctx context.Context) (domain.Deployment, error)
+	UpdateDeployment(ctx context.Context, deployment domain.Deployment) error
 }

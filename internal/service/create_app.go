@@ -1,4 +1,4 @@
-package usecase
+package service
 
 import (
 	"context"
@@ -10,11 +10,16 @@ import (
 )
 
 type AppService struct {
-	store contracts.Store
+	store   contracts.Store
+	runtime contracts.Runtime
 }
 
 func NewAppService(store contracts.Store) *AppService {
 	return &AppService{store: store}
+}
+
+func NewAppServiceWithRuntime(store contracts.Store, rt contracts.Runtime) *AppService {
+	return &AppService{store: store, runtime: rt}
 }
 
 type CreateAppParams struct {

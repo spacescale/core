@@ -70,6 +70,7 @@ type Deployment struct {
 	ID        string
 	AppID     string
 	Status    DeploymentStatus
+	URL       *string
 	Error     *string
 	CreatedAt time.Time
 	UpdatedAt time.Time
