@@ -26,8 +26,8 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.Recoverer)
 
 	// Health Check
-	r.Get("/healthz", func(writer http.ResponseWriter, request *http.Request) {
-		writer.WriteHeader(http.StatusOK)
+	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
 	})
 
 	r.Route("/v0", func(r chi.Router) {
