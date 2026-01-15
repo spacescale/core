@@ -47,7 +47,7 @@ func (s *Server) handleDeployApp(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListDeployments(w http.ResponseWriter, r *http.Request) {
 	appID := chi.URLParam(r, "appID")
-	deps, err := s.svc.ListDeploymentsByAppID(r.Context(), service.ListDeploymentsParams{AppID: appID})
+	deps, err := s.svc.ListDeployments(r.Context(), service.ListDeploymentsParams{AppID: appID})
 	if err != nil {
 		status, msg := mapServiceErr(err)
 		if status == http.StatusNoContent {

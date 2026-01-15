@@ -14,6 +14,10 @@ type DeployAppParams struct {
 	AppID string
 }
 
+type ListDeploymentsParams struct {
+	AppID string
+}
+
 func (s *AppService) DeployApp(ctx context.Context, p DeployAppParams) (domain.Deployment, error) {
 	if p.AppID == "" {
 		return domain.Deployment{}, fmt.Errorf("%w: app id is required", ErrInvalidInput)
