@@ -9,11 +9,14 @@ A tiny container as a service platform
 ## Architecture
 
 ```
+cmd/
+└── api/         # Main entrypoint (HTTP server)
 internal/
 ├── domain/      # Business entities and rules
 ├── contracts/   # Interface definitions
 ├── service/     # Business logic orchestration
-└── adapters/    # Interface implementations
+├── http_api/    # HTTP transport (handlers, DTOs)
+└── adapters/    # Interface implementations (store, runtime)
 ```
 
 ## Design Patterns Used
