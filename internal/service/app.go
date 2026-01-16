@@ -51,3 +51,17 @@ func (s *AppService) CreateApp(ctx context.Context, p CreateAppParams) (domain.A
 func (s *AppService) ListApps(ctx context.Context) ([]domain.App, error) {
 	return s.store.ListApps(ctx)
 }
+
+func (s *AppService) GetAppByID(ctx context.Context, id string) (domain.App, error) {
+	if id == "" {
+		return domain.App{}, ErrInvalidInput
+	}
+	app, err := s.store.GetAppByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, contracts.ErrNotFound) {
+			return domain.App{}, ErrNotFound
+		}
+		return domain.App{}, err
+	}
+	return app, nil
+}

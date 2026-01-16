@@ -95,3 +95,18 @@ func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, out)
 }
+
+func (s *Server) handleGetAppByID(w http.ResponseWriter, r *http.Request) {
+	appID := chi.URLParam(r, "appID")
+	app, err := s.svc.GetAppByID(r.Context(), appID)
+	if err != nil {
+		status, msg := mapServiceErr(err)
+		if status == http.StatusNoContent {
+			w.WriteHeader(status)
+			return
+		}
+		writeErr(w, status, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, toAppResp(app))
+}

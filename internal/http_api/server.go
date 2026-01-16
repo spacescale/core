@@ -36,6 +36,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/apps/{appID}/deployments", s.handleListDeployments)
 		r.Post("/deployments/next:process", s.handleProcessNextDeployment)
 		r.Get("/apps", s.handleListApps)
+		r.Get("/apps/{appID}", s.handleGetAppByID)
 	})
 
 	return r
