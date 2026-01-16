@@ -77,3 +77,21 @@ func (s *Server) handleProcessNextDeployment(w http.ResponseWriter, r *http.Requ
 	}
 	writeJSON(w, http.StatusOK, toDeploymentResp(dep))
 }
+
+func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
+	apps, err := s.svc.ListApps(r.Context())
+	if err != nil {
+		status, msg := mapServiceErr(err)
+		if status == http.StatusNoContent {
+			w.WriteHeader(status)
+			return
+		}
+		writeErr(w, status, msg)
+		return
+	}
+	out := make([]appResp, 0, len(apps))
+	for _, a := range apps {
+		out = append(out, toAppResp(a))
+	}
+	writeJSON(w, http.StatusOK, out)
+}

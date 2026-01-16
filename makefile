@@ -1,7 +1,10 @@
-.PHONY: build test coverage clean
+.PHONY: build test coverage clean run
 
 build:
 	go build -v ./...
+
+run:
+	go run ./cmd/api
 
 test:
 	go test ./... -cover

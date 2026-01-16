@@ -17,6 +17,8 @@ func mapServiceErr(err error) (status int, msg string) {
 		return http.StatusNotFound, "not found"
 	case errors.Is(err, service.ErrNoRuntime):
 		return http.StatusServiceUnavailable, "runtime not configured"
+	case errors.Is(err, service.ErrNoWork):
+		return http.StatusNoContent, ""
 	default:
 		return http.StatusInternalServerError, "internal error"
 	}

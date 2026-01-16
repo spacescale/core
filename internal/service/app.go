@@ -47,3 +47,7 @@ func (s *AppService) CreateApp(ctx context.Context, p CreateAppParams) (domain.A
 
 	return app, nil
 }
+
+func (s *AppService) ListApps(ctx context.Context) ([]domain.App, error) {
+	return s.store.ListApps(ctx)
+}
