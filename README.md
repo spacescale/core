@@ -19,6 +19,12 @@ internal/
 └── adapters/    # Interface implementations (store, runtime)
 ```
 
+## Request Flow
+
+```
+cmd/api -> http_api -> service -> contracts -> adapters
+```
+
 ## Design Patterns Used
 
 - **Domain-Driven Design** - Business logic isolated in domain layer
