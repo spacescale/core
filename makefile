@@ -1,10 +1,16 @@
-.PHONY: build test coverage clean
+.PHONY: build test test-race coverage clean run
 
 build:
 	go build -v ./...
 
+run:
+	go run ./cmd/api
+
 test:
 	go test ./... -cover
+
+test-race:
+	go test ./... -race
 
 coverage:
 	go test ./... -coverprofile=coverage.out

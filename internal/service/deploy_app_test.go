@@ -68,6 +68,7 @@ type storeWithHooks struct {
 	contracts.Store
 	getAppErr    error
 	createDepErr error
+	listDepsErr  error
 }
 
 func (s storeWithHooks) GetAppByID(ctx context.Context, id string) (domain.App, error) {
@@ -82,6 +83,13 @@ func (s storeWithHooks) CreateDeployment(ctx context.Context, dep domain.Deploym
 		return s.createDepErr
 	}
 	return s.Store.CreateDeployment(ctx, dep)
+}
+
+func (s storeWithHooks) ListDeploymentsByAppID(ctx context.Context, appID string) ([]domain.Deployment, error) {
+	if s.listDepsErr != nil {
+		return nil, s.listDepsErr
+	}
+	return s.Store.ListDeploymentsByAppID(ctx, appID)
 }
 
 func TestDeployApp_StoreErrors(t *testing.T) {
@@ -137,61 +145,117 @@ func (f *fakeRuntime) Deploy(ctx context.Context, app domain.App) (string, error
 var _ contracts.Runtime = (*fakeRuntime)(nil)
 
 func TestProcessNextDeployment(t *testing.T) {
-	tests := []struct {
-		label      string
-		queueWork  bool
-		runtimeErr error
-		ok         bool
-		wantErr    error
-	}{
-		{label: "no queued deployments", queueWork: false, ok: false, wantErr: service.ErrNoWork},
-		{label: "runtime fails", queueWork: true, runtimeErr: errors.New("boom"), ok: false},
-		{label: "runtime ok", queueWork: true, runtimeErr: nil, ok: true},
-	}
+	t.Run("no queued deployments", func(t *testing.T) {
+		ctx := context.Background()
+		st := store.NewMemoryStore()
+		rt := &fakeRuntime{url: "https://hello.yourdomain.come"}
+		svc := service.NewAppServiceWithRuntime(st, rt)
 
-	for _, tt := range tests {
-		t.Run(tt.label, func(t *testing.T) {
-			ctx := context.Background()
-			st := store.NewMemoryStore()
+		dep, err := svc.ProcessNextDeployment(ctx)
+		assert.Error(t, err)
+		assert.ErrorIs(t, err, service.ErrNoWork)
+		assert.Empty(t, dep.ID)
+		assert.Equal(t, 0, rt.called)
+	})
 
-			rt := &fakeRuntime{
-				url: "https://hello.yourdomain.come",
-				err: tt.runtimeErr,
-			}
-			svc := service.NewAppServiceWithRuntime(st, rt)
+	t.Run("runtime fails", func(t *testing.T) {
+		ctx := context.Background()
+		st := store.NewMemoryStore()
+		rt := &fakeRuntime{url: "https://hello.yourdomain.come", err: errors.New("boom")}
+		svc := service.NewAppServiceWithRuntime(st, rt)
 
-			var app domain.App
-			if tt.queueWork {
-				var err error
-				app, err = domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: 8080})
-				assert.NoError(t, err)
-				assert.NoError(t, st.CreateApp(ctx, app))
-				dep := domain.NewDeployment(app.ID)
-				assert.NoError(t, st.CreateDeployment(ctx, dep))
-			}
-			dep, err := svc.ProcessNextDeployment(ctx)
-			if tt.ok {
-				assert.NoError(t, err)
-				assert.Equal(t, domain.DeploymentStatusRunning, dep.Status)
-				assert.NotEmpty(t, dep.ID)
-				assert.NotNil(t, dep.URL)
-				assert.Equal(t, rt.url, *dep.URL)
-				assert.Nil(t, dep.Error)
-				assert.Equal(t, 1, rt.called)
-				assert.WithinDuration(t, time.Now().UTC(), dep.UpdatedAt, 2*time.Second)
-				return
-			}
-			assert.Error(t, err)
+		app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: 8080})
+		assert.NoError(t, err)
+		assert.NoError(t, st.CreateApp(ctx, app))
+		dep := domain.NewDeployment(app.ID)
+		assert.NoError(t, st.CreateDeployment(ctx, dep))
 
-			// the "no work" case returns empty deployment and runtime not called
-			if tt.wantErr != nil {
-				assert.Error(t, err, tt.wantErr)
-				assert.Empty(t, dep.ID)
-				assert.Empty(t, dep.ID)
-				assert.Equal(t, 0, rt.called)
-				return
-			}
+		_, err = svc.ProcessNextDeployment(ctx)
+		assert.Error(t, err)
+		assert.Equal(t, 1, rt.called)
+	})
 
-		})
-	}
+	t.Run("runtime ok", func(t *testing.T) {
+		ctx := context.Background()
+		st := store.NewMemoryStore()
+		rt := &fakeRuntime{url: "https://hello.yourdomain.come"}
+		svc := service.NewAppServiceWithRuntime(st, rt)
+
+		app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: 8080})
+		assert.NoError(t, err)
+		assert.NoError(t, st.CreateApp(ctx, app))
+		dep := domain.NewDeployment(app.ID)
+		assert.NoError(t, st.CreateDeployment(ctx, dep))
+
+		got, err := svc.ProcessNextDeployment(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, domain.DeploymentStatusRunning, got.Status)
+		assert.NotEmpty(t, got.ID)
+		assert.NotNil(t, got.URL)
+		assert.Equal(t, rt.url, *got.URL)
+		assert.Nil(t, got.Error)
+		assert.Equal(t, 1, rt.called)
+		assert.WithinDuration(t, time.Now().UTC(), got.UpdatedAt, 2*time.Second)
+	})
+}
+
+func TestListDeployments(t *testing.T) {
+	t.Run("invalid input: empty app id", func(t *testing.T) {
+		ctx := context.Background()
+		st := store.NewMemoryStore()
+		svc := service.NewAppService(st)
+
+		deps, err := svc.ListDeployments(ctx, service.ListDeploymentsParams{AppID: ""})
+		assert.ErrorIs(t, err, service.ErrInvalidInput)
+		assert.Nil(t, deps)
+	})
+
+	t.Run("not found: app missing", func(t *testing.T) {
+		ctx := context.Background()
+		st := store.NewMemoryStore()
+		svc := service.NewAppService(st)
+
+		deps, err := svc.ListDeployments(ctx, service.ListDeploymentsParams{AppID: "missing"})
+		assert.ErrorIs(t, err, service.ErrNotFound)
+		assert.Nil(t, deps)
+	})
+
+	t.Run("ok: returns deployments in create order", func(t *testing.T) {
+		ctx := context.Background()
+		st := store.NewMemoryStore()
+		svc := service.NewAppService(st)
+
+		app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: 8080})
+		assert.NoError(t, err)
+		assert.NoError(t, st.CreateApp(ctx, app))
+
+		dep1 := domain.NewDeployment(app.ID)
+		dep2 := domain.NewDeployment(app.ID)
+		assert.NoError(t, st.CreateDeployment(ctx, dep1))
+		assert.NoError(t, st.CreateDeployment(ctx, dep2))
+
+		deps, err := svc.ListDeployments(ctx, service.ListDeploymentsParams{AppID: app.ID})
+		assert.NoError(t, err)
+		assert.Len(t, deps, 2)
+		assert.Equal(t, dep1.ID, deps[0].ID)
+		assert.Equal(t, dep2.ID, deps[1].ID)
+	})
+
+	t.Run("store error bubbles up", func(t *testing.T) {
+		ctx := context.Background()
+		mem := store.NewMemoryStore()
+		app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: 8080})
+		assert.NoError(t, err)
+		assert.NoError(t, mem.CreateApp(ctx, app))
+
+		st := storeWithHooks{
+			Store:       mem,
+			listDepsErr: errors.New("boom"),
+		}
+		svc := service.NewAppService(st)
+
+		deps, err := svc.ListDeployments(ctx, service.ListDeploymentsParams{AppID: app.ID})
+		assert.Error(t, err)
+		assert.Nil(t, deps)
+	})
 }

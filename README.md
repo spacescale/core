@@ -9,11 +9,20 @@ A tiny container as a service platform
 ## Architecture
 
 ```
+cmd/
+└── api/         # Main entrypoint (HTTP server)
 internal/
 ├── domain/      # Business entities and rules
 ├── contracts/   # Interface definitions
 ├── service/     # Business logic orchestration
-└── adapters/    # Interface implementations
+├── http_api/    # HTTP transport (handlers, DTOs)
+└── adapters/    # Interface implementations (store, runtime)
+```
+
+## Request Flow
+
+```
+cmd/api -> http_api -> service -> contracts -> adapters
 ```
 
 ## Design Patterns Used
@@ -24,7 +33,7 @@ internal/
 
 ### Prerequisites
 
-- Go 1.2.5 or higher
+- Go 1.25.5 or higher
 - Make
 
 ### Installation
@@ -37,7 +46,8 @@ go mod download
 
 ## Building and Development
 
-A make file has been provided to make testing and building easy.Read the make file to see all commands. make is availabe
+A make file has been provided to make testing and building easy.Read the make file to see all commands. make is
+available
 by default on all UNIX/Linux OS. To run a quick
 test outside a container. You can use
 

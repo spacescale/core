@@ -14,6 +14,10 @@ type DeployAppParams struct {
 	AppID string
 }
 
+type ListDeploymentsParams struct {
+	AppID string
+}
+
 func (s *AppService) DeployApp(ctx context.Context, p DeployAppParams) (domain.Deployment, error) {
 	if p.AppID == "" {
 		return domain.Deployment{}, fmt.Errorf("%w: app id is required", ErrInvalidInput)
@@ -89,4 +93,23 @@ func (s *AppService) ProcessNextDeployment(ctx context.Context) (domain.Deployme
 
 	return dep, nil
 
+}
+
+func (s *AppService) ListDeployments(ctx context.Context, p ListDeploymentsParams) ([]domain.Deployment, error) {
+	if p.AppID == "" {
+		return nil, ErrInvalidInput
+	}
+
+	// enforce app exists so missing app returns ErrNotFound instead of empty list {
+	if _, err := s.store.GetAppByID(ctx, p.AppID); err != nil {
+		if errors.Is(err, contracts.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	deps, err := s.store.ListDeploymentsByAppID(ctx, p.AppID)
+	if err != nil {
+		return nil, err
+	}
+	return deps, nil
 }
