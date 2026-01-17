@@ -19,12 +19,13 @@ import (
 func main() {
 	// Read runtime config from env with defaults so local dev works out of the box.
 	addr := env("ADDR", ":8080")
+	workerToken := env("WORKER_TOKEN", "")
 	baseDomain := env("BASE_DOMAIN", "example.com")
 
 	st := store.NewMemoryStore()
 	rt := fake.New(baseDomain)
 	svc := service.NewAppServiceWithRuntime(st, rt)
-	api := http_api.NewServer(svc)
+	api := http_api.NewServer(svc, workerToken)
 
 	// Configure the HTTP server with a read header timeout to avoid slowloris-style abuse.
 	srv := &http.Server{

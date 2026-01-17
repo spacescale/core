@@ -9,11 +9,12 @@ import (
 )
 
 type Server struct {
-	svc *service.AppService
+	svc         *service.AppService
+	workerToken string
 }
 
-func NewServer(svc *service.AppService) *Server {
-	return &Server{svc: svc}
+func NewServer(svc *service.AppService, workerToken string) *Server {
+	return &Server{svc: svc, workerToken: workerToken}
 }
 
 func (s *Server) Router() http.Handler {
@@ -34,9 +35,10 @@ func (s *Server) Router() http.Handler {
 		r.Post("/apps", s.handleCreateApp)
 		r.Post("/apps/{appID}/deploy", s.handleDeployApp)
 		r.Get("/apps/{appID}/deployments", s.handleListDeployments)
-		r.Post("/deployments/next:process", s.handleProcessNextDeployment)
 		r.Get("/apps", s.handleListApps)
 		r.Get("/apps/{appID}", s.handleGetAppByID)
+
+		r.With(WorkerAuth{Token: s.workerToken}.Middleware).Post("/deployments/next:process", s.handleProcessNextDeployment)
 	})
 
 	return r

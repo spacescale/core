@@ -15,13 +15,16 @@ import (
 	"github.com/t0gun/paas/internal/service"
 )
 
-func newTestServer(t *testing.T) (*httptest.Server, *store.MemoryStore) {
+func newTestServer(t *testing.T, workerToken string) (*httptest.Server, *store.MemoryStore) {
 	t.Helper()
+
 	st := store.NewMemoryStore()
 	rt := fake.New("spacescale.ai")
 	svc := service.NewAppServiceWithRuntime(st, rt)
-	api := http_api.NewServer(svc)
+
+	api := http_api.NewServer(svc, workerToken)
 	ts := httptest.NewServer(api.Router())
+
 	return ts, st
 }
 
@@ -73,7 +76,7 @@ func createApp(t *testing.T, ts *httptest.Server, name, image string, port int) 
 }
 
 func TestHealthz(t *testing.T) {
-	ts, _ := newTestServer(t)
+	ts, _ := newTestServer(t, "")
 	defer ts.Close()
 	req := newRequest(t, http.MethodGet, ts.URL+"/healthz", nil)
 	res := doRequest(t, req)
@@ -82,7 +85,7 @@ func TestHealthz(t *testing.T) {
 
 func TestCreateApp(t *testing.T) {
 	t.Run("valid - 201", func(t *testing.T) {
-		ts, _ := newTestServer(t)
+		ts, _ := newTestServer(t, "")
 		defer ts.Close()
 
 		got := createApp(t, ts, "hello", "nginx:latest", 8080)
@@ -92,7 +95,7 @@ func TestCreateApp(t *testing.T) {
 	})
 
 	t.Run("invalid - 400", func(t *testing.T) {
-		ts, _ := newTestServer(t)
+		ts, _ := newTestServer(t, "")
 		defer ts.Close()
 
 		body := map[string]any{"name": "Bad_Name", "image": "nginx:latest", "port": 8080}
@@ -105,7 +108,7 @@ func TestCreateApp(t *testing.T) {
 	})
 
 	t.Run("invalid json - 400", func(t *testing.T) {
-		ts, _ := newTestServer(t)
+		ts, _ := newTestServer(t, "")
 		defer ts.Close()
 
 		reqBody := []byte(`{"name": "hello",`)
@@ -117,7 +120,7 @@ func TestCreateApp(t *testing.T) {
 }
 
 func TestCreateAppConflict(t *testing.T) {
-	ts, _ := newTestServer(t)
+	ts, _ := newTestServer(t, "")
 	defer ts.Close()
 
 	// create first
@@ -132,7 +135,7 @@ func TestCreateAppConflict(t *testing.T) {
 }
 
 func TestDeployAndProcessAndListDeployments(t *testing.T) {
-	ts, _ := newTestServer(t)
+	ts, _ := newTestServer(t, "")
 	defer ts.Close()
 
 	// create app
@@ -169,7 +172,7 @@ func TestDeployAndProcessAndListDeployments(t *testing.T) {
 }
 
 func TestDeployMissingApp(t *testing.T) {
-	ts, _ := newTestServer(t)
+	ts, _ := newTestServer(t, "")
 	defer ts.Close()
 
 	req := newRequest(t, http.MethodPost, ts.URL+"/v0/apps/missing/deploy", nil)
@@ -179,7 +182,7 @@ func TestDeployMissingApp(t *testing.T) {
 }
 
 func TestListDeploymentsMissingApp(t *testing.T) {
-	ts, _ := newTestServer(t)
+	ts, _ := newTestServer(t, "")
 	defer ts.Close()
 
 	req := newRequest(t, http.MethodGet, ts.URL+"/v0/apps/missing/deployments", nil)
@@ -189,7 +192,7 @@ func TestListDeploymentsMissingApp(t *testing.T) {
 }
 
 func TestProcessNoWork(t *testing.T) {
-	ts, _ := newTestServer(t)
+	ts, _ := newTestServer(t, "")
 	defer ts.Close()
 
 	req := newRequest(t, http.MethodPost, ts.URL+"/v0/deployments/next:process", nil)
@@ -201,7 +204,7 @@ func TestProcessNoWork(t *testing.T) {
 func TestProcessNoRuntime(t *testing.T) {
 	st := store.NewMemoryStore()
 	svc := service.NewAppService(st)
-	api := http_api.NewServer(svc)
+	api := http_api.NewServer(svc, "")
 	ts := httptest.NewServer(api.Router())
 	defer ts.Close()
 
@@ -217,7 +220,7 @@ func TestProcessNoRuntime(t *testing.T) {
 
 func TestListApps(t *testing.T) {
 	t.Run("empty list", func(t *testing.T) {
-		ts, _ := newTestServer(t)
+		ts, _ := newTestServer(t, "")
 		defer ts.Close()
 
 		req := newRequest(t, http.MethodGet, ts.URL+"/v0/apps", nil)
@@ -231,7 +234,7 @@ func TestListApps(t *testing.T) {
 	})
 
 	t.Run("list includes created app", func(t *testing.T) {
-		ts, _ := newTestServer(t)
+		ts, _ := newTestServer(t, "")
 		defer ts.Close()
 
 		created := createApp(t, ts, "hello", "nginx:latest", 8080)
@@ -250,7 +253,7 @@ func TestListApps(t *testing.T) {
 
 func TestGetAppByID(t *testing.T) {
 	t.Run("ok - 200", func(t *testing.T) {
-		ts, _ := newTestServer(t)
+		ts, _ := newTestServer(t, "")
 		defer ts.Close()
 
 		created := createApp(t, ts, "hello", "nginx:latest", 8080)
@@ -269,7 +272,7 @@ func TestGetAppByID(t *testing.T) {
 	})
 
 	t.Run("not found - 404", func(t *testing.T) {
-		ts, _ := newTestServer(t)
+		ts, _ := newTestServer(t, "")
 		defer ts.Close()
 
 		req := newRequest(t, http.MethodGet, ts.URL+"/v0/apps/missing", nil)
@@ -280,4 +283,33 @@ func TestGetAppByID(t *testing.T) {
 		assert.NoError(t, json.NewDecoder(res.Body).Decode(&got))
 		assert.Equal(t, "not found", got["error"])
 	})
+}
+
+func TestWorkerAuth_ProcessNextDeployment(t *testing.T) {
+	tests := []struct {
+		label       string
+		serverToken string
+		headerToken string
+		wantCode    int
+	}{
+		{label: "token disabled", serverToken: "", headerToken: "", wantCode: http.StatusNoContent},
+		{label: "token enabled - missing header", serverToken: "secret", headerToken: "", wantCode: http.StatusUnauthorized},
+		{label: "token enabled wrong header", serverToken: "secret", headerToken: "nope", wantCode: http.StatusUnauthorized},
+		{label: "token enabled correct header", serverToken: "secret", headerToken: "secret", wantCode: http.StatusNoContent},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.label, func(t *testing.T) {
+			ts, _ := newTestServer(t, tt.serverToken)
+			defer ts.Close()
+
+			req := newRequest(t, http.MethodPost, ts.URL+"/v0/deployments/next:process", nil)
+			if tt.headerToken != "" {
+				req.Header.Set("X-Worker-Token", tt.headerToken)
+			}
+
+			res := doRequest(t, req)
+			assert.Equal(t, tt.wantCode, res.StatusCode)
+		})
+	}
 }
