@@ -71,3 +71,48 @@ func TestCreateApp_DuplicateName(t *testing.T) {
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, service.ErrConflict)
 }
+
+func TestGetAppByID(t *testing.T) {
+	t.Run("invalid input: empty id", func(t *testing.T) {
+		ctx := context.Background()
+		st := store.NewMemoryStore()
+		svc := service.NewAppService(st)
+
+		app, err := svc.GetAppByID(ctx, "")
+		assert.Error(t, err)
+		assert.ErrorIs(t, err, service.ErrInvalidInput)
+		assert.Empty(t, app.ID)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		ctx := context.Background()
+		st := store.NewMemoryStore()
+		svc := service.NewAppService(st)
+
+		app, err := svc.GetAppByID(ctx, "missing")
+		assert.Error(t, err)
+		assert.ErrorIs(t, err, service.ErrNotFound)
+		assert.Empty(t, app.ID)
+	})
+
+	t.Run("ok", func(t *testing.T) {
+		ctx := context.Background()
+		st := store.NewMemoryStore()
+		svc := service.NewAppService(st)
+
+		created, err := svc.CreateApp(ctx, service.CreateAppParams{
+			Name:  "hello",
+			Image: "nginx:latest",
+			Port:  8080,
+		})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, created.ID)
+
+		app, err := svc.GetAppByID(ctx, created.ID)
+		assert.NoError(t, err)
+		assert.Equal(t, created.ID, app.ID)
+		assert.Equal(t, created.Name, app.Name)
+		assert.Equal(t, created.Image, app.Image)
+		assert.Equal(t, created.Port, app.Port)
+	})
+}
