@@ -1,10 +1,46 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+out/
+
+# Turbo
+.turbo/
+
+# Go
 *.out
 coverage.*
 *.coverprofile
 profile.cov
 go.work
 go.work.sum
+
+# Environment
 .env
+.env.local
+.env.*.local
+
+# IDE
 .idea/
-.DS_STORE
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
 DS_STORE
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+
+# Misc
+*.tsbuildinfo
