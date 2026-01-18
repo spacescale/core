@@ -26,20 +26,7 @@ apps/
 packages/        # Shared packages (future use)
 ```
 
-## Request Flow (API)
-
-```
-cmd/api -> http_api -> service -> contracts -> adapters
-```
-
-## Design Patterns Used
-
-- **Domain-Driven Design** - Business logic isolated in domain layer
-- **Repository Pattern** - Data access abstracted via Store interface
-- **Dependency Injection** - Services receive dependencies through constructors
-
 ## Prerequisites
-
 - Go 1.25.5 or higher
 - Node.js 22+
 - pnpm 9+
