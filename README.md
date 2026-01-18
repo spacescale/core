@@ -6,20 +6,27 @@
 
 A tiny container as a service platform
 
-## Architecture
+## Monorepo Structure
+
+This project uses [Turborepo](https://turbo.build/) for monorepo management.
 
 ```
-cmd/
-└── api/         # Main entrypoint (HTTP server)
-internal/
-├── domain/      # Business entities and rules
-├── contracts/   # Interface definitions
-├── service/     # Business logic orchestration
-├── http_api/    # HTTP transport (handlers, DTOs)
-└── adapters/    # Interface implementations (store, runtime)
+apps/
+├── api/         # Go backend API
+│   ├── cmd/api/     # Main entrypoint (HTTP server)
+│   └── internal/
+│       ├── domain/      # Business entities and rules
+│       ├── contracts/   # Interface definitions
+│       ├── service/     # Business logic orchestration
+│       ├── http_api/    # HTTP transport (handlers, DTOs)
+│       └── adapters/    # Interface implementations (store, runtime)
+└── web/         # Next.js frontend
+    └── src/app/     # App router pages
+
+packages/        # Shared packages (future use)
 ```
 
-## Request Flow
+## Request Flow (API)
 
 ```
 cmd/api -> http_api -> service -> contracts -> adapters
@@ -31,26 +38,76 @@ cmd/api -> http_api -> service -> contracts -> adapters
 - **Repository Pattern** - Data access abstracted via Store interface
 - **Dependency Injection** - Services receive dependencies through constructors
 
-### Prerequisites
+## Prerequisites
 
 - Go 1.25.5 or higher
-- Make
+- Node.js 22+
+- pnpm 9+
+
+## Getting Started
 
 ### Installation
 
 ```bash
 git clone https://github.com/t0gun/paas.git
 cd paas
-go mod download
+pnpm install
 ```
 
-## Building and Development
+### Development
 
-A make file has been provided to make testing and building easy.Read the make file to see all commands. make is
-available
-by default on all UNIX/Linux OS. To run a quick
-test outside a container. You can use
+Run all apps in development mode:
 
 ```bash
-make test
+pnpm dev
+```
+
+Or run individually:
+
+```bash
+# API only
+pnpm dev:api
+
+# Web only
+pnpm dev:web
+```
+
+### Building
+
+```bash
+pnpm build
+```
+
+### Testing
+
+```bash
+pnpm test
+```
+
+### Linting
+
+```bash
+pnpm lint
+```
+
+## Apps
+
+### API (`apps/api`)
+
+Go backend providing REST API for container orchestration.
+
+```bash
+cd apps/api
+make test      # Run tests
+make run       # Start server
+```
+
+### Web (`apps/web`)
+
+Next.js frontend dashboard.
+
+```bash
+cd apps/web
+pnpm dev       # Start dev server
+pnpm build     # Production build
 ```
