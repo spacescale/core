@@ -1,8 +1,8 @@
 # SpaceScale
 
-[![API CI](https://github.com/t0gun/spacescale/actions/workflows/api.yml/badge.svg?label=api-ci)](https://github.com/t0gun/spacescale/actions/workflows/api.yml)
-[![Web CI](https://github.com/t0gun/spacescale/actions/workflows/web.yml/badge.svg?label=web-ci)](https://github.com/t0gun/spacescale/actions/workflows/web.yml)
-[![codecov-api-test](https://codecov.io/gh/t0gun/spacescale/graph/badge.svg?token=A444L7NNC1&flag=api&label=api-test)](https://codecov.io/gh/t0gun/spacescale)
+[![API](https://github.com/t0gun/spacescale/actions/workflows/api.yml/badge.svg?)](https://github.com/t0gun/spacescale/actions/workflows/api.yml)
+[![Web](https://github.com/t0gun/spacescale/actions/workflows/web.yml/badge.svg?)](https://github.com/t0gun/spacescale/actions/workflows/web.yml)
+[![api-test](https://codecov.io/gh/t0gun/spacescale/graph/badge.svg?token=A444L7NNC1&flag=api&label=api-test)](https://codecov.io/gh/t0gun/spacescale)
 
 > Requires Go 1.25+, node 22+, pnpm 9+
 
