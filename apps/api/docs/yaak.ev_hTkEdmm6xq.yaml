@@ -1,0 +1,22 @@
+type: environment
+model: environment
+id: ev_hTkEdmm6xq
+workspaceId: wk_KJF6oyHis3
+createdAt: 2026-01-25T03:25:42.430059
+updatedAt: 2026-01-25T04:09:48.070659
+name: LOCAL
+public: true
+base: false
+parentModel: environment
+parentId: null
+variables:
+- enabled: true
+  name: BASE_URL
+  value: ${[ secure(value=b64'WUVOQ19lVUUwYXpOdVF3RVlZVWp0b0RSWFVGQkNXdWRQM1kvRlA5am9hei9RNkFOaE04RVk2bXFnaWNoMzVXc1RxRjJxUHlLVUVoZWRWTk1nbEFvSHROZ3ROUlk9') ]}
+  id: v23VGWgsdb
+- enabled: true
+  name: appID
+  value: ${[ secure(value=b64'WUVOQ19lVUUwYXpOdVF3SDJ1UlJsOUZXZnFMcW5weDhmSGxWSURkL0ZIUVYzVytJYnUzaVJsbTcwTStxTlBzYUxBMG9aK1N1Q1MybTJOYitsWWJkVjVVZlpKYkpvelFnWkE0RXFrY2F3NGJZeWRzUGQxQTBp') ]}
+  id: 3QATEYdKaz
+color: var(--primary)
+sortPriority: 0.0

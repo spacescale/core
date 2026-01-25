@@ -1,3 +1,9 @@
+// Tests for http api routes and responses
+// Tests exercise app creation and deployment flows
+// Tests verify status codes and response fields
+// Tests cover exposure disabled behavior
+// These tests guard handler regressions
+
 package http_api_test
 
 import (
@@ -9,17 +15,18 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/t0gun/paas/internal/adapters/runtime/fake"
-	"github.com/t0gun/paas/internal/adapters/store"
-	"github.com/t0gun/paas/internal/http_api"
-	"github.com/t0gun/paas/internal/service"
+	"github.com/t0gun/spacescale/internal/adapters/runtime/docker"
+	"github.com/t0gun/spacescale/internal/adapters/store"
+	"github.com/t0gun/spacescale/internal/http_api"
+	"github.com/t0gun/spacescale/internal/service"
 )
 
+// newTestServer builds a test server and backing store.
 func newTestServer(t *testing.T, workerToken string) (*httptest.Server, *store.MemoryStore) {
 	t.Helper()
 
 	st := store.NewMemoryStore()
-	rt := fake.New("spacescale.ai")
+	rt, _ := docker.New(docker.WithNamePrefix("spacescale-http-api-"))
 	svc := service.NewAppServiceWithRuntime(st, rt)
 
 	api := http_api.NewServer(svc, workerToken)
@@ -28,6 +35,7 @@ func newTestServer(t *testing.T, workerToken string) (*httptest.Server, *store.M
 	return ts, st
 }
 
+// newRequest builds an HTTP request with an optional body.
 func newRequest(t *testing.T, method, url string, body []byte) *http.Request {
 	t.Helper()
 	var bodyReader io.Reader
@@ -41,6 +49,7 @@ func newRequest(t *testing.T, method, url string, body []byte) *http.Request {
 	return req
 }
 
+// newJSONRequest builds an HTTP JSON request.
 func newJSONRequest(t *testing.T, method, url string, body []byte) *http.Request {
 	t.Helper()
 	req := newRequest(t, method, url, body)
@@ -48,6 +57,7 @@ func newJSONRequest(t *testing.T, method, url string, body []byte) *http.Request
 	return req
 }
 
+// doRequest executes a request and registers cleanup.
 func doRequest(t *testing.T, req *http.Request) *http.Response {
 	t.Helper()
 	res, err := http.DefaultClient.Do(req)
@@ -60,9 +70,19 @@ func doRequest(t *testing.T, req *http.Request) *http.Response {
 	return res
 }
 
-func createApp(t *testing.T, ts *httptest.Server, name, image string, port int) map[string]any {
+// createApp creates an app via the API and returns the response body.
+func createApp(t *testing.T, ts *httptest.Server, name, image string, port *int, expose *bool, env map[string]string) map[string]any {
 	t.Helper()
-	body := map[string]any{"name": name, "image": image, "port": port}
+	body := map[string]any{"name": name, "image": image}
+	if port != nil {
+		body["port"] = *port
+	}
+	if expose != nil {
+		body["expose"] = *expose
+	}
+	if env != nil {
+		body["env"] = env
+	}
 	reqBody, err := json.Marshal(body)
 	assert.NoError(t, err)
 
@@ -75,6 +95,7 @@ func createApp(t *testing.T, ts *httptest.Server, name, image string, port int) 
 	return created
 }
 
+// TestHealthz verifies the health endpoint.
 func TestHealthz(t *testing.T) {
 	ts, _ := newTestServer(t, "")
 	defer ts.Close()
@@ -83,12 +104,13 @@ func TestHealthz(t *testing.T) {
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 }
 
+// TestCreateApp validates app creation responses.
 func TestCreateApp(t *testing.T) {
 	t.Run("valid - 201", func(t *testing.T) {
 		ts, _ := newTestServer(t, "")
 		defer ts.Close()
 
-		got := createApp(t, ts, "hello", "nginx:latest", 8080)
+		got := createApp(t, ts, "hello", "nginx:latest", ptrInt(8080), nil, nil)
 		assert.NotEmpty(t, got["id"])
 		assert.Equal(t, "hello", got["name"])
 		assert.Equal(t, "nginx:latest", got["image"])
@@ -119,14 +141,15 @@ func TestCreateApp(t *testing.T) {
 
 }
 
+// TestCreateAppConflict verifies conflict on duplicate names.
 func TestCreateAppConflict(t *testing.T) {
 	ts, _ := newTestServer(t, "")
 	defer ts.Close()
 
 	// create first
-	createApp(t, ts, "hello", "nginx:latest", 8080)
+	createApp(t, ts, "hello", "nginx:latest", ptrInt(8080), nil, nil)
 
-	// create again with same name => 409
+	// create again with same name
 	body := `{"name":"hello","image":"nginx:latest","port":8080}`
 	req2 := newJSONRequest(t, http.MethodPost, ts.URL+"/v0/apps", []byte(body))
 	res2 := doRequest(t, req2)
@@ -134,21 +157,22 @@ func TestCreateAppConflict(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, res2.StatusCode)
 }
 
+// TestDeployAndProcessAndListDeployments verifies the deploy processing flow.
 func TestDeployAndProcessAndListDeployments(t *testing.T) {
 	ts, _ := newTestServer(t, "")
 	defer ts.Close()
 
 	// create app
-	created := createApp(t, ts, "hello", "nginx:latest", 8080)
+	created := createApp(t, ts, "hello", "nginx:latest", ptrInt(8080), nil, nil)
 	appID, _ := created["id"].(string)
 	assert.NotEmpty(t, appID)
 
-	// deploy => 202
+	// deploy
 	deployReq := newRequest(t, http.MethodPost, ts.URL+"/v0/apps/"+appID+"/deploy", nil)
 	deployRes := doRequest(t, deployReq)
 	assert.Equal(t, http.StatusAccepted, deployRes.StatusCode)
 
-	// process => 200
+	// process
 	processReq := newRequest(t, http.MethodPost, ts.URL+"/v0/deployments/next:process", nil)
 	processRes := doRequest(t, processReq)
 	assert.Equal(t, http.StatusOK, processRes.StatusCode)
@@ -159,7 +183,7 @@ func TestDeployAndProcessAndListDeployments(t *testing.T) {
 	assert.Equal(t, "RUNNING", dep["status"])
 	assert.NotEmpty(t, dep["url"])
 
-	// list => 200 and includes deployment
+	// list and includes deployment
 	listReq := newRequest(t, http.MethodGet, ts.URL+"/v0/apps/"+appID+"/deployments", nil)
 	listRes := doRequest(t, listReq)
 
@@ -171,6 +195,32 @@ func TestDeployAndProcessAndListDeployments(t *testing.T) {
 	assert.Equal(t, "RUNNING", deps[0]["status"])
 }
 
+// TestDeployNoExpose verifies deployments without exposure omit URLs.
+func TestDeployNoExpose(t *testing.T) {
+	ts, _ := newTestServer(t, "")
+	defer ts.Close()
+
+	expose := false
+	created := createApp(t, ts, "hello", "nginx:latest", nil, &expose, nil)
+	appID, _ := created["id"].(string)
+	assert.NotEmpty(t, appID)
+
+	deployReq := newRequest(t, http.MethodPost, ts.URL+"/v0/apps/"+appID+"/deploy", nil)
+	deployRes := doRequest(t, deployReq)
+	assert.Equal(t, http.StatusAccepted, deployRes.StatusCode)
+
+	processReq := newRequest(t, http.MethodPost, ts.URL+"/v0/deployments/next:process", nil)
+	processRes := doRequest(t, processReq)
+	assert.Equal(t, http.StatusOK, processRes.StatusCode)
+
+	var dep map[string]any
+	assert.NoError(t, json.NewDecoder(processRes.Body).Decode(&dep))
+	assert.Equal(t, "RUNNING", dep["status"])
+	_, ok := dep["url"]
+	assert.False(t, ok)
+}
+
+// TestDeployMissingApp verifies missing apps return 404.
 func TestDeployMissingApp(t *testing.T) {
 	ts, _ := newTestServer(t, "")
 	defer ts.Close()
@@ -181,6 +231,7 @@ func TestDeployMissingApp(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, res.StatusCode)
 }
 
+// TestListDeploymentsMissingApp verifies missing apps return 404.
 func TestListDeploymentsMissingApp(t *testing.T) {
 	ts, _ := newTestServer(t, "")
 	defer ts.Close()
@@ -191,6 +242,7 @@ func TestListDeploymentsMissingApp(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, res.StatusCode)
 }
 
+// TestProcessNoWork verifies no queued work returns 204.
 func TestProcessNoWork(t *testing.T) {
 	ts, _ := newTestServer(t, "")
 	defer ts.Close()
@@ -201,6 +253,7 @@ func TestProcessNoWork(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, res.StatusCode)
 }
 
+// TestProcessNoRuntime verifies missing runtime returns 503.
 func TestProcessNoRuntime(t *testing.T) {
 	st := store.NewMemoryStore()
 	svc := service.NewAppService(st)
@@ -218,6 +271,7 @@ func TestProcessNoRuntime(t *testing.T) {
 	assert.Equal(t, "runtime not configured", got["error"])
 }
 
+// TestListApps verifies app listing behavior.
 func TestListApps(t *testing.T) {
 	t.Run("empty list", func(t *testing.T) {
 		ts, _ := newTestServer(t, "")
@@ -237,7 +291,7 @@ func TestListApps(t *testing.T) {
 		ts, _ := newTestServer(t, "")
 		defer ts.Close()
 
-		created := createApp(t, ts, "hello", "nginx:latest", 8080)
+		created := createApp(t, ts, "hello", "nginx:latest", ptrInt(8080), nil, nil)
 
 		req := newRequest(t, http.MethodGet, ts.URL+"/v0/apps", nil)
 		res := doRequest(t, req)
@@ -251,12 +305,13 @@ func TestListApps(t *testing.T) {
 	})
 }
 
+// TestGetAppByID verifies app lookup behavior.
 func TestGetAppByID(t *testing.T) {
 	t.Run("ok - 200", func(t *testing.T) {
 		ts, _ := newTestServer(t, "")
 		defer ts.Close()
 
-		created := createApp(t, ts, "hello", "nginx:latest", 8080)
+		created := createApp(t, ts, "hello", "nginx:latest", ptrInt(8080), nil, nil)
 		appID, _ := created["id"].(string)
 		assert.NotEmpty(t, appID)
 
@@ -285,6 +340,7 @@ func TestGetAppByID(t *testing.T) {
 	})
 }
 
+// TestWorkerAuth_ProcessNextDeployment verifies worker token enforcement.
 func TestWorkerAuth_ProcessNextDeployment(t *testing.T) {
 	tests := []struct {
 		label       string
@@ -312,4 +368,9 @@ func TestWorkerAuth_ProcessNextDeployment(t *testing.T) {
 			assert.Equal(t, tt.wantCode, res.StatusCode)
 		})
 	}
+}
+
+// ptrInt returns a pointer to v.
+func ptrInt(v int) *int {
+	return &v
 }

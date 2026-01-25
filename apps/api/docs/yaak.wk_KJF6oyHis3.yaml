@@ -1,0 +1,15 @@
+type: workspace
+model: workspace
+id: wk_KJF6oyHis3
+createdAt: 2026-01-25T02:14:12.171064
+updatedAt: 2026-01-25T04:01:48.083418
+authentication: {}
+authenticationType: null
+description: 'Use Yaak variable tokens via autocomplete: ${[ BASE_URL ]} (not raw {{BASE_URL}}). Our requests expect URLs like http://${[ BASE_URL ]}/... so set BASE_URL to host:port (e.g., localtest.me:8080).'
+headers: []
+name: SpaceScale
+encryptionKeyChallenge: eUE0azNuQwHK95sPS4seaP9Z0gjatH1W3iePzyE1HmZT7ldj2BlfDB+PlkOYbxzPfEwNaR3f4JxUoi2mDgWnxzypwYKOCEmSkDCsJCx916MabrLrKuqfQ7ckWDnc0TyqLfs=
+settingValidateCertificates: true
+settingFollowRedirects: true
+settingRequestTimeout: 0
+settingDnsOverrides: []

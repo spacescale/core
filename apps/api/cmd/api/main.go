@@ -1,3 +1,4 @@
+// API service entry point and lifecycle wiring.
 package main
 
 import (
@@ -10,12 +11,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/t0gun/paas/internal/adapters/runtime/fake"
-	"github.com/t0gun/paas/internal/adapters/store"
-	"github.com/t0gun/paas/internal/http_api"
-	"github.com/t0gun/paas/internal/service"
+	"github.com/t0gun/spacescale/internal/adapters/runtime/docker"
+	"github.com/t0gun/spacescale/internal/adapters/store"
+	"github.com/t0gun/spacescale/internal/http_api"
+	"github.com/t0gun/spacescale/internal/service"
 )
 
+// main starts the API server and waits for a shutdown signal.
 func main() {
 	// Read runtime config from env with defaults so local dev works out of the box.
 	addr := env("ADDR", ":8080")
@@ -23,7 +25,20 @@ func main() {
 	baseDomain := env("BASE_DOMAIN", "example.com")
 
 	st := store.NewMemoryStore()
-	rt := fake.New(baseDomain)
+	rt, err := docker.New(docker.WithEdge(
+		docker.EdgeConfig{
+			BaseDomain: baseDomain,
+			TraefikNet: env("TRAEFIK_NET", "traefik"),
+			Scheme:     env("TRAEFIK_ENTRYPOINT", "web"),
+			EnableTLS:  env("ENABLE_TLS", "") == "1",
+			// CertResolver optional later:
+			// CertResolver: env("CERT_RESOLVER", ""),
+		},
+	))
+	if err != nil {
+		log.Fatalf("docker runtime init: %v", err)
+	}
+
 	svc := service.NewAppServiceWithRuntime(st, rt)
 	api := http_api.NewServer(svc, workerToken)
 
@@ -61,6 +76,7 @@ func main() {
 	_ = srv.Shutdown(ctx)
 }
 
+// env returns an environment variable or a default value.
 func env(key, def string) string {
 	// Return the env var value if set, otherwise fall back to the default.
 	if v := os.Getenv(key); v != "" {

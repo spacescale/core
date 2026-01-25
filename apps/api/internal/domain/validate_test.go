@@ -1,3 +1,9 @@
+// Tests for app name image and port validation
+// Tests include valid and invalid examples
+// Port tests include nil and range checks
+// Validation errors are expected for bad inputs
+// These tests guard validation rules
+
 package domain_test
 
 import (
@@ -5,9 +11,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/t0gun/paas/internal/domain"
+	"github.com/t0gun/spacescale/internal/domain"
 )
 
+// TestValidateAppName verifies app name validation.
 func TestValidateAppName(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -40,6 +47,7 @@ func TestValidateAppName(t *testing.T) {
 	}
 }
 
+// TestValidateImageRef verifies image reference validation.
 func TestValidateImageRef(t *testing.T) {
 	tests := []struct {
 		label string
@@ -68,31 +76,37 @@ func TestValidateImageRef(t *testing.T) {
 	}
 }
 
+// TestValidatePort verifies port validation.
 func TestValidatePort(t *testing.T) {
 	tests := []struct {
 		label string
-		port  int
+		port  *int
 		ok    bool
 	}{
-		{"typical app port", 8080, true},
-		{"http", 80, true},
-		{"min", 1, true},
-		{"max", 65535, true},
+		{"typical app port", ptrInt(8080), true},
+		{"http", ptrInt(80), true},
+		{"min", ptrInt(1), true},
+		{"max", ptrInt(65535), true},
+		{"nil", nil, true},
 
-		{"zero", 0, false},
-		{"negative", -1, false},
-		{"too high", 65536, false},
+		{"zero", ptrInt(0), false},
+		{"negative", ptrInt(-1), false},
+		{"too high", ptrInt(65536), false},
 	}
 
 	for _, tt := range tests {
-		t.Run(fmt.Sprintf("%s (%d)", tt.label, tt.port), func(t *testing.T) {
+		name := tt.label
+		if tt.port != nil {
+			name = fmt.Sprintf("%s (%d)", tt.label, *tt.port)
+		}
+		t.Run(name, func(t *testing.T) {
 			err := domain.ValidatePort(tt.port)
 
 			if tt.ok {
-				assert.NoError(t, err, "expected ok for %d", tt.port)
+				assert.NoError(t, err)
 			}
 			if !tt.ok {
-				assert.Error(t, err, "expected error for %d", tt.port)
+				assert.Error(t, err)
 			}
 
 		})

@@ -1,3 +1,9 @@
+// Tests for deployment service behaviors
+// Tests include queueing and runtime processing
+// Tests verify error handling and status updates
+// Tests cover no work and missing app cases
+// Tests verify url behavior when expose is false
+
 package service_test
 
 import (
@@ -7,12 +13,13 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/t0gun/paas/internal/adapters/store"
-	"github.com/t0gun/paas/internal/contracts"
-	"github.com/t0gun/paas/internal/domain"
-	"github.com/t0gun/paas/internal/service"
+	"github.com/t0gun/spacescale/internal/adapters/store"
+	"github.com/t0gun/spacescale/internal/contracts"
+	"github.com/t0gun/spacescale/internal/domain"
+	"github.com/t0gun/spacescale/internal/service"
 )
 
+// TestDeployApp verifies deployment creation behavior.
 func TestDeployApp(t *testing.T) {
 	tests := []struct {
 		label     string
@@ -23,7 +30,7 @@ func TestDeployApp(t *testing.T) {
 	}{
 		{label: "invalid input: empty app id", appExists: false, appID: "", ok: false, err: service.ErrInvalidInput},
 		{label: "not found: app missing", appExists: false, appID: "missing", ok: false, err: service.ErrNotFound},
-		{label: "ok: queues deployment", appExists: true, appID: "", ok: true}, // we will create an app, use its ID
+		{label: "ok: queues deployment", appExists: true, appID: "", ok: true}, // we will create an app use its ID
 	}
 
 	for _, tt := range tests {
@@ -37,7 +44,7 @@ func TestDeployApp(t *testing.T) {
 				app, err := domain.NewApp(domain.NewAppParams{
 					Name:  "hello",
 					Image: "nginx:latest",
-					Port:  8080,
+					Port:  ptrInt(8080),
 				})
 				assert.NoError(t, err)
 				assert.NoError(t, st.CreateApp(ctx, app))
@@ -71,6 +78,7 @@ type storeWithHooks struct {
 	listDepsErr  error
 }
 
+// GetAppByID returns an app or a configured error.
 func (s storeWithHooks) GetAppByID(ctx context.Context, id string) (domain.App, error) {
 	if s.getAppErr != nil {
 		return domain.App{}, s.getAppErr
@@ -78,6 +86,7 @@ func (s storeWithHooks) GetAppByID(ctx context.Context, id string) (domain.App, 
 	return s.Store.GetAppByID(ctx, id)
 }
 
+// CreateDeployment creates a deployment or returns a configured error.
 func (s storeWithHooks) CreateDeployment(ctx context.Context, dep domain.Deployment) error {
 	if s.createDepErr != nil {
 		return s.createDepErr
@@ -85,6 +94,7 @@ func (s storeWithHooks) CreateDeployment(ctx context.Context, dep domain.Deploym
 	return s.Store.CreateDeployment(ctx, dep)
 }
 
+// ListDeploymentsByAppID returns deployments or a configured error.
 func (s storeWithHooks) ListDeploymentsByAppID(ctx context.Context, appID string) ([]domain.Deployment, error) {
 	if s.listDepsErr != nil {
 		return nil, s.listDepsErr
@@ -92,6 +102,7 @@ func (s storeWithHooks) ListDeploymentsByAppID(ctx context.Context, appID string
 	return s.Store.ListDeploymentsByAppID(ctx, appID)
 }
 
+// TestDeployApp_StoreErrors verifies store error handling.
 func TestDeployApp_StoreErrors(t *testing.T) {
 	tests := []struct {
 		label        string
@@ -108,7 +119,7 @@ func TestDeployApp_StoreErrors(t *testing.T) {
 		t.Run(tt.label, func(t *testing.T) {
 			ctx := context.Background()
 			mem := store.NewMemoryStore()
-			app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: 8080})
+			app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: ptrInt(8080)})
 			assert.NoError(t, err)
 			assert.NoError(t, mem.CreateApp(ctx, app))
 
@@ -132,23 +143,31 @@ func TestDeployApp_StoreErrors(t *testing.T) {
 }
 
 type fakeRuntime struct {
-	url    string
+	url    *string
 	err    error
 	called int
 }
 
-func (f *fakeRuntime) Deploy(ctx context.Context, app domain.App) (string, error) {
+// Deploy tracks calls and returns configured results.
+func (f *fakeRuntime) Deploy(ctx context.Context, app domain.App) (*string, error) {
 	f.called++
-	return f.url, f.err
+	if f.err != nil {
+		return nil, f.err
+	}
+	if !app.Expose {
+		return nil, nil
+	}
+	return f.url, nil
 }
 
 var _ contracts.Runtime = (*fakeRuntime)(nil)
 
+// TestProcessNextDeployment verifies runtime processing behavior.
 func TestProcessNextDeployment(t *testing.T) {
 	t.Run("no queued deployments", func(t *testing.T) {
 		ctx := context.Background()
 		st := store.NewMemoryStore()
-		rt := &fakeRuntime{url: "https://hello.yourdomain.come"}
+		rt := &fakeRuntime{url: ptrString("https://hello.yourdomain.come")}
 		svc := service.NewAppServiceWithRuntime(st, rt)
 
 		dep, err := svc.ProcessNextDeployment(ctx)
@@ -161,10 +180,10 @@ func TestProcessNextDeployment(t *testing.T) {
 	t.Run("runtime fails", func(t *testing.T) {
 		ctx := context.Background()
 		st := store.NewMemoryStore()
-		rt := &fakeRuntime{url: "https://hello.yourdomain.come", err: errors.New("boom")}
+		rt := &fakeRuntime{url: ptrString("https://hello.yourdomain.come"), err: errors.New("boom")}
 		svc := service.NewAppServiceWithRuntime(st, rt)
 
-		app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: 8080})
+		app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: ptrInt(8080)})
 		assert.NoError(t, err)
 		assert.NoError(t, st.CreateApp(ctx, app))
 		dep := domain.NewDeployment(app.ID)
@@ -178,10 +197,10 @@ func TestProcessNextDeployment(t *testing.T) {
 	t.Run("runtime ok", func(t *testing.T) {
 		ctx := context.Background()
 		st := store.NewMemoryStore()
-		rt := &fakeRuntime{url: "https://hello.yourdomain.come"}
+		rt := &fakeRuntime{url: ptrString("https://hello.yourdomain.come")}
 		svc := service.NewAppServiceWithRuntime(st, rt)
 
-		app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: 8080})
+		app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: ptrInt(8080)})
 		assert.NoError(t, err)
 		assert.NoError(t, st.CreateApp(ctx, app))
 		dep := domain.NewDeployment(app.ID)
@@ -192,13 +211,34 @@ func TestProcessNextDeployment(t *testing.T) {
 		assert.Equal(t, domain.DeploymentStatusRunning, got.Status)
 		assert.NotEmpty(t, got.ID)
 		assert.NotNil(t, got.URL)
-		assert.Equal(t, rt.url, *got.URL)
+		assert.Equal(t, *rt.url, *got.URL)
 		assert.Nil(t, got.Error)
 		assert.Equal(t, 1, rt.called)
 		assert.WithinDuration(t, time.Now().UTC(), got.UpdatedAt, 2*time.Second)
 	})
+
+	t.Run("runtime ok no expose", func(t *testing.T) {
+		ctx := context.Background()
+		st := store.NewMemoryStore()
+		rt := &fakeRuntime{url: ptrString("https://hello.yourdomain.come")}
+		svc := service.NewAppServiceWithRuntime(st, rt)
+
+		expose := false
+		app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Expose: &expose})
+		assert.NoError(t, err)
+		assert.NoError(t, st.CreateApp(ctx, app))
+		dep := domain.NewDeployment(app.ID)
+		assert.NoError(t, st.CreateDeployment(ctx, dep))
+
+		got, err := svc.ProcessNextDeployment(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, domain.DeploymentStatusRunning, got.Status)
+		assert.Nil(t, got.URL)
+		assert.Equal(t, 1, rt.called)
+	})
 }
 
+// TestListDeployments verifies list deployments behavior.
 func TestListDeployments(t *testing.T) {
 	t.Run("invalid input: empty app id", func(t *testing.T) {
 		ctx := context.Background()
@@ -225,7 +265,7 @@ func TestListDeployments(t *testing.T) {
 		st := store.NewMemoryStore()
 		svc := service.NewAppService(st)
 
-		app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: 8080})
+		app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: ptrInt(8080)})
 		assert.NoError(t, err)
 		assert.NoError(t, st.CreateApp(ctx, app))
 
@@ -244,7 +284,7 @@ func TestListDeployments(t *testing.T) {
 	t.Run("store error bubbles up", func(t *testing.T) {
 		ctx := context.Background()
 		mem := store.NewMemoryStore()
-		app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: 8080})
+		app, err := domain.NewApp(domain.NewAppParams{Name: "hello", Image: "nginx:latest", Port: ptrInt(8080)})
 		assert.NoError(t, err)
 		assert.NoError(t, mem.CreateApp(ctx, app))
 

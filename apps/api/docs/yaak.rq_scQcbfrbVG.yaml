@@ -1,0 +1,24 @@
+type: http_request
+model: http_request
+id: rq_scQcbfrbVG
+createdAt: 2026-01-25T03:13:56.905970
+updatedAt: 2026-01-25T04:02:56.398708
+workspaceId: wk_KJF6oyHis3
+folderId: fl_wnS48M5yP3
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: application/json
+description: |-
+  List apps.
+  Responses: 200 []appResp, 503 runtime not configured, 500 internal error.
+headers:
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: kURNs26c06
+method: GET
+name: List Apps
+sortPriority: 0.0
+url: http://${[ BASE_URL ]}/v0/apps
+urlParameters: []

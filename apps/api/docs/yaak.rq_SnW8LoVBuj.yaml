@@ -1,0 +1,20 @@
+type: http_request
+model: http_request
+id: rq_SnW8LoVBuj
+createdAt: 2026-01-25T03:13:59.849184
+updatedAt: 2026-01-25T04:08:25.018303
+workspaceId: wk_KJF6oyHis3
+folderId: fl_wnS48M5yP3
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: |-
+  List deployments for an app.
+  Responses: 200 []deploymentResp, 404 not found, 500 internal error.
+headers: []
+method: GET
+name: List Deployments
+sortPriority: 0.0
+url: http://${[ BASE_URL ]}/v0/apps/${[ appID ]}/deployments
+urlParameters: []

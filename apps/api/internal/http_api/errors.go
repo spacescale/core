@@ -1,12 +1,14 @@
+// HTTP error mapping helpers.
 package http_api
 
 import (
 	"errors"
 	"net/http"
 
-	"github.com/t0gun/paas/internal/service"
+	"github.com/t0gun/spacescale/internal/service"
 )
 
+// mapServiceErr converts service errors into HTTP status codes and messages.
 func mapServiceErr(err error) (status int, msg string) {
 	switch {
 	case errors.Is(err, service.ErrInvalidInput):

@@ -1,13 +1,11 @@
 {
-  "name": "@paas/api",
+  "name": "@spacescale/api",
   "version": "0.0.0",
   "private": true,
   "scripts": {
     "build": "go build -v ./...",
     "dev": "go run ./cmd/api",
-    "test": "go test ./... -cover",
-    "test:race": "go test ./... -race",
-    "lint": "go vet ./...",
+    "test": "go test ./... -race -cover",
     "clean": "rm -f coverage.out coverage.html"
   }
 }

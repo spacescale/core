@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_N57UTc5xz2
+createdAt: 2026-01-25T03:13:54.524754
+updatedAt: 2026-01-25T03:59:19.117374
+workspaceId: wk_KJF6oyHis3
+folderId: fl_wnS48M5yP3
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: Health check. 200 OK on success.
+headers: []
+method: GET
+name: Healthz
+sortPriority: 0.0
+url: http://${[ BASE_URL ]}/healthz
+urlParameters: []

@@ -1,3 +1,4 @@
+// HTTP server routing and middleware wiring.
 package http_api
 
 import (
@@ -5,18 +6,21 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/t0gun/paas/internal/service"
+	"github.com/t0gun/spacescale/internal/service"
 )
 
+// Server wires HTTP handlers to the application service.
 type Server struct {
 	svc         *service.AppService
 	workerToken string
 }
 
+// NewServer builds an API server with the service and worker auth token.
 func NewServer(svc *service.AppService, workerToken string) *Server {
 	return &Server{svc: svc, workerToken: workerToken}
 }
 
+// Router builds the HTTP routes and middleware stack.
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 

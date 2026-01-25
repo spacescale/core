@@ -1,0 +1,35 @@
+type: http_request
+model: http_request
+id: rq_hq3An4XzLX
+createdAt: 2026-01-25T03:13:56.264630
+updatedAt: 2026-01-25T04:02:31.911253
+workspaceId: wk_KJF6oyHis3
+folderId: fl_wnS48M5yP3
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {
+      "name": "my-app",
+      "image": "nginx:latest",
+      "port": 8080,
+      "expose": true,
+      "env": {
+        "KEY": "VALUE"
+      }
+    }
+bodyType: application/json
+description: |-
+  Create a new app.
+  Body: {"name":"my-app","image":"nginx:latest","port":8080,"expose":true,"env":{"KEY":"VALUE"}}
+  Responses: 201 appResp, 400 invalid input, 409 conflict, 503 runtime not configured, 500 internal error.
+headers:
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: Create App
+sortPriority: 0.0
+url: http://${[ BASE_URL ]}/v0/apps
+urlParameters: []

@@ -1,22 +1,32 @@
+// HTTP API handlers for app and deployment routes.
+// Handlers decode JSON and call the service.
+// Errors are mapped to HTTP status codes.
+// Success responses write JSON payloads.
+// This file ties routing to service logic.
+
 package http_api
 
 import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/t0gun/paas/internal/service"
+	"github.com/t0gun/spacescale/internal/service"
 )
 
+// handleCreateApp handles app creation requests.
 func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 	var req createAppReq
 	if err := readJSON(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
 	}
 
 	app, err := s.svc.CreateApp(r.Context(), service.CreateAppParams{
-		Name:  req.Name,
-		Image: req.Image,
-		Port:  req.Port,
+		Name:   req.Name,
+		Image:  req.Image,
+		Port:   req.Port,
+		Expose: req.Expose,
+		Env:    req.Env,
 	})
 	if err != nil {
 		status, msg := mapServiceErr(err)
@@ -30,6 +40,7 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toAppResp(app))
 }
 
+// handleDeployApp handles app deployment requests.
 func (s *Server) handleDeployApp(w http.ResponseWriter, r *http.Request) {
 	appID := chi.URLParam(r, "appID")
 	dep, err := s.svc.DeployApp(r.Context(), service.DeployAppParams{AppID: appID})
@@ -45,6 +56,7 @@ func (s *Server) handleDeployApp(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, toDeploymentResp(dep))
 }
 
+// handleListDeployments lists deployments for an app.
 func (s *Server) handleListDeployments(w http.ResponseWriter, r *http.Request) {
 	appID := chi.URLParam(r, "appID")
 	deps, err := s.svc.ListDeployments(r.Context(), service.ListDeploymentsParams{AppID: appID})
@@ -64,6 +76,7 @@ func (s *Server) handleListDeployments(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// handleProcessNextDeployment processes the next queued deployment.
 func (s *Server) handleProcessNextDeployment(w http.ResponseWriter, r *http.Request) {
 	dep, err := s.svc.ProcessNextDeployment(r.Context())
 	if err != nil {
@@ -78,6 +91,7 @@ func (s *Server) handleProcessNextDeployment(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, toDeploymentResp(dep))
 }
 
+// handleListApps lists all apps.
 func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
 	apps, err := s.svc.ListApps(r.Context())
 	if err != nil {
@@ -96,6 +110,7 @@ func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// handleGetAppByID returns one app by id.
 func (s *Server) handleGetAppByID(w http.ResponseWriter, r *http.Request) {
 	appID := chi.URLParam(r, "appID")
 	app, err := s.svc.GetAppByID(r.Context(), appID)

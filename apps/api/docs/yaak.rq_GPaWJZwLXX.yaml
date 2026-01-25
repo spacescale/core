@@ -1,0 +1,20 @@
+type: http_request
+model: http_request
+id: rq_GPaWJZwLXX
+createdAt: 2026-01-25T03:13:58.634330
+updatedAt: 2026-01-25T04:08:26.356263
+workspaceId: wk_KJF6oyHis3
+folderId: fl_wnS48M5yP3
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: |-
+  Queue a deployment for an app.
+  Responses: 202 deploymentResp, 404 not found, 409 conflict, 503 runtime not configured, 500 internal error.
+headers: []
+method: POST
+name: Deploy App
+sortPriority: 0.0
+url: http://${[ BASE_URL ]}/v0/apps/${[ appID ]}/deploy
+urlParameters: []
