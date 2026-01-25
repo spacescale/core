@@ -3,10 +3,9 @@
 [![API CI](https://github.com/t0gun/spacescale/actions/workflows/api.yml/badge.svg)](https://github.com/t0gun/spacescale/actions/workflows/api.yml)
 [![Web CI](https://github.com/t0gun/spacescale/actions/workflows/web.yml/badge.svg)](https://github.com/t0gun/spacescale/actions/workflows/web.yml)
 [![codecov-api](https://codecov.io/gh/t0gun/spacescale/graph/badge.svg?token=A444L7NNC1&flag=api)](https://codecov.io/gh/t0gun/spacescale)
-![Go Version](https://img.shields.io/badge/go-1.25+-blue)
-![Node.js Version](https://img.shields.io/badge/node-22%2B-brightgreen)
-![pnpm Version](https://img.shields.io/badge/pnpm-9%2B-orange)
 
+
+> Requires Go 1.25+, node 22+, pnpm (+)
 Deploy Workloads with Maximum Scale, Simplicity, and Security
 > [!IMPORTANT]
 > This project uses [Turborepo](https://turbo.build/) for monorepo management. The Go API also has its local development
