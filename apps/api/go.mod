@@ -1,6 +1,6 @@
 module github.com/t0gun/spacescale
 
-go 1.25.6
+go 1.25
 
 require (
 	github.com/go-chi/chi/v5 v5.2.4
