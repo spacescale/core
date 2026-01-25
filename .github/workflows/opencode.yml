@@ -29,3 +29,5 @@ jobs:
           prompt: |
             Auto-review this PR or issue. Only comment if you can help.
             Do not modify files, open PRs, or push code.
+            so if we are merging into main from dev with merge commit. always provide concise.extended description to add
+            since we dont want to edit commit message this will help history tracking to be accurate.
