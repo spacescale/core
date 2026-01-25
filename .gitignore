@@ -37,6 +37,7 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+package-lock.json
 pnpm-debug.log*
 
 # Testing
