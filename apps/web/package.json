@@ -1,5 +1,5 @@
 {
-  "name": "@paas/web",
+  "name": "@spacescale/web",
   "version": "0.1.0",
   "private": true,
   "scripts": {

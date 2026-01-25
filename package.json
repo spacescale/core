@@ -1,11 +1,11 @@
 {
-  "name": "paas",
+  "name": "spacescale",
   "private": true,
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "dev:api": "turbo run dev --filter=@paas/api",
-    "dev:web": "turbo run dev --filter=@paas/web",
+    "dev:api": "turbo run dev --filter=@spacescale/api",
+    "dev:web": "turbo run dev --filter=@spacescale/web",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",

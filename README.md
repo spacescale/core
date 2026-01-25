@@ -1,100 +1,25 @@
-# paas
+# SpaceScale
 
-[![CI](https://github.com/t0gun/paas/actions/workflows/ci.yml/badge.svg)](https://github.com/t0gun/paas/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/t0gun/paas/graph/badge.svg?token=A444L7NNC1)](https://codecov.io/gh/t0gun/paas)
-![Go Version](https://img.shields.io/badge/go-1.25.5-blue)
+[![API CI](https://github.com/t0gun/spacescale/actions/workflows/api.yml/badge.svg)](https://github.com/t0gun/spacescale/actions/workflows/api.yml)
+[![Web CI](https://github.com/t0gun/spacescale/actions/workflows/web.yml/badge.svg)](https://github.com/t0gun/spacescale/actions/workflows/web.yml)
+[![codecov-api](https://codecov.io/gh/t0gun/spacescale/graph/badge.svg?token=A444L7NNC1&flag=api)](https://codecov.io/gh/t0gun/spacescale)
+![Go Version](https://img.shields.io/badge/go-1.25+-blue)
+![Node.js Version](https://img.shields.io/badge/node-22%2B-brightgreen)
+![pnpm Version](https://img.shields.io/badge/pnpm-9%2B-orange)
 
-A tiny container as a service platform
+Deploy Workloads with Maximum Scale, Simplicity, and Security
+> [!IMPORTANT]
+> This project uses [Turborepo](https://turbo.build/) for monorepo management. The Go API also has its local development
+> workflows using Make in the API directory. For both web and API, you can check the flags to see the required runtimes
+> needed to work with the repository before cloning locally.
 
-## Monorepo Structure
-
-This project uses [Turborepo](https://turbo.build/) for monorepo management.
-
-```
-apps/
-├── api/         # Go backend API
-│   ├── cmd/api/     # Main entrypoint (HTTP server)
-│   └── internal/
-│       ├── domain/      # Business entities and rules
-│       ├── contracts/   # Interface definitions
-│       ├── service/     # Business logic orchestration
-│       ├── http_api/    # HTTP transport (handlers, DTOs)
-│       └── adapters/    # Interface implementations (store, runtime)
-└── web/         # Next.js frontend
-    └── src/app/     # App router pages
-
-packages/        # Shared packages (future use)
-```
-
-## Prerequisites
-- Go 1.25.5 or higher
-- Node.js 22+
-- pnpm 9+
-
-## Getting Started
-
-### Installation
-
+# Quick Start
+To run all apps in development mode you can use pnpm below
 ```bash
-git clone https://github.com/t0gun/paas.git
-cd paas
 pnpm install
-```
-
-### Development
-
-Run all apps in development mode:
-
-```bash
 pnpm dev
 ```
-
-Or run individually:
-
-```bash
-# API only
-pnpm dev:api
-
-# Web only
-pnpm dev:web
-```
-
-### Building
-
-```bash
-pnpm build
-```
-
-### Testing
-
-```bash
-pnpm test
-```
-
-### Linting
-
-```bash
-pnpm lint
-```
-
-## Apps
-
-### API (`apps/api`)
-
-Go backend providing REST API for container orchestration.
-
-```bash
-cd apps/api
-make test      # Run tests
-make run       # Start server
-```
-
-### Web (`apps/web`)
-
-Next.js frontend dashboard.
-
-```bash
-cd apps/web
-pnpm dev       # Start dev server
-pnpm build     # Production build
-```
+### Further Documentation
+> [!NOTE]
+> The plan is for both API and Web to maintain separate documentation in the current directories 
+> and links will be provided here on this page that leads to them when it's done.
