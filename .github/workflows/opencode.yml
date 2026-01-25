@@ -1,0 +1,31 @@
+name: opencode
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  opencode:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: anomalyco/opencode/github@latest
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: anthropic/claude-opus-4-5
+          use_github_token: true
+          prompt: |
+            Auto-review this PR or issue. Only comment if you can help.
+            Do not modify files, open PRs, or push code.

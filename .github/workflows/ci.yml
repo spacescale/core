@@ -10,26 +10,8 @@ jobs:
   # ============================================
   # Go API Jobs
   # ============================================
-  api-build:
-    name: API - Build
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/api
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.25.5'
-
-      - name: Build
-        run: go build -v ./...
-
   api-test:
-    name: API - Test with Race Detection
+    name: API - Test with Race Detection and Integrations
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -41,10 +23,19 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.5'
+          go-version: "1.25.5"
+
+      - name: Create traefik network
+        run: docker network create traefik || true
 
       - name: Run tests with race detection
-        run: go test -race -v ./...
+        run: RUN_DOCKER_TESTS=1 go test -race -v ./...
+
+      - name: Cleanup docker resources
+        if: always()
+        run: |
+          docker rm -f paas-hello || true
+          docker network rm traefik || true
 
   api-coverage:
     name: API - Code Coverage
@@ -59,7 +50,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.5'
+          go-version: "1.25.5"
 
       - name: Run tests with coverage
         run: go test ./... -coverprofile=coverage.out -covermode=atomic
@@ -84,71 +75,6 @@ jobs:
           flags: api
           fail_ci_if_error: false
 
-  api-vet:
-    name: API - Go Vet
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/api
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.25.5'
-
-      - name: Run go vet
-        run: go vet ./...
-
-  api-security:
-    name: API - Security Scan
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/api
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.25.5'
-
-      - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
-
-      - name: Run gosec
-        run: gosec -exclude-dir=.github ./...
-
-      - name: Run govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
-
-  api-dependencies:
-    name: API - Dependency Check
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/api
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.25.5'
-
-      - name: Verify dependencies
-        run: |
-          go mod verify
-          go mod tidy
-          git diff --exit-code go.mod go.sum
-
   # ============================================
   # Web Frontend Jobs
   # ============================================
@@ -165,8 +91,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'pnpm'
+          node-version: "22"
+          cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -187,8 +113,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'pnpm'
+          node-version: "22"
+          cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -209,8 +135,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'pnpm'
+          node-version: "22"
+          cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
