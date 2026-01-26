@@ -31,3 +31,7 @@ jobs:
             Do not modify files, open PRs, or push code.
             so if we are merging. always provide concise extended description to add in code block type
             since we dont want to edit commit message this will help history tracking to be accurate.
+            
+            For Issues specifically, provide recommendation on how to break problems down, not run into a ditch
+            issues are used to drive building on this codebase so that agents dont run into a ditch and its important
+            we understand whats going on.
