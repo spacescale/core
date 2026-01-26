@@ -2,22 +2,13 @@ type: http_request
 model: http_request
 id: rq_hq3An4XzLX
 createdAt: 2026-01-25T03:13:56.264630
-updatedAt: 2026-01-25T04:02:31.911253
+updatedAt: 2026-01-25T22:13:42.093784
 workspaceId: wk_KJF6oyHis3
 folderId: fl_wnS48M5yP3
 authentication: {}
 authenticationType: null
 body:
-  text: |-
-    {
-      "name": "my-app",
-      "image": "nginx:latest",
-      "port": 8080,
-      "expose": true,
-      "env": {
-        "KEY": "VALUE"
-      }
-    }
+  text: "{\n  \"name\": \"my-app\",\n  \"image\": \"nginx:latest\",\n  \"port\": 8080,\n  \"expose\": true\n \n}"
 bodyType: application/json
 description: |-
   Create a new app.
