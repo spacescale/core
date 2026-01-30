@@ -10,7 +10,8 @@ Deploy Workloads with Maximum Scale, Simplicity, and Security
 
 > [!IMPORTANT]
 > This project uses [Turborepo](https://turbo.build/) for monorepo management. The Go API also has its local development
-> workflows using Make in the API directory. For both web and API, you can check the flags to see the required runtimes
+> workflows using Make in the API directory.The Makefile at the root repo is for docker-compose targets. For both web and
+> API, you can check the flags to see the required runtimes
 > needed to work with the repository before cloning locally.
 
 # Quick Start

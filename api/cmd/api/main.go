@@ -1,4 +1,5 @@
 // API service entry point and lifecycle wiring.
+// This file boots the HTTP server and validates core dependencies.
 package main
 
 import (
@@ -11,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/t0gun/spacescale/internal/adapters/runtime/docker"
 	"github.com/t0gun/spacescale/internal/adapters/store"
 	"github.com/t0gun/spacescale/internal/http_api"
@@ -23,6 +25,20 @@ func main() {
 	addr := env("ADDR", ":8080")
 	workerToken := env("WORKER_TOKEN", "")
 	baseDomain := env("BASE_DOMAIN", "example.com")
+
+	// Database URL is required
+	databaseURL := env("DATABASE_URL", "")
+	if databaseURL == "" {
+		log.Fatal("DATABASE_URL is required")
+	}
+
+	// Open a pgx connection pool and verify the DB is reachable.
+	// We keep the pool open for future store integration.
+	dbPool, err := openDB(context.Background(), databaseURL)
+	if err != nil {
+		log.Fatalf("database init: %v", err)
+	}
+	defer dbPool.Close()
 
 	st := store.NewMemoryStore()
 	rt, err := docker.New(docker.WithEdge(
@@ -83,4 +99,23 @@ func env(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// openDB opens a pgx pool and verifies it with a ping.
+func openDB(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+	cfg, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, err
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := pool.Ping(pingCtx); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	return pool, nil
 }
