@@ -18,7 +18,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       PGDATA: /var/lib/postgresql/18/docker
     volumes:
-      - pgdata:/var/lib/postgresql # persist Postgres data across container restarts
+      - pgdata:/var/lib/postgresql # PG 18+ recommends mounting parent dir for pg_upgrade
       - ./db/init:/docker-entrypoint-initdb.d:ro # run init scripts on first boot
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
