@@ -28,6 +28,7 @@ jobs:
 
       - name: Run tests with race detection
         run: RUN_DOCKER_TESTS=1 go test -race  ./... -coverprofile=coverage.out -covermode=atomic
+        # postgres in CI not needed for now until postgres store is implemented,only pool is current scaffolded
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
