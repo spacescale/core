@@ -15,9 +15,9 @@ importers:
         specifier: ^2.4.0
         version: 2.7.5
 
-  apps/api: {}
+  api: {}
 
-  apps/web:
+  web:
     dependencies:
       '@hookform/resolvers':
         specifier: ^3.9.1
