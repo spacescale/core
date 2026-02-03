@@ -13,9 +13,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/t0gun/spacescale/internal/adapters/runtime/docker"
-	"github.com/t0gun/spacescale/internal/adapters/store"
 	"github.com/t0gun/spacescale/internal/http_api"
+	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
 	"github.com/t0gun/spacescale/internal/service"
 )
 
@@ -23,40 +22,20 @@ import (
 func main() {
 	// Read runtime config from env with defaults so local dev works out of the box.
 	addr := env("ADDR", ":8080")
-	workerToken := env("WORKER_TOKEN", "")
-	baseDomain := env("BASE_DOMAIN", "example.com")
-
-	// Database URL is required
 	databaseURL := env("DATABASE_URL", "")
 	if databaseURL == "" {
 		log.Fatal("DATABASE_URL is required")
 	}
-
 	// Open a pgx connection pool and verify the DB is reachable.
-	// We keep the pool open for future store integration.
 	dbPool, err := openDB(context.Background(), databaseURL)
 	if err != nil {
 		log.Fatalf("database init: %v", err)
 	}
 	defer dbPool.Close()
+	queries := pgstore.New(dbPool)
 
-	st := store.NewMemoryStore()
-	rt, err := docker.New(docker.WithEdge(
-		docker.EdgeConfig{
-			BaseDomain: baseDomain,
-			TraefikNet: env("TRAEFIK_NET", "traefik"),
-			Scheme:     env("TRAEFIK_ENTRYPOINT", "web"),
-			EnableTLS:  env("ENABLE_TLS", "") == "1",
-			// CertResolver optional later:
-			// CertResolver: env("CERT_RESOLVER", ""),
-		},
-	))
-	if err != nil {
-		log.Fatalf("docker runtime init: %v", err)
-	}
-
-	svc := service.NewAppServiceWithRuntime(st, rt)
-	api := http_api.NewServer(svc, workerToken)
+	svc := service.NewProjectService(queries)
+	api := http_api.NewServer(svc)
 
 	// Configure the HTTP server with a read header timeout to avoid slowloris-style abuse.
 	srv := &http.Server{
@@ -67,7 +46,7 @@ func main() {
 
 	// Start the server in a goroutine so main can wait for shutdown signals.
 	go func() {
-		log.Printf("api listening on %s (base_domain=%s)", addr, baseDomain)
+		log.Printf("api listening on %s ", addr)
 		// ListenAndServe blocks; it only returns on error or when Shutdown is called.
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("listen: %v", err)

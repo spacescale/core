@@ -1,0 +1,60 @@
+type: http_request
+model: http_request
+id: rq_rrCeBnxzQE
+createdAt: 2026-02-03T04:59:17.161868
+updatedAt: 2026-02-03T05:28:21.143653
+workspaceId: wk_KJF6oyHis3
+folderId: null
+authentication: {}
+authenticationType: null
+body:
+  text: '{}'
+bodyType: application/json
+description: |-
+  ## Create Project
+  Creates a new project for the current user. If no name is provided, the server generates one from the `name_words` dictionary and applies a URL-safe slug.
+
+  **Endpoint**: `POST /v0/projects`
+
+  ### Headers
+  - `X-User-Github-ID` (required): user identity for ownership
+
+  ### Body (optional)
+  ```json
+  {
+    "name": "misty-harbor",
+    "region": "global"
+  }
+  ```
+
+  If omitted, the server generates a name and defaults `region` to `global`.
+
+  ### Responses
+  - `201 Created`: project created
+  - `400 Bad Request`: invalid input or malformed JSON
+  - `401 Unauthorized`: missing `X-User-Github-ID`
+  - `409 Conflict`: slug collision after retries (rare)
+  - `500 Internal Server Error`: unexpected error
+
+  ### Example
+  ```bash
+  curl -i -X POST "http://localhost:8080/v0/projects"   -H "X-User-Github-ID: 12345"   -H "Content-Type: application/json"   -d '{}'
+  ```
+
+  **Notes**
+  - The response includes a `Location` header: `/v0/projects/{id}`
+  - Project names are auto-generated unless provided.
+headers:
+- enabled: true
+  name: X-User-Github-ID
+  value: '12345'
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: Create Project
+sortPriority: 0.0
+url: http://${[ BASE_URL ]}/v0/projects
+urlParameters: []

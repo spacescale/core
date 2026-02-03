@@ -1,4 +1,4 @@
-// HTTP server routing and middleware wiring.
+// Package http_api  routing and middleware wiring.
 package http_api
 
 import (
@@ -9,15 +9,14 @@ import (
 	"github.com/t0gun/spacescale/internal/service"
 )
 
-// Server wires HTTP handlers to the application service.
+// Server wires HTTP handlers to the project service.
 type Server struct {
-	svc         *service.AppService
-	workerToken string
+	svc *service.ProjectService
 }
 
-// NewServer builds an API server with the service and worker auth token.
-func NewServer(svc *service.AppService, workerToken string) *Server {
-	return &Server{svc: svc, workerToken: workerToken}
+// NewServer builds an API server with the service.
+func NewServer(svc *service.ProjectService) *Server {
+	return &Server{svc: svc}
 }
 
 // Router builds the HTTP routes and middleware stack.
@@ -36,13 +35,7 @@ func (s *Server) Router() http.Handler {
 	})
 
 	r.Route("/v0", func(r chi.Router) {
-		r.Post("/apps", s.handleCreateApp)
-		r.Post("/apps/{appID}/deploy", s.handleDeployApp)
-		r.Get("/apps/{appID}/deployments", s.handleListDeployments)
-		r.Get("/apps", s.handleListApps)
-		r.Get("/apps/{appID}", s.handleGetAppByID)
-
-		r.With(WorkerAuth{Token: s.workerToken}.Middleware).Post("/deployments/next:process", s.handleProcessNextDeployment)
+		r.Post("/projects", s.handleCreateProject)
 	})
 
 	return r

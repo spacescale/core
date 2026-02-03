@@ -1,15 +1,11 @@
-// Service error definitions for HTTP mapping.
+// Package service contains business error definitions.
 package service
 
 import "errors"
 
-// Service level errors returned to handlers for consistent mapping.
-// These allow the transport layer to translate outcomes into HTTP status codes.
 var (
+	// ErrInvalidInput indicates request validation failure.
 	ErrInvalidInput = errors.New("invalid input")
-	ErrConflict     = errors.New("conflict")
-	ErrNotFound     = errors.New("not found")
-
-	ErrNoWork    = errors.New("no queued deployments")
-	ErrNoRuntime = errors.New("runtime not configured")
+	// ErrConflict indicates a conflicting write or duplicate resource.
+	ErrConflict = errors.New("conflict")
 )

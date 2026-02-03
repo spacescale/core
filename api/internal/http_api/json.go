@@ -1,4 +1,4 @@
-// JSON helpers for HTTP request and response bodies.
+// Package http_api JSON helpers for HTTP request and response bodies.
 package http_api
 
 import (
