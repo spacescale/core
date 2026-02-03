@@ -10,6 +10,22 @@ jobs:
   backend-test:
     name: Test
     runs-on: ubuntu-latest
+    env:
+      TEST_DATABASE_URL: postgres://spacescale:spacescale_dev_pass@localhost:5432/spacescale_test?sslmode=disable
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: spacescale
+          POSTGRES_PASSWORD: spacescale_dev_pass
+          POSTGRES_DB: spacescale_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U spacescale -d spacescale_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
     defaults:
       run:
         working-directory: api
@@ -23,12 +39,15 @@ jobs:
           go-version-file: api/go.mod
           cache: "true"
 
-      - name: Create traefik network
-        run: docker network create traefik || true
+      - name: Install goose
+        run: go install github.com/pressly/goose/v3/cmd/goose@v3.25.0
+
+      - name: Apply migrations
+        working-directory: .
+        run: $(go env GOPATH)/bin/goose -dir db/migrations postgres "$TEST_DATABASE_URL" up
 
       - name: Run tests with race detection
-        run: RUN_DOCKER_TESTS=1 go test -race  ./... -coverprofile=coverage.out -covermode=atomic
-        # postgres in CI not needed for now until postgres store is implemented,only pool is current scaffolded
+        run: go test -race ./... -coverprofile=coverage.out -covermode=atomic
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

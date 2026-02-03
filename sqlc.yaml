@@ -1,0 +1,14 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema:
+      - "db/migrations/*.sql"
+    queries:
+      - "api/internal/postgres/queries/*.sql"
+    gen:
+      go:
+        package: "postgres"
+        out: "api/internal/postgres/gen"
+        sql_package: "pgx/v5"
+        emit_interface: true # generate go interface for queries good for mocking
+        emit_prepared_queries: false # generates prepared statement version of queries

@@ -33,11 +33,11 @@ jobs:
           model: anthropic/claude-opus-4-5
           use_github_token: true
           prompt: |
-            Auto-review this PR or issue. Only comment if you can help.
-            Do not modify files, open PRs, or push code.
-            so if we are merging. always provide concise extended description to add in code block type
-            since we dont want to edit commit message this will help history tracking to be accurate.
-
-            For Issues specifically, provide recommendation on how to break problems down, not run into a ditch
-            issues are used to drive building on this codebase so that agents dont run into a ditch and its important
-            we understand whats going on.
+            Auto-review this PR or issue. 
+            For PRs: always provide concise extended description i can use for merging after review.
+            For Issues: provide recommendation on how to break problems down concisely.
+            Both PR and Issues: use the internet to verify your responses are up to date.
+            Both PR and Issues: if you have commented before on that trend, your next comment should be 
+            an addition and continuation of the conversation not repeating the same and it it should be concise too 
+            
+            
