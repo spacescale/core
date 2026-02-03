@@ -20,7 +20,7 @@ learn from each other
 - always follow production grade practices because code here has to be reliable than ever, we host apps not bugs.
 - always follow the best implementation that will produce best results.
 - always spot where there are inconsistencies in codebase and provide the best ways to resolve them.
-- the makefile is your friend.
+- dont ever touch my makefile
 - comments are important part to make complex code understandable. Official go code base teaches us this.
 - so write comments to explain complex implementation and comments at the beginning of file.
 - if you work directly in the file check if the comments at the beginning of the file and other places make sense after
