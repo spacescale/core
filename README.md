@@ -4,7 +4,7 @@
 [![Web](https://github.com/t0gun/spacescale/actions/workflows/web.yml/badge.svg?)](https://github.com/t0gun/spacescale/actions/workflows/web.yml)
 [![api-test](https://codecov.io/gh/t0gun/spacescale/graph/badge.svg?token=A444L7NNC1&flag=api&label=api-test)](https://codecov.io/gh/t0gun/spacescale)
 
-> Requires Go 1.25+, node 22+, pnpm 9+
+> Requires Go 1.25+, node 22+, pnpm 9+, goose, sqlc
 
 Deploy Workloads with Maximum Scale, Simplicity, and Security
 
