@@ -1,53 +1,43 @@
-.PHONY: compose-up compose-down compose-logs compose-psql compose-reset \
-	migrate-up migrate-down migrate-status migrate-reset \
-	migrate-up-test migrate-down-test migrate-status-test migrate-create coverage clean  test
-
-# Load .env if present so compose uses local values.
-ifneq (,$(wildcard .env))
-include .env
-export
-endif
-
-POSTGRES_USER ?= spacescale
-POSTGRES_DB ?= postgres
-COMPOSE ?= docker compose -f docker-compose.yaml
-GOOSE ?= goose
-MIGRATIONS_DIR ?= db/migrations
+.PHONY: compose-up compose-down compose-logs compose-psql \
+	migrate-up migrate-down migrate-reset \
+	migrate-up-test migrate-down-test coverage clean test
 
 test:
-	cd api &&  go test ./... -race -cover
+	docker compose -f docker-compose.yaml up --build -d
+	make migrate-up-test
+	TEST_DATABASE_URL="postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" cd api && go test ./... -race -cover
 
 compose-up:
-	$(COMPOSE) up --build -d
-	$(COMPOSE) --profile migrate run --rm migrate -dir /migrations postgres "$(DATABASE_URL)" up
+	docker compose -f docker-compose.yaml up --build -d
+	make migrate-up
 
 
 compose-down:
-	$(COMPOSE) down
+	docker compose -f docker-compose.yaml down
 
 compose-logs:
-	$(COMPOSE) logs -f --tail=200
+	docker compose -f docker-compose.yaml logs -f --tail=200
 
 compose-psql:
-	$(COMPOSE) exec db psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)
+	docker compose -f docker-compose.yaml exec db psql -U spacescale -d spacescale
 
 migrate-up:
-	$(COMPOSE) --profile migrate run --rm migrate -dir /migrations postgres "$(DATABASE_URL)" up
+	goose -dir db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable" up
 
 migrate-down:
-	$(COMPOSE) --profile migrate run --rm migrate -dir /migrations postgres "$(DATABASE_URL)" down
+	goose -dir db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable" down
 
 migrate-reset:
-	$(COMPOSE) --profile migrate run --rm migrate -dir /migrations postgres "$(DATABASE_URL)" reset
+	goose -dir db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable" reset
 
 migrate-up-test:
-	$(COMPOSE) --profile migrate run --rm migrate -dir /migrations postgres "$(TEST_DATABASE_URL)" up
+	goose -dir db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" up
 
 migrate-down-test:
-	$(COMPOSE) --profile migrate run --rm migrate -dir /migrations postgres "$(TEST_DATABASE_URL)" down
+	goose -dir db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" down
 
 coverage:
-	cd api && go test ./... -coverprofile=../coverage.out
+	TEST_DATABASE_URL="postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" cd api && go test ./... -coverprofile=../coverage.out
 	go tool cover -html=coverage.out -o coverage.html
 	open coverage.html
 
