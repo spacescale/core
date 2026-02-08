@@ -7,18 +7,77 @@ package postgres
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getUserByGithubID = `-- name: GetUserByGithubID :one
+SELECT id, github_id, email, name, avatar_url, created_at, updated_at
+FROM users
+WHERE github_id = $1
+`
+
+func (q *Queries) GetUserByGithubID(ctx context.Context, githubID string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByGithubID, githubID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.GithubID,
+		&i.Email,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getUserByID = `-- name: GetUserByID :one
+SELECT id, github_id, email, name, avatar_url, created_at, updated_at
+FROM users
+WHERE id = $1
+`
+
+func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByID, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.GithubID,
+		&i.Email,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const upsertUserByGithubID = `-- name: UpsertUserByGithubID :one
-INSERT INTO users (github_id, created_at, updated_at)
-VALUES ($1, now(), now()) ON CONFLICT (github_id) DO
+INSERT INTO users (github_id, email, name, avatar_url, created_at, updated_at)
+VALUES ($1, $2, $3, $4, now(), now()) ON CONFLICT (github_id) DO
 UPDATE
-    SET updated_at = now()
+    SET email = EXCLUDED.email,
+    name = EXCLUDED.name,
+    avatar_url = EXCLUDED.avatar_url,
+    updated_at = now()
     RETURNING id, github_id, email, name, avatar_url, created_at, updated_at
 `
 
-func (q *Queries) UpsertUserByGithubID(ctx context.Context, githubID string) (User, error) {
-	row := q.db.QueryRow(ctx, upsertUserByGithubID, githubID)
+type UpsertUserByGithubIDParams struct {
+	GithubID  string
+	Email     pgtype.Text
+	Name      pgtype.Text
+	AvatarUrl pgtype.Text
+}
+
+func (q *Queries) UpsertUserByGithubID(ctx context.Context, arg UpsertUserByGithubIDParams) (User, error) {
+	row := q.db.QueryRow(ctx, upsertUserByGithubID,
+		arg.GithubID,
+		arg.Email,
+		arg.Name,
+		arg.AvatarUrl,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,
