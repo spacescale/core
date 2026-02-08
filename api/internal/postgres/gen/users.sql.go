@@ -58,7 +58,7 @@ INSERT INTO users (github_id, email, name, avatar_url, created_at, updated_at)
 VALUES ($1, $2, $3, $4, now(), now()) ON CONFLICT (github_id) DO
 UPDATE
     SET email = EXCLUDED.email,
-    NAME = EXCLUDED.name,
+    name = EXCLUDED.name,
     avatar_url = EXCLUDED.avatar_url,
     updated_at = now()
     RETURNING id, github_id, email, name, avatar_url, created_at, updated_at
