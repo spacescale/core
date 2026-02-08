@@ -1,3 +1,10 @@
+// This file provides shared integration test helpers for HTTP API tests.
+// It hides setup boilerplate for database connectivity, service wiring, and
+// httptest server lifecycle so individual test cases can stay focused.
+// The request helper standardizes call execution and response body capture,
+// which keeps assertions consistent across endpoint test files.
+// Update this file when test infrastructure changes affect multiple test suites.
+
 // Package http_api_test provides shared HTTP test helpers.
 package http_api_test
 
@@ -22,7 +29,9 @@ type testServer struct {
 	pool   *pgxpool.Pool
 }
 
-// newTestServer builds a test server backed by the test database.
+// newTestServer creates an integration test server backed by a real database.
+// Tests are skipped when TEST_DATABASE_URL is missing, otherwise storage,
+// service, and HTTP layers are initialized with production-like wiring.
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
@@ -51,13 +60,16 @@ func newTestServer(t *testing.T) *testServer {
 	}
 }
 
-// close shuts down the test server and database pool.
+// close releases network and database resources used by the test server.
+// It should be deferred in every test that allocates a server instance.
 func (ts *testServer) close() {
 	ts.server.Close()
 	ts.pool.Close()
 }
 
-// doRequest performs an HTTP request and returns the response and body.
+// doRequest sends one HTTP request to the in memory test server.
+// Headers are applied as provided, and the raw response plus body bytes are
+// returned so assertions can inspect both status and payload.
 func doRequest(t *testing.T, ts *testServer, method, path string, body []byte, headers map[string]string) (*http.Response, []byte) {
 	t.Helper()
 	req, err := http.NewRequest(method, ts.server.URL+path, bytes.NewReader(body))
