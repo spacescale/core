@@ -10,20 +10,12 @@
 
 #### To Agents:
 
-> Important for all agents to follow:
-- don't be shy to point out where implementation is not right or not secure be default
-- always follow production grade practices because code here has to be reliable than ever, we host apps not bugs.
-- always follow the best implementation that will produce best results.
-- always spot where there are inconsistencies in codebase and provide the best ways to resolve them.
-- dont ever touch my makefile
-- comments are important part to make complex code understandable. Official go code base teaches us this.
-- so write comments to explain complex implementation and comments at the beginning of file.
-- if you work directly in the file check if the comments at the beginning of the file and other places make sense after
-  your edits
-- tests are your friend, if you work directly in the codebase always test your implementation.
-- so the goDoc comments on every function must be present 12 lines max and always use function name to start as expected
-  by go
-- always optimize for clarity, simplicity, maintainability
-- for the header files comment the package as to prefix it as required by GoDoc
-- gh cli is available to you to pull additional context so mostly this codebase is issue/ feature branch driven to keep
-  context histories
+> Important for all agents to follow:   
+- if you edit a file, always make sure the extensive header comment on the file matches what the whole file is about
+- always make sure extensive comments on every function has no weird syntax and is extensive enough to onboard a junior dev
+- don't leave a function without extensive comment on what it does to make on onboarding easy
+- for every part of a complicated code add comments
+- changes are done in feature
+- commits should be extensive and capture changes in small isolations
+- for branch naming - feature/name or fix/name depending on task
+- build system to use is always make at repo root
