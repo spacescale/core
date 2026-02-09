@@ -185,21 +185,35 @@ func (s *ProjectService) generateName(ctx context.Context) (string, error) {
 	return fmt.Sprintf("%s-%s", adj, noun), nil
 }
 
-// slugifyProjectName converts a raw name into a lowercase slug value.
-// Letters and numbers are preserved, while separator runs collapse into single
-// hyphens to avoid noisy or unstable path segments.
-// Leading and trailing hyphens are removed so the final value is URL-safe.
+// slugifyProjectName converts a raw project name into a stable URL slug.
+// The transformation is intentionally strict and predictable:
+// 1) trim surrounding whitespace and lowercase the input,
+// 2) keep only letters and numbers while collapsing separator runs to one hyphen,
+// 3) trim edge hyphens so the returned value is path-safe.
 func slugifyProjectName(name string) string {
-	name = strings.ToLower(strings.TrimSpace(name))
+	// Normalize first so casing and accidental outer spaces never affect slug
+	// uniqueness or readability.
+	normalized := strings.ToLower(strings.TrimSpace(name))
+
+	// Build the slug incrementally to avoid repeated string allocations.
 	var b strings.Builder
+
+	// prevHyphen tracks whether the most recently written byte was '-'.
+	// This lets us collapse repeated separators like spaces/underscores/punctuation
+	// into a single hyphen.
 	var prevHyphen bool
 
-	for _, r := range name {
+	for _, r := range normalized {
 		switch {
 		case unicode.IsLetter(r) || unicode.IsNumber(r):
+			// Keep alphanumeric runes exactly as they are after normalization.
 			b.WriteRune(r)
 			prevHyphen = false
 		default:
+			// Treat every non-alphanumeric rune as a separator boundary.
+			// Add one hyphen only when:
+			// - the previous output character was not already a hyphen, and
+			// - output is not empty (prevents leading hyphens).
 			if !prevHyphen && b.Len() > 0 {
 				b.WriteByte('-')
 				prevHyphen = true
@@ -207,6 +221,8 @@ func slugifyProjectName(name string) string {
 		}
 	}
 
+	// Remove boundary hyphens that can appear when input begins or ends with
+	// separators.
 	return strings.Trim(b.String(), "-")
 }
 

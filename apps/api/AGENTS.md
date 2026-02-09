@@ -1,29 +1,54 @@
-> This file guides agents on how to work on this code base when needed for boiler plat tasks.
-> There are few things agents needs to know before producing output.
+> This file defines how agents should work inside `apps/api`.
+> Keep behavior changes maintainable, testable, and easy to onboard.
 
-- we prioritize maintainability rather than just fix or just work.
-- The default is blackbox testing and won't test private packages for simplicity
-- we use a build file called make for builds, tests and local development
-- our dev environment is goland so things like govet, ci lint and fmt are handled at IDE level rather than in CI
-- For our tests, we don't enforce style, we chose the right style based on what we want to test.
-- we use table driven tests where appropriate, subtests where its needed and normal tests where useful
+## Scope
 
-#### To Agents:
+- This guidance applies to files under `apps/api/**`.
+- Do not edit root governance files (`/AGENTS.md`) or the primary repo README.
 
-> Important for all agents to follow:
-- don't be shy to point out where implementation is not right or not secure be default
-- always follow production grade practices because code here has to be reliable than ever, we host apps not bugs.
-- always follow the best implementation that will produce best results.
-- always spot where there are inconsistencies in codebase and provide the best ways to resolve them.
-- dont ever touch my makefile
-- comments are important part to make complex code understandable. Official go code base teaches us this.
-- so write comments to explain complex implementation and comments at the beginning of file.
-- if you work directly in the file check if the comments at the beginning of the file and other places make sense after
-  your edits
-- tests are your friend, if you work directly in the codebase always test your implementation.
-- so the goDoc comments on every function must be present 12 lines max and always use function name to start as expected
-  by go
-- always optimize for clarity, simplicity, maintainability
-- for the header files comment the package as to prefix it as required by GoDoc
-- gh cli is available to you to pull additional context so mostly this codebase is issue/ feature branch driven to keep
-  context histories
+## Engineering Principles
+
+- Prioritize maintainability and clarity over quick one-off fixes.
+- Keep transport layers thin; place business rules in service/domain code.
+- Prefer explicit errors and straightforward control flow over clever shortcuts.
+- Match existing project conventions unless a change clearly improves maintainability.
+
+## Testing Policy
+
+- Use black-box testing by default.
+- Do not write tests that directly target private/internal helper details.
+- Use table-driven tests where they improve coverage and readability.
+- Use subtests where case isolation or output clarity benefits from it.
+
+## Tooling And Workflow
+
+- API runtime baseline: Go `1.25+`.
+- Local infra, compose, and migration flows are managed from the repo root `Makefile`.
+- Common repo-root commands: `make compose-up`, `make compose-down`, `make migrate-up`, `make migrate-up-test`, `make test`.
+- Common API-local commands: `go run ./cmd/api`, `go test ./...`.
+
+## Comments And Documentation Rules
+
+- Every edited code file must keep an accurate file header comment describing the file's responsibilities.
+- Every function should have a clear, onboarding-friendly comment that explains purpose and behavior.
+- Add inline comments for complex logic or state transitions where intent is not obvious.
+- Keep comments in sync with code whenever behavior changes.
+
+## Schema And Generated Code
+
+- Database migrations live in `apps/db/migrations`.
+- SQLC-generated query types live in `apps/api/internal/postgres/gen`.
+- When changing SQL or query contracts, regenerate related generated artifacts and verify build/tests.
+
+## Branching And Commits
+
+- Use branch names in the form `feature/<name>` or `fix/<name>`.
+- Keep commits focused, small, and descriptive, with one concern per commit when practical.
+
+## Definition Of Done
+
+Before finishing API changes, ensure all of the following are true:
+
+1. `go test ./...` passes from `apps/api` (or run `make test` from repo root when DB-backed behavior is changed).
+2. File/function comments remain accurate and understandable for junior onboarding.
+3. No unrelated files are modified by accident.
