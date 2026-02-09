@@ -18,8 +18,8 @@
   },
   "packageManager": "pnpm@9.15.4",
   "workspaces": [
-    "api",
-    "web",
+    "apps/api",
+    "apps/web",
     "packages/*"
   ]
 }

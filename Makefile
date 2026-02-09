@@ -5,7 +5,7 @@
 test:
 	docker compose -f docker-compose.yaml up --build -d
 	make migrate-up-test
-	TEST_DATABASE_URL="postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" cd api && go test ./... -race -cover
+	TEST_DATABASE_URL="postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" cd apps/api && go test ./... -race -cover
 
 compose-up:
 	docker compose -f docker-compose.yaml up --build -d
@@ -22,22 +22,22 @@ compose-psql:
 	docker compose -f docker-compose.yaml exec db psql -U spacescale -d spacescale
 
 migrate-up:
-	goose -dir db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable" up
+	goose -dir apps/db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable" up
 
 migrate-down:
-	goose -dir db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable" down
+	goose -dir apps/db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable" down
 
 migrate-reset:
-	goose -dir db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable" reset
+	goose -dir apps/db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable" reset
 
 migrate-up-test:
-	goose -dir db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" up
+	goose -dir apps/db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" up
 
 migrate-down-test:
-	goose -dir db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" down
+	goose -dir apps/db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" down
 
 coverage:
-	TEST_DATABASE_URL="postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" cd api && go test ./... -coverprofile=../coverage.out
+	TEST_DATABASE_URL="postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" cd apps/api && go test ./... -coverprofile=../../coverage.out
 	go tool cover -html=coverage.out -o coverage.html
 	open coverage.html
 
