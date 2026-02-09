@@ -29,7 +29,7 @@ make migrate-up
 make goose-create <migration_name>
 ```
 
-## Turbo repo orchestrates web and API services
+#### Turbo repo orchestrates web and API services
 ```bash
 pnpm install
 pnpm dev
