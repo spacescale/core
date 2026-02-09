@@ -1,3 +1,10 @@
+// This file builds the API router and middleware stack.
+// It defines the Server wrapper that receives service dependencies and exposes
+// one Router method used by main and integration tests.
+// Route registration for health checks and versioned endpoints is centralized
+// here so application wiring is discoverable in one place.
+// When adding new endpoints, most HTTP route setup changes should begin here.
+
 // Package http_api  routing and middleware wiring.
 package http_api
 
@@ -14,22 +21,25 @@ type Server struct {
 	svc *service.ProjectService
 }
 
-// NewServer builds an API server with the service.
+// NewServer creates a Server bound to the provided project service.
+// Keeping wiring here makes dependencies explicit for startup and tests.
 func NewServer(svc *service.ProjectService) *Server {
 	return &Server{svc: svc}
 }
 
-// Router builds the HTTP routes and middleware stack.
+// Router builds the full HTTP router and middleware stack.
+// It registers health and versioned API routes, then applies request-level
+// middleware for traceability, logging, and panic recovery.
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 
-	// A good base middleware stack
+	// Base middleware stack.
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	// Health Check
+	// Health check route.
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
