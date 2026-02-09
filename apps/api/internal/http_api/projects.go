@@ -1,4 +1,11 @@
-// Package http_api provides HTTP handlers for the API.
+// This file contains transport models and handler logic for project creation.
+// It defines the request and response JSON shapes used by POST /v0/projects and
+// translates HTTP concerns into service-layer calls.
+// Responsibilities here include auth header extraction, request decoding,
+// service error-to-status mapping, and response serialization.
+// Keep business rules out of this file; those belong in service/project.go so
+// HTTP code remains thin and focused on protocol behavior.
+
 // Package http_api provides HTTP handlers for the API.
 package http_api
 
@@ -28,7 +35,11 @@ type createProjectResponse struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
-// handleCreateProject creates a project for the current user.
+// handleCreateProject handles project creation for the authenticated user.
+// It reads the GitHub identity from request headers, accepts an optional JSON
+// payload, and delegates business rules to the service layer.
+// Service outcomes are mapped to stable HTTP status codes before returning the
+// created project payload and a Location header.
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	githubID := strings.TrimSpace(r.Header.Get("X-User-Github-ID"))
 	if githubID == "" {

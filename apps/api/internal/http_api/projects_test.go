@@ -1,3 +1,10 @@
+// This file verifies end-to-end behavior of the project creation HTTP endpoint.
+// Tests assert externally visible contract details such as status codes,
+// response payload shape, defaulting behavior, and error handling paths.
+// These cases are intentionally API-focused and treat the service as a backend
+// dependency, which helps prevent regressions in client-facing behavior.
+// Add new project endpoint behavior checks here to keep contract coverage local.
+
 // Package http_api_test exercises the public HTTP API.
 package http_api_test
 
@@ -21,7 +28,9 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
-// TestCreateProjectDefaults verifies auto-generated project creation.
+// TestCreateProjectDefaults verifies project creation with default values.
+// It confirms generated naming, default region assignment, location headers,
+// and RFC3339 timestamp formatting for minimal valid input.
 func TestCreateProjectDefaults(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
@@ -60,7 +69,9 @@ func TestCreateProjectDefaults(t *testing.T) {
 	}
 }
 
-// TestCreateProjectOverrides verifies custom name and region overrides.
+// TestCreateProjectOverrides verifies explicit request values are preserved.
+// It confirms user-supplied name and region survive the full request path
+// without fallback generation overriding those fields.
 func TestCreateProjectOverrides(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
@@ -87,7 +98,9 @@ func TestCreateProjectOverrides(t *testing.T) {
 	}
 }
 
-// TestCreateProjectMissingHeader verifies missing auth header handling.
+// TestCreateProjectMissingHeader verifies authentication header enforcement.
+// It expects an unauthorized response when the request omits GitHub identity,
+// which keeps project creation tied to an authenticated user context.
 func TestCreateProjectMissingHeader(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
@@ -107,7 +120,9 @@ func TestCreateProjectMissingHeader(t *testing.T) {
 	}
 }
 
-// TestCreateProjectInvalidJSON verifies JSON parsing errors.
+// TestCreateProjectInvalidJSON verifies malformed JSON handling.
+// It expects a bad request response when decoding fails so handlers reject
+// malformed payloads before any service logic executes.
 func TestCreateProjectInvalidJSON(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
