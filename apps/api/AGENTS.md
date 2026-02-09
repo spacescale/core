@@ -1,21 +1,54 @@
-> This file guides agents on how to work on this code base when needed for boiler plat tasks.
-> There are few things agents needs to know before producing output.
+> This file defines how agents should work inside `apps/api`.
+> Keep behavior changes maintainable, testable, and easy to onboard.
 
-- we prioritize maintainability rather than just fix or just work.
-- The default is blackbox testing and won't test private packages for simplicity
-- we use a build file called make for builds, tests and local development
-- our dev environment is goland so things like govet, ci lint and fmt are handled at IDE level rather than in CI
-- For our tests, we don't enforce style, we chose the right style based on what we want to test.
-- we use table driven tests where appropriate, subtests where its needed and normal tests where useful
+## Scope
 
-#### To Agents:
+- This guidance applies to files under `apps/api/**`.
+- Do not edit root governance files (`/AGENTS.md`) or the primary repo README.
 
-> Important for all agents to follow:   
-- if you edit a file, always make sure the extensive header comment on the file matches what the whole file is about
-- always make sure extensive comments on every function has no weird syntax and is extensive enough to onboard a junior dev
-- don't leave a function without extensive comment on what it does to make on onboarding easy
-- for every part of a complicated code add comments
-- changes are done in feature
-- commits should be extensive and capture changes in small isolations
-- for branch naming - feature/name or fix/name depending on task
-- build system to use is always make at repo root
+## Engineering Principles
+
+- Prioritize maintainability and clarity over quick one-off fixes.
+- Keep transport layers thin; place business rules in service/domain code.
+- Prefer explicit errors and straightforward control flow over clever shortcuts.
+- Match existing project conventions unless a change clearly improves maintainability.
+
+## Testing Policy
+
+- Use black-box testing by default.
+- Do not write tests that directly target private/internal helper details.
+- Use table-driven tests where they improve coverage and readability.
+- Use subtests where case isolation or output clarity benefits from it.
+
+## Tooling And Workflow
+
+- API runtime baseline: Go `1.25+`.
+- Local infra, compose, and migration flows are managed from the repo root `Makefile`.
+- Common repo-root commands: `make compose-up`, `make compose-down`, `make migrate-up`, `make migrate-up-test`, `make test`.
+- Common API-local commands: `go run ./cmd/api`, `go test ./...`.
+
+## Comments And Documentation Rules
+
+- Every edited code file must keep an accurate file header comment describing the file's responsibilities.
+- Every function should have a clear, onboarding-friendly comment that explains purpose and behavior.
+- Add inline comments for complex logic or state transitions where intent is not obvious.
+- Keep comments in sync with code whenever behavior changes.
+
+## Schema And Generated Code
+
+- Database migrations live in `apps/db/migrations`.
+- SQLC-generated query types live in `apps/api/internal/postgres/gen`.
+- When changing SQL or query contracts, regenerate related generated artifacts and verify build/tests.
+
+## Branching And Commits
+
+- Use branch names in the form `feature/<name>` or `fix/<name>`.
+- Keep commits focused, small, and descriptive, with one concern per commit when practical.
+
+## Definition Of Done
+
+Before finishing API changes, ensure all of the following are true:
+
+1. `go test ./...` passes from `apps/api` (or run `make test` from repo root when DB-backed behavior is changed).
+2. File/function comments remain accurate and understandable for junior onboarding.
+3. No unrelated files are modified by accident.
