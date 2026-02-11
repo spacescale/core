@@ -37,6 +37,20 @@ func main() {
 		log.Fatal("DATABASE_URL is required")
 	}
 
+	bffJWTSecret := env("BFF_JWT_SECRET", "")
+	if bffJWTSecret == "" {
+		log.Fatal("BFF_JWT_SECRET is required")
+	}
+
+	authCfg := http_api.AuthConfig{
+		JWTSecret: bffJWTSecret,
+		Issuer:    env("BFF_JWT_ISSUER", "spacescale-web-bff"), // which issuer should I trust?
+		Audience:  env("BFF_JWT_AUDIENCE", "spacescale-api"),   // expected audience
+	}
+	if err := authCfg.Validate(); err != nil {
+		log.Fatalf("auth config: %v", err)
+	}
+
 	// Open a pgx connection pool and verify connectivity up front.
 	dbPool, err := openDB(context.Background(), databaseURL)
 	if err != nil {
@@ -46,7 +60,7 @@ func main() {
 	queries := pgstore.New(dbPool)
 
 	svc := service.NewProjectService(queries)
-	api := http_api.NewServer(svc)
+	api := http_api.NewServer(svc, authCfg)
 
 	// Apply a read-header timeout to reduce exposure to slowloris-style abuse.
 	srv := &http.Server{

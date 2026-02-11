@@ -12,6 +12,7 @@ package http_api
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 )
 
@@ -34,8 +35,9 @@ func readJSON(r *http.Request, dst any) error {
 		return err
 	}
 	// Reject trailing data after the first JSON value.
-	if dec.More() {
-		return errors.New("multiple json  values")
+	// Decode one more token: only io.EOF means there was exactly one value.
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("multiple json values")
 	}
 	return nil
 }
