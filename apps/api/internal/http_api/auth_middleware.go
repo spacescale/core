@@ -188,6 +188,7 @@ func parseAndValidateClaims(tokenString string, cfg AuthConfig) (*bffClaims, err
 		jwt.WithAudience(cfg.Audience),
 		// Allow a small clock-skew tolerance for time-based claim checks.
 		jwt.WithLeeway(authTokenLeeway),
+		jwt.WithExpirationRequired(), // prevents token that omits  expiration to pass validation
 	)
 	if err != nil || !token.Valid {
 		return nil, errInvalidToken
