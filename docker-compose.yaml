@@ -2,10 +2,10 @@ services:
   api:
     build:
       context: ./apps/api
-    environment:
-      DATABASE_URL: postgres://spacescale:spacescale@db:5432/spacescale?sslmode=disable
+    env_file:
+      - ./.env.local
     ports:
-      - "8080:8080"
+      - "${API_PORT:-8080}:8080"
     depends_on:
       db:
         condition: service_healthy
@@ -13,18 +13,15 @@ services:
 
   db:
     image: postgres:18-alpine
+    env_file:
+      - ./.env.local
     ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: spacescale
-      POSTGRES_PASSWORD: spacescale
-      POSTGRES_DB: postgres
-      PGDATA: /var/lib/postgresql/18/docker
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql # PG 18+ recommends mounting parent dir for pg_upgrade
       - ./apps/db/init:/docker-entrypoint-initdb.d:ro # run init scripts on first boot
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U spacescale -d postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-spacescale} -d $${POSTGRES_DB:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 10
