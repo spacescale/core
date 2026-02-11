@@ -48,7 +48,7 @@ type AuthConfig struct {
 // AuthPrincipal is the authenticated identity extracted from a verified BFF JWT.
 // Handlers should read this from context and never trust raw user headers.
 type AuthPrincipal struct {
-	Subject   string // // Subject is the canonical identity "sub" claim, usually stable per user.
+	Subject   string // Subject is the canonical identity "sub" claim, usually stable per user.
 	GithubID  string
 	Email     string
 	Name      string

@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_rrCeBnxzQE
 createdAt: 2026-02-03T04:59:17.161868
-updatedAt: 2026-02-09T23:18:10.222169
+updatedAt: 2026-02-11T07:53:12.513411
 workspaceId: wk_KJF6oyHis3
 folderId: fl_mN33FWQe9B
 authentication: {}
@@ -10,96 +10,7 @@ authenticationType: null
 body:
   text: '{}'
 bodyType: application/json
-description: |-
-  ## Create Project (BFF-authenticated)
-
-  Create a new project for the authenticated user identity coming from the BFF token.
-
-  ### Endpoint
-  - **Method**: `POST`
-  - **Path**: `/v0/projects`
-
-  The API now expects:
-  - `Authorization: Bearer <BFF_JWT_TOKEN>`
-
-  The bearer token must be signed by the trusted BFF signer secret (`BFF_JWT_SECRET`) and include valid claims.
-
-  ### Required JWT Claims
-  The API middleware validates these fields before the handler runs:
-  - `sub`: stable user subject identifier (non-empty)
-  - `github_id`: GitHub user id used for user/project ownership bootstrap (non-empty)
-  - `iss`: must match API config `BFF_JWT_ISSUER` (default `spacescale-web-bff`)
-  - `aud`: must include API audience `BFF_JWT_AUDIENCE` (default `spacescale-api`)
-  - `exp`: must not be expired
-
-  Optional claims accepted and carried in principal context:
-  - `email`
-  - `name`
-  - `avatar_url`
-
-  ### Header Contract
-  - `Authorization` (required): `Bearer ${[ BFF_TOKEN ]}`
-  - `Content-Type` (required for JSON body): `application/json`
-
-  ### Body Contract (Optional)
-  Request body may be empty (`{}`), or contain user-provided overrides:
-
-  ```json
-  {
-    "name": "killer instinct",
-    "region": "global"
-  }
-  ```
-
-
-  ### Success Response
-  - **Status**: `201 Created`
-  - **Headers**: includes `Location: /v0/projects/{id}`
-  - **Body example**:
-
-  ```json
-  {
-    "id": "d55f7b8e-8c2e-4f8f-8be0-e2eb39d3b8ee",
-    "name": "killer instinct",
-    "slug": "killer-instinct",
-    "region": "global",
-    "createdAt": "2026-02-09T12:34:56Z",
-    "updatedAt": "2026-02-09T12:34:56Z"
-  }
-  ```
-
-  ### Error Responses
-  - `400 Bad Request`
-    - malformed JSON
-    - request fields fail service validation
-  - `401 Unauthorized`
-    - missing Authorization header
-    - malformed Bearer header
-    - invalid signature / wrong issuer / wrong audience / expired token
-    - missing required identity claims (`sub`, `github_id`)
-  - `409 Conflict`
-    - slug collision after retry budget exhausted (rare)
-  - `500 Internal Server Error`
-    - unexpected storage/runtime failure
-
-  ### cURL Examples
-  Minimal create with defaults:
-
-  ```bash
-  curl -i -X POST "http://localhost:8080/v0/projects" \
-    -H "Authorization: Bearer $BFF_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{}'
-  ```
-
-  Create with explicit values:
-
-  ```bash
-  curl -i -X POST "http://localhost:8080/v0/projects" \
-    -H "Authorization: Bearer $BFF_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{"name":"killer instinct","region":"global"}'
-  ```
+description: "## Create Project \n\nCreate a new project for the authenticated user \n\n### Endpoint\n- **Method**: `POST`\n- **Path**: `/v0/projects`\n\nThe API now expects:\n- `Authorization: Bearer <BFF_JWT_TOKEN>`\n\nThe bearer token must be signed by the trusted BFF signer secret (`BFF_JWT_SECRET`) and include valid claims.\n\n### Required JWT Claims\nThe API middleware validates these fields before the handler runs:\n- `sub`: stable user subject identifier (non-empty)\n- `github_id`: GitHub user id used for user/project ownership bootstrap (non-empty)\n- `iss`: must match API config `BFF_JWT_ISSUER` (default `spacescale-web-bff`)\n- `aud`: must include API audience `BFF_JWT_AUDIENCE` (default `spacescale-api`)\n- `exp`: must not be expired\n\nOptional claims accepted and carried in principal context:\n- `email`\n- `name`\n- `avatar_url`\n\n### Header Contract\n- `Authorization` (required): `Bearer ${[ BFF_TOKEN ]}`\n- `Content-Type` (required for JSON body): `application/json`\n\n### Body Contract (Optional)\nRequest body may be empty (`{}`), or contain user-provided overrides:\n\n```json\n{\n  \"name\": \"killer instinct\",\n  \"region\": \"global\"\n}\n```\n\n\n### Success Response\n- **Status**: `201 Created`\n- **Headers**: includes `Location: /v0/projects/{id}`\n- **Body example**:\n\n```json\n{\n  \"id\": \"d55f7b8e-8c2e-4f8f-8be0-e2eb39d3b8ee\",\n  \"name\": \"killer instinct\",\n  \"slug\": \"killer-instinct\",\n  \"region\": \"global\",\n  \"createdAt\": \"2026-02-09T12:34:56Z\",\n  \"updatedAt\": \"2026-02-09T12:34:56Z\"\n}\n```\n\n### Error Responses\n- `400 Bad Request`\n  - malformed JSON\n  - request fields fail service validation\n- `401 Unauthorized`\n  - missing Authorization header\n  - malformed Bearer header\n  - invalid signature / wrong issuer / wrong audience / expired token\n  - missing required identity claims (`sub`, `github_id`)\n- `409 Conflict`\n  - slug collision after retry budget exhausted (rare)\n- `500 Internal Server Error`\n  - unexpected storage/runtime failure\n\n### cURL Examples\nMinimal create with defaults:\n\n```bash\ncurl -i -X POST \"http://localhost:8080/v0/projects\" \\\n  -H \"Authorization: Bearer $BFF_TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{}'\n```\n\nCreate with explicit values:\n\n```bash\ncurl -i -X POST \"http://localhost:8080/v0/projects\" \\\n  -H \"Authorization: Bearer $BFF_TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"name\":\"killer instinct\",\"region\":\"global\"}'\n```"
 headers:
 - enabled: true
   name: Authorization
