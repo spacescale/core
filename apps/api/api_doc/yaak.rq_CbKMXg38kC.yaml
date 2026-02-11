@@ -1,0 +1,129 @@
+type: http_request
+model: http_request
+id: rq_CbKMXg38kC
+createdAt: 2026-02-09T22:56:16.999811
+updatedAt: 2026-02-09T23:17:22.416304
+workspaceId: wk_KJF6oyHis3
+folderId: null
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: |2-
+
+  This request is a documentation-only helper for local API testing.
+
+  It explains how to mint a valid BFF JWT from repo root using `make mint`, then use that token in Yaak for protected endpoints such as `POST /v0/projects`.
+
+  ### Why this exists
+   Next.js BFF issues the API token.but you might want to test endpoints directy without the front end.For local ergonomics, you can mint a short-lived token with Make to input directly in yaak for authenticated api calls.
+
+
+  ### `.env.local` requirements
+
+  The `make mint` target reads values from repo-root `.env.local`.
+
+  Required keys:
+
+  - `BFF_JWT_SECRET` (string)
+    - HMAC signing secret used to sign/verify HS256 token
+    - must match API runtime secret
+  - `BFF_JWT_GITHUB_ID` (string)
+    - GitHub identity value put into `github_id` claim
+    - example: `t0gun`
+
+  Optional keys:
+
+  - `BFF_JWT_ISSUER` (string, default: `spacescale-web-bff`)
+  - `BFF_JWT_AUDIENCE` (string, default: `spacescale-api`)
+  - `BFF_JWT_SUB` (string, default: `github:<BFF_JWT_GITHUB_ID>`)
+  - `BFF_JWT_TTL_SECONDS` (number-like string, default: `3600`)
+  - `BFF_JWT_EMAIL` (string)
+  - `BFF_JWT_NAME` (string)
+  - `BFF_JWT_AVATAR_URL` (string URL)
+
+
+  ### `.env.local` example
+
+  ```env
+  # API auth verifier values
+  BFF_JWT_SECRET=replace-with-strong-secret
+  BFF_JWT_ISSUER=spacescale-web-bff
+  BFF_JWT_AUDIENCE=spacescale-api
+
+  # make mint identity values
+  BFF_JWT_GITHUB_ID=t0gun
+  BFF_JWT_SUB=github:t0gun
+  BFF_JWT_TTL_SECONDS=3600
+  BFF_JWT_EMAIL=you@example.com
+  BFF_JWT_NAME=Tobiloba Ogundiyan
+  BFF_JWT_AVATAR_URL=https://avatars.githubusercontent.com/u/114788338?s=400&u=7ceeca6d038d50c7c41b8ac366bdcf30fa3f92d3&v=4
+  ```
+
+  ---
+
+  ### Mint command
+
+  Run from repo root:
+
+  ```bash
+  make mint
+  ```
+
+  Output:
+
+  - prints one JWT token string to stdout
+  - token is HS256-signed with `BFF_JWT_SECRET`
+  - default expiry is 1 hour unless `BFF_JWT_TTL_SECONDS` is set
+
+  ---
+
+  ### Use token in Yaak
+
+  1. Copy output from `make mint`.
+  2. Open Yaak environment `LOCAL`.
+  3. Set variable `BFF_TOKEN=<pasted-token>`.
+  4. For protected API requests, set header:
+
+     - `Authorization: Bearer ${[ BFF_TOKEN ]}`
+
+
+  Example protected request:
+
+  ```bash
+  curl -i -X POST "http://localhost:8080/v0/projects" \
+    -H "Authorization: Bearer $BFF_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{}'
+  ```
+
+  ---
+
+  ### Validation rules enforced by API middleware
+
+  Incoming token must include valid claims:
+
+  - `sub` (required)
+  - `github_id` (required)
+  - `iss` must match `BFF_JWT_ISSUER`
+  - `aud` must match `BFF_JWT_AUDIENCE`
+  - `exp` must be in the future
+
+  If any of these checks fail, API returns `401 unauthorized`.
+
+  ---
+
+  ### Troubleshooting
+
+  - `BFF_JWT_SECRET is required in .env.local`
+    - add the key in `.env.local`, then run `make mint` again
+  - API returns `401 unauthorized`
+    - re-mint token (may be expired)
+    - verify secret/issuer/audience values in `.env.local`
+    - ensure header format is exactly `Authorization: Bearer <token>`
+headers: []
+method: INFO
+name: Mint Process
+sortPriority: 0.0
+url: ''
+urlParameters: []

@@ -2,57 +2,117 @@ type: http_request
 model: http_request
 id: rq_rrCeBnxzQE
 createdAt: 2026-02-03T04:59:17.161868
-updatedAt: 2026-02-03T05:28:21.143653
+updatedAt: 2026-02-09T23:18:10.222169
 workspaceId: wk_KJF6oyHis3
-folderId: null
+folderId: fl_mN33FWQe9B
 authentication: {}
 authenticationType: null
 body:
   text: '{}'
 bodyType: application/json
 description: |-
-  ## Create Project
-  Creates a new project for the current user. If no name is provided, the server generates one from the `name_words` dictionary and applies a URL-safe slug.
+  ## Create Project (BFF-authenticated)
 
-  **Endpoint**: `POST /v0/projects`
+  Create a new project for the authenticated user identity coming from the BFF token.
 
-  ### Headers
-  - `X-User-Github-ID` (required): user identity for ownership
+  ### Endpoint
+  - **Method**: `POST`
+  - **Path**: `/v0/projects`
 
-  ### Body (optional)
+  The API now expects:
+  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+
+  The bearer token must be signed by the trusted BFF signer secret (`BFF_JWT_SECRET`) and include valid claims.
+
+  ### Required JWT Claims
+  The API middleware validates these fields before the handler runs:
+  - `sub`: stable user subject identifier (non-empty)
+  - `github_id`: GitHub user id used for user/project ownership bootstrap (non-empty)
+  - `iss`: must match API config `BFF_JWT_ISSUER` (default `spacescale-web-bff`)
+  - `aud`: must include API audience `BFF_JWT_AUDIENCE` (default `spacescale-api`)
+  - `exp`: must not be expired
+
+  Optional claims accepted and carried in principal context:
+  - `email`
+  - `name`
+  - `avatar_url`
+
+  ### Header Contract
+  - `Authorization` (required): `Bearer ${[ BFF_TOKEN ]}`
+  - `Content-Type` (required for JSON body): `application/json`
+
+  ### Body Contract (Optional)
+  Request body may be empty (`{}`), or contain user-provided overrides:
+
   ```json
   {
-    "name": "misty-harbor",
+    "name": "killer instinct",
     "region": "global"
   }
   ```
 
-  If omitted, the server generates a name and defaults `region` to `global`.
 
-  ### Responses
-  - `201 Created`: project created
-  - `400 Bad Request`: invalid input or malformed JSON
-  - `401 Unauthorized`: missing `X-User-Github-ID`
-  - `409 Conflict`: slug collision after retries (rare)
-  - `500 Internal Server Error`: unexpected error
+  ### Success Response
+  - **Status**: `201 Created`
+  - **Headers**: includes `Location: /v0/projects/{id}`
+  - **Body example**:
 
-  ### Example
-  ```bash
-  curl -i -X POST "http://localhost:8080/v0/projects"   -H "X-User-Github-ID: 12345"   -H "Content-Type: application/json"   -d '{}'
+  ```json
+  {
+    "id": "d55f7b8e-8c2e-4f8f-8be0-e2eb39d3b8ee",
+    "name": "killer instinct",
+    "slug": "killer-instinct",
+    "region": "global",
+    "createdAt": "2026-02-09T12:34:56Z",
+    "updatedAt": "2026-02-09T12:34:56Z"
+  }
   ```
 
-  **Notes**
-  - The response includes a `Location` header: `/v0/projects/{id}`
-  - Project names are auto-generated unless provided.
+  ### Error Responses
+  - `400 Bad Request`
+    - malformed JSON
+    - request fields fail service validation
+  - `401 Unauthorized`
+    - missing Authorization header
+    - malformed Bearer header
+    - invalid signature / wrong issuer / wrong audience / expired token
+    - missing required identity claims (`sub`, `github_id`)
+  - `409 Conflict`
+    - slug collision after retry budget exhausted (rare)
+  - `500 Internal Server Error`
+    - unexpected storage/runtime failure
+
+  ### cURL Examples
+  Minimal create with defaults:
+
+  ```bash
+  curl -i -X POST "http://localhost:8080/v0/projects" \
+    -H "Authorization: Bearer $BFF_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{}'
+  ```
+
+  Create with explicit values:
+
+  ```bash
+  curl -i -X POST "http://localhost:8080/v0/projects" \
+    -H "Authorization: Bearer $BFF_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"killer instinct","region":"global"}'
+  ```
 headers:
 - enabled: true
-  name: X-User-Github-ID
-  value: '12345'
-  id: null
+  name: Authorization
+  value: ${[ secure(value=b64'WUVOQ19lVUUwYXpOdVF3SC9JZkJkMmppc1VaRE5kSk4xQ3Vzb2krRXFGTGlzSTd2WFVKNTFHVExYS21FdHRla3VHdFoybFBnd3NlUEZ3MjBJbUdQWk5OM3FxcndyWU5pTW1mdz0') ]}
+  id: htigSCPhis
 - enabled: true
   name: Content-Type
   value: application/json
-  id: null
+  id: NkPDC5GwqH
+- enabled: true
+  name: ''
+  value: ''
+  id: qhnNdm9hFU
 method: POST
 name: Create Project
 sortPriority: 0.0
