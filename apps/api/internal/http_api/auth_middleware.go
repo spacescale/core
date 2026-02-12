@@ -193,9 +193,7 @@ func parseAndValidateClaims(tokenString string, cfg AuthConfig) (*bffClaims, err
 	if err != nil || !token.Valid {
 		return nil, errInvalidToken
 	}
-	if strings.TrimSpace(claims.Subject) == "" || strings.TrimSpace(claims.GithubID) == "" {
-		return nil, errInvalidToken
-	}
+
 	sub := strings.TrimSpace(claims.Subject)
 	githubID := strings.TrimSpace(claims.GithubID)
 	// Both claims are required.

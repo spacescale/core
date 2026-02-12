@@ -188,6 +188,9 @@ func TestParseAndValidateClaims(t *testing.T) {
 	missingGithubClaims := baseClaims
 	missingGithubClaims.GithubID = ""
 
+	mismatchedSubjectClaims := baseClaims
+	mismatchedSubjectClaims.Subject = "github:other-user"
+
 	tests := []struct {
 		name    string
 		token   string
@@ -202,6 +205,7 @@ func TestParseAndValidateClaims(t *testing.T) {
 		{name: "missing exp claim", token: mintToken(t, testJWTSecret, missingExpClaims), cfg: baseCfg, wantErr: true},
 		{name: "missing sub claim", token: mintToken(t, testJWTSecret, missingSubClaims), cfg: baseCfg, wantErr: true},
 		{name: "missing github_id claim", token: mintToken(t, testJWTSecret, missingGithubClaims), cfg: baseCfg, wantErr: true},
+		{name: "mismatched sub and github_id", token: mintToken(t, testJWTSecret, mismatchedSubjectClaims), cfg: baseCfg, wantErr: true},
 		{name: "wrong signing method", token: mintTokenWithMethod(t, jwt.SigningMethodHS384, testJWTSecret, baseClaims), cfg: baseCfg, wantErr: true},
 		{name: "malformed token", token: "not-a-jwt", cfg: baseCfg, wantErr: true},
 	}
