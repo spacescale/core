@@ -28,15 +28,14 @@ description: |2-
   - `BFF_JWT_SECRET` (string)
     - HMAC signing secret used to sign/verify HS256 token
     - must match API runtime secret
-  - `BFF_JWT_GITHUB_ID` (string)
-    - GitHub identity value put into `github_id` claim
-    - example: `t0gun`
+  - `BFF_JWT_SUB` (string)
+    - subject value used as identity source of truth
+    - required format: `github:<id>` (example: `github:t0gun`)
 
   Optional keys:
 
   - `BFF_JWT_ISSUER` (string, default: `spacescale-web-bff`)
   - `BFF_JWT_AUDIENCE` (string, default: `spacescale-api`)
-  - `BFF_JWT_SUB` (string, default: `github:<BFF_JWT_GITHUB_ID>`)
   - `BFF_JWT_TTL_SECONDS` (number-like string, default: `3600`)
   - `BFF_JWT_EMAIL` (string)
   - `BFF_JWT_NAME` (string)
@@ -52,7 +51,6 @@ description: |2-
   BFF_JWT_AUDIENCE=spacescale-api
 
   # make mint identity values
-  BFF_JWT_GITHUB_ID=t0gun
   BFF_JWT_SUB=github:t0gun
   BFF_JWT_TTL_SECONDS=3600
   BFF_JWT_EMAIL=you@example.com
@@ -103,8 +101,7 @@ description: |2-
 
   Incoming token must include valid claims:
 
-  - `sub` (required)
-  - `github_id` (required)
+  - `sub` (required, format `github:<id>`)
   - `iss` must match `BFF_JWT_ISSUER`
   - `aud` must match `BFF_JWT_AUDIENCE`
   - `exp` must be in the future
@@ -125,5 +122,5 @@ headers: []
 method: INFO
 name: Mint Process
 sortPriority: 0.0
-url: ''
+url: ""
 urlParameters: []

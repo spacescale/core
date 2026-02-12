@@ -5,7 +5,7 @@
 // Planned white-box suites in this file:
 // - AuthConfig.Validate: required runtime configuration checks.
 // - parseBearerToken: Authorization header parsing and malformed edge cases.
-// - parseAndValidateClaims: JWT claim validation regressions (exp/sub/github_id,
+// - parseAndValidateClaims: JWT claim validation regressions (exp/sub format,
 //   issuer, audience, signing method expectations).
 //
 // Why this separation is useful:
@@ -33,11 +33,10 @@ const (
 	testGithubID    = "t0gun"
 )
 
-// testJWTClaims models the custom and registered claims expected by middleware.
-// The custom github_id field is required by parseAndValidateClaims, while the
-// embedded RegisteredClaims carry standard JWT fields (sub/iss/aud/exp/iat).
+// testJWTClaims models claims expected by middleware tests.
+// Subject is the identity source of truth and follows github:<id> format,
+// while embedded RegisteredClaims carry standard JWT fields.
 type testJWTClaims struct {
-	GithubID string `json:"github_id"`
 	jwt.RegisteredClaims
 }
 
@@ -55,13 +54,11 @@ func defaultAuthCfg() AuthConfig {
 // validClaims builds a known-good claim payload for happy-path token tests.
 // It includes all fields required by parseAndValidateClaims:
 // - sub
-// - github_id
 // - iss
 // - aud
 // - exp (required by WithExpirationRequired)
 func validClaims(now time.Time) testJWTClaims {
 	return testJWTClaims{
-		GithubID: testGithubID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   "github:" + testGithubID,
 			Issuer:    testJWTIssuer,
@@ -185,11 +182,11 @@ func TestParseAndValidateClaims(t *testing.T) {
 	missingSubClaims := baseClaims
 	missingSubClaims.Subject = ""
 
-	missingGithubClaims := baseClaims
-	missingGithubClaims.GithubID = ""
+	missingGithubIDInSubClaims := baseClaims
+	missingGithubIDInSubClaims.Subject = "github:"
 
-	mismatchedSubjectClaims := baseClaims
-	mismatchedSubjectClaims.Subject = "github:other-user"
+	invalidSubjectPrefixClaims := baseClaims
+	invalidSubjectPrefixClaims.Subject = "user:" + testGithubID
 
 	tests := []struct {
 		name    string
@@ -204,8 +201,8 @@ func TestParseAndValidateClaims(t *testing.T) {
 		{name: "expired token", token: mintToken(t, testJWTSecret, expiredClaims), cfg: baseCfg, wantErr: true},
 		{name: "missing exp claim", token: mintToken(t, testJWTSecret, missingExpClaims), cfg: baseCfg, wantErr: true},
 		{name: "missing sub claim", token: mintToken(t, testJWTSecret, missingSubClaims), cfg: baseCfg, wantErr: true},
-		{name: "missing github_id claim", token: mintToken(t, testJWTSecret, missingGithubClaims), cfg: baseCfg, wantErr: true},
-		{name: "mismatched sub and github_id", token: mintToken(t, testJWTSecret, mismatchedSubjectClaims), cfg: baseCfg, wantErr: true},
+		{name: "missing github id in subject", token: mintToken(t, testJWTSecret, missingGithubIDInSubClaims), cfg: baseCfg, wantErr: true},
+		{name: "invalid subject prefix", token: mintToken(t, testJWTSecret, invalidSubjectPrefixClaims), cfg: baseCfg, wantErr: true},
 		{name: "wrong signing method", token: mintTokenWithMethod(t, jwt.SigningMethodHS384, testJWTSecret, baseClaims), cfg: baseCfg, wantErr: true},
 		{name: "malformed token", token: "not-a-jwt", cfg: baseCfg, wantErr: true},
 	}

@@ -16,11 +16,18 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// authTokenLeeway gives a small clock-skew buffer when validating time-based
-// JWT claims (for example exp, nbf, iat). Distributed systems can have slightly
-// different clocks; a short leeway reduces false negatives without meaningfully
-// reducing token safety.
-const authTokenLeeway = 30 * time.Second
+const (
+	// authTokenLeeway gives a small clock-skew buffer when validating time-based
+	// JWT claims (for example exp, nbf, iat). Distributed systems can have slightly
+	// different clocks; a short leeway reduces false negatives without meaningfully
+	// reducing token safety.
+	authTokenLeeway = 30 * time.Second
+
+	// githubSubjectPrefix is the canonical prefix used in sub claim values.
+	// The API treats sub as the single source of identity and derives github id
+	// from this prefix-based format: github:<id>.
+	githubSubjectPrefix = "github:"
+)
 
 var (
 	// errMissingAuthorizationHeader indicates a request did not provide Authorization.
@@ -58,7 +65,9 @@ type AuthPrincipal struct {
 // bffClaims models JWT claims expected from the Next.js BFF token.
 // RegisteredClaims provides iss, aud, sub, exp, iat validation support.
 type bffClaims struct {
-	GithubID  string `json:"github_id"`
+	// GithubID is derived from Subject after successful token verification.
+	// It is not decoded directly from token payload; identity source of truth is sub.
+	GithubID  string `json:"-"`
 	Email     string `json:"email,omitempty"`
 	Name      string `json:"name,omitempty"`
 	AvatarURL string `json:"avatar_url,omitempty"`
@@ -165,7 +174,7 @@ func authMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 // - Validate token signature against configured secret and algorithm.
 // - Enforce standard claim requirements (issuer, audience, time validity).
 // - Ensure required identity claims exist before principal construction.
-// - checks github id matches subject
+// - Derive github id from canonical subject format: github:<id>.
 // Return behavior:
 // - On success, returns fully validated claims ready for middleware use.
 // - On failure, returns an auth-safe error indicating token is invalid.
@@ -195,17 +204,31 @@ func parseAndValidateClaims(tokenString string, cfg AuthConfig) (*bffClaims, err
 	}
 
 	sub := strings.TrimSpace(claims.Subject)
-	githubID := strings.TrimSpace(claims.GithubID)
-	// Both claims are required.
-	if sub == "" || githubID == "" {
+	githubID, ok := githubIDFromSubject(sub)
+	if !ok {
 		return nil, errInvalidToken
 	}
-	// Enforce association: sub must match github_id.
-	expectedSub := "github:" + githubID
-	if sub != expectedSub {
-		return nil, errInvalidToken
-	}
+
+	// Normalize and persist derived identity fields used by downstream handlers.
+	claims.Subject = githubSubjectPrefix + githubID
+	claims.GithubID = githubID
 	return claims, nil
+}
+
+// githubIDFromSubject extracts GitHub identity from the canonical sub claim.
+// Expected format is: github:<id>
+// Returns false when subject is empty, has a different prefix, or has no id.
+func githubIDFromSubject(subject string) (string, bool) {
+	subject = strings.TrimSpace(subject)
+	if !strings.HasPrefix(subject, githubSubjectPrefix) {
+		return "", false
+	}
+
+	githubID := strings.TrimSpace(strings.TrimPrefix(subject, githubSubjectPrefix))
+	if githubID == "" {
+		return "", false
+	}
+	return githubID, true
 }
 
 // withPrincipal returns a new context that carries the authenticated principal

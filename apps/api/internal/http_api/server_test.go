@@ -44,12 +44,11 @@ type testServer struct {
 	pool   *pgxpool.Pool
 }
 
-// testJWTClaims matches custom claims expected by auth middleware.
-// RegisteredClaims carries standard iss/sub/aud/exp values.
+// testJWTClaims matches claims expected by auth middleware.
+// Subject carries canonical identity in github:<id> format, while
+// RegisteredClaims carries standard iss/aud/exp metadata.
 type testJWTClaims struct {
-	GithubID             string `json:"github_id"`
-	jwt.RegisteredClaims        // embedded which means fields are promoted so we can access claims.sub, issue, iat etc.
-	// its methods are also promoted, testJWTClaims satisfies jwt.Claims interface
+	jwt.RegisteredClaims // embedded so claim fields are promoted to this type.
 }
 
 // newTestServer creates one integration server for the calling test.
@@ -142,12 +141,11 @@ func doRequest(t *testing.T, ts *testServer, method, path string, body []byte, h
 func authHeaderForGithubID(t *testing.T, githubID string) string {
 	t.Helper()
 
-	// Include both custom github_id and required registered claims.
+	// Include required registered claims.
 	claims := testJWTClaims{
-		GithubID: githubID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    testIssuer,                                           // who created and signed the token. trusted token authority
-			Subject:   "test-user-" + githubID,                              // canonical identity the token represents (“who this token belongs to”).
+			Subject:   "github:" + githubID,                                 // canonical identity the token represents (“who this token belongs to”).
 			Audience:  jwt.ClaimStrings{testAudience},                       // who is this token meant for
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(10 * time.Minute)), // tokens expire in 10 minutes
 			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-1 * time.Minute)), // token issued 1 minute ago

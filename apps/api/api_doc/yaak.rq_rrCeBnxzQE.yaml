@@ -2,28 +2,70 @@ type: http_request
 model: http_request
 id: rq_rrCeBnxzQE
 createdAt: 2026-02-03T04:59:17.161868
-updatedAt: 2026-02-11T07:53:12.513411
+updatedAt: 2026-02-12T02:03:00.000000
 workspaceId: wk_KJF6oyHis3
 folderId: fl_mN33FWQe9B
 authentication: {}
 authenticationType: null
 body:
-  text: '{}'
+  text: "{}"
 bodyType: application/json
-description: "## Create Project \n\nCreate a new project for the authenticated user \n\n### Endpoint\n- **Method**: `POST`\n- **Path**: `/v0/projects`\n\nThe API now expects:\n- `Authorization: Bearer <BFF_JWT_TOKEN>`\n\nThe bearer token must be signed by the trusted BFF signer secret (`BFF_JWT_SECRET`) and include valid claims.\n\n### Required JWT Claims\nThe API middleware validates these fields before the handler runs:\n- `sub`: stable user subject identifier (non-empty)\n- `github_id`: GitHub user id used for user/project ownership bootstrap (non-empty)\n- `iss`: must match API config `BFF_JWT_ISSUER` (default `spacescale-web-bff`)\n- `aud`: must include API audience `BFF_JWT_AUDIENCE` (default `spacescale-api`)\n- `exp`: must not be expired\n\nOptional claims accepted and carried in principal context:\n- `email`\n- `name`\n- `avatar_url`\n\n### Header Contract\n- `Authorization` (required): `Bearer ${[ BFF_TOKEN ]}`\n- `Content-Type` (required for JSON body): `application/json`\n\n### Body Contract (Optional)\nRequest body may be empty (`{}`), or contain user-provided overrides:\n\n```json\n{\n  \"name\": \"killer instinct\",\n  \"region\": \"global\"\n}\n```\n\n\n### Success Response\n- **Status**: `201 Created`\n- **Headers**: includes `Location: /v0/projects/{id}`\n- **Body example**:\n\n```json\n{\n  \"id\": \"d55f7b8e-8c2e-4f8f-8be0-e2eb39d3b8ee\",\n  \"name\": \"killer instinct\",\n  \"slug\": \"killer-instinct\",\n  \"region\": \"global\",\n  \"createdAt\": \"2026-02-09T12:34:56Z\",\n  \"updatedAt\": \"2026-02-09T12:34:56Z\"\n}\n```\n\n### Error Responses\n- `400 Bad Request`\n  - malformed JSON\n  - request fields fail service validation\n- `401 Unauthorized`\n  - missing Authorization header\n  - malformed Bearer header\n  - invalid signature / wrong issuer / wrong audience / expired token\n  - missing required identity claims (`sub`, `github_id`)\n- `409 Conflict`\n  - slug collision after retry budget exhausted (rare)\n- `500 Internal Server Error`\n  - unexpected storage/runtime failure\n\n### cURL Examples\nMinimal create with defaults:\n\n```bash\ncurl -i -X POST \"http://localhost:8080/v0/projects\" \\\n  -H \"Authorization: Bearer $BFF_TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{}'\n```\n\nCreate with explicit values:\n\n```bash\ncurl -i -X POST \"http://localhost:8080/v0/projects\" \\\n  -H \"Authorization: Bearer $BFF_TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"name\":\"killer instinct\",\"region\":\"global\"}'\n```"
+description: |-
+  ## Create Project
+
+  Create a new project for the authenticated user.
+
+  ### Endpoint
+  - **Method**: `POST`
+  - **Path**: `/v0/projects`
+
+  ### Authentication
+  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+  - token must be signed with trusted BFF secret (`BFF_JWT_SECRET`)
+
+  ### Required JWT Claims
+  - `sub`: required and must use `github:<id>` format
+  - `iss`: must match `BFF_JWT_ISSUER` (default `spacescale-web-bff`)
+  - `aud`: must include `BFF_JWT_AUDIENCE` (default `spacescale-api`)
+  - `exp`: must be present and in the future
+
+  Optional claims accepted and carried in principal context:
+  - `email`
+  - `name`
+  - `avatar_url`
+
+  ### Header Contract
+  - `Authorization` (required): `Bearer ${[ BFF_TOKEN ]}`
+  - `Content-Type` (required for JSON body): `application/json`
+
+  ### Body Contract (Optional)
+  Request body may be empty (`{}`), or contain user-provided overrides:
+
+  ```json
+  {
+    "name": "killer instinct",
+    "region": "global"
+  }
+  ```
+
+  ### Success Response
+  - **Status**: `201 Created`
+  - **Headers**: includes `Location: /v0/projects/{id}`
+
+  ### Error Responses
+  - `400 Bad Request`: malformed JSON or invalid input
+  - `401 Unauthorized`: missing/invalid bearer token or invalid claims
+  - `409 Conflict`: slug collision after retries
+  - `500 Internal Server Error`: unexpected runtime error
 headers:
-- enabled: true
-  name: Authorization
-  value: ${[ secure(value=b64'WUVOQ19lVUUwYXpOdVF3SC9JZkJkMmppc1VaRE5kSk4xQ3Vzb2krRXFGTGlzSTd2WFVKNTFHVExYS21FdHRla3VHdFoybFBnd3NlUEZ3MjBJbUdQWk5OM3FxcndyWU5pTW1mdz0') ]}
-  id: htigSCPhis
-- enabled: true
-  name: Content-Type
-  value: application/json
-  id: NkPDC5GwqH
-- enabled: true
-  name: ''
-  value: ''
-  id: qhnNdm9hFU
+  - enabled: true
+    name: Authorization
+    value: ${[ secure(value=b64'WUVOQ19lVUUwYXpOdVF3SC9JZkJkMmppc1VaRE5kSk4xQ3Vzb2krRXFGTGlzSTd2WFVKNTFHVExYS21FdHRla3VHdFoybFBnd3NlUEZ3MjBJbUdQWk5OM3FxcndyWU5pTW1mdz0') ]}
+    id: htigSCPhis
+  - enabled: true
+    name: Content-Type
+    value: application/json
+    id: NkPDC5GwqH
 method: POST
 name: Create Project
 sortPriority: 0.0

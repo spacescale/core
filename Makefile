@@ -68,11 +68,10 @@ coverage:
 ## Reads values from .env.local.
 ## Required keys:
 ## - BFF_JWT_SECRET
-## - BFF_JWT_GITHUB_ID
+## - BFF_JWT_SUB (format: github:<id>)
 ## Optional keys:
 ## - BFF_JWT_ISSUER (default: spacescale-web-bff)
 ## - BFF_JWT_AUDIENCE (default: spacescale-api)
-## - BFF_JWT_SUB (default: github:<BFF_JWT_GITHUB_ID>)
 ## - BFF_JWT_TTL_SECONDS (default: 3600)
 ## - BFF_JWT_EMAIL, BFF_JWT_NAME, BFF_JWT_AVATAR_URL
 mint:
@@ -83,16 +82,16 @@ mint:
 	const parseEnv=(text)=>{const out={};for(const raw of text.split(/\r?\n/)){const line=raw.trim();if(!line||line.startsWith("#")) continue;const idx=line.indexOf("=");if(idx===-1) continue;const key=line.slice(0,idx).trim();let val=line.slice(idx+1).trim();if(val.startsWith("\"")&&val.endsWith("\"")){val=val.slice(1,-1);}out[key]=val;}return out;}; \
 	const env=parseEnv(fs.readFileSync(envPath,"utf8")); \
 	const secret=(env.BFF_JWT_SECRET||"").trim(); \
-	const githubID=(env.BFF_JWT_GITHUB_ID||"").trim(); \
+	const subject=(env.BFF_JWT_SUB||"").trim(); \
 	if(!secret){console.error("BFF_JWT_SECRET is required in .env.local");process.exit(1);} \
-	if(!githubID){console.error("BFF_JWT_GITHUB_ID is required in .env.local");process.exit(1);} \
+	if(!subject){console.error("BFF_JWT_SUB is required in .env.local");process.exit(1);} \
+	if(!subject.startsWith("github:")||subject.length<8){console.error("BFF_JWT_SUB must use format github:<id>");process.exit(1);} \
 	const issuer=(env.BFF_JWT_ISSUER||"spacescale-web-bff").trim(); \
 	const audience=(env.BFF_JWT_AUDIENCE||"spacescale-api").trim(); \
-	const subject=(env.BFF_JWT_SUB||("github:"+githubID)).trim(); \
 	const ttl=Number(env.BFF_JWT_TTL_SECONDS||"3600"); \
 	if(!Number.isFinite(ttl)||ttl<=0){console.error("BFF_JWT_TTL_SECONDS must be a positive number");process.exit(1);} \
 	const now=Math.floor(Date.now()/1000); \
-	const payload={sub:subject,github_id:githubID,iss:issuer,aud:audience,iat:now,exp:now+ttl}; \
+	const payload={sub:subject,iss:issuer,aud:audience,iat:now,exp:now+ttl}; \
 	if(env.BFF_JWT_EMAIL){payload.email=env.BFF_JWT_EMAIL;} \
 	if(env.BFF_JWT_NAME){payload.name=env.BFF_JWT_NAME;} \
 	if(env.BFF_JWT_AVATAR_URL){payload.avatar_url=env.BFF_JWT_AVATAR_URL;} \
