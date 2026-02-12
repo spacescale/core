@@ -6,9 +6,9 @@
 
 ## Support positional usage: `make goose-create add_users_table`.
 ## Make treats extra words as additional targets, so we:
-## 1) capture the 2nd word as migration name,
-## 2) fail fast when it's missing,
-## 3) register that word as a no-op target to avoid "No rule to make target".
+##  capture the 2nd word as migration name,
+##  fail fast when it's missing,
+##  register that word as a no-op target to avoid "No rule to make target".
 ifneq (,$(filter goose-create,$(MAKECMDGOALS)))
 MIGRATION_NAME := $(word 2,$(MAKECMDGOALS))
 ifeq ($(MIGRATION_NAME),)
