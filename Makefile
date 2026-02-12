@@ -18,7 +18,7 @@ $(eval $(MIGRATION_NAME):;@:)
 endif
 
 test:
-	make compose reset ## removes volume so database tests wont crash
+	make compose-reset ## removes volume so database tests wont crash
 	docker compose -f docker-compose.yaml up --build -d
 	make migrate-up-test
 	cd apps/api && TEST_DATABASE_URL="postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" go test ./... -race -cover
