@@ -22,60 +22,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Pick OpenAI model
-        id: pick-model
-        shell: bash
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPEN_API_KEY }}
-        run: |
-          set -euo pipefail
-
-          preferred="gpt-5.2"
-          fallback="gpt-5-mini"
-
-          status=$(curl -sS -o /tmp/openai-models.json -w "%{http_code}" \
-            https://api.openai.com/v1/models \
-            -H "Authorization: Bearer ${OPENAI_API_KEY}")
-
-          if [ "$status" != "200" ]; then
-            echo "Failed to list OpenAI models (HTTP $status)"
-            cat /tmp/openai-models.json
-            exit 1
-          fi
-
-          if grep -q "\"id\": \"${preferred}\"" /tmp/openai-models.json; then
-            echo "model=openai/${preferred}" >> "$GITHUB_OUTPUT"
-            echo "Using preferred model openai/${preferred}"
-          else
-            echo "model=openai/${fallback}" >> "$GITHUB_OUTPUT"
-            echo "Preferred model unavailable; falling back to openai/${fallback}"
-          fi
-
       - uses: anomalyco/opencode/github@latest
         env:
           OPENAI_API_KEY: ${{ secrets.OPEN_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: ${{ steps.pick-model.outputs.model }}
+          model: openai/gpt-5.2
           use_github_token: true
           prompt: |
-            Review this request from a GitHub comment.
-
-            For PR comments:
-            - Review ONLY the current PR diff and changed files.
-            - Do NOT review the full repository.
-            - Open extra files only when strictly required to understand a changed hunk.
-            - Prioritize correctness, security, regressions, and missing tests.
-
-            PR output constraints:
-            - Keep response under 220 words.
-            - Use at most 8 bullets total.
-            - Each finding must include severity (blocker|warning|nit), file path, and a one-line fix.
-            - If no material issues, reply exactly: "LGTM - no blocking issues in current diff."
-            - If you already commented on this thread, add only new findings (no repetition).
-
-            For issue comments:
-            - Provide a concise implementation plan in 3-5 bullets.
-            - Keep response under 140 words.
-
-            Do not use internet browsing unless explicitly requested in the triggering comment/issue.
+            Review only the current PR diff (or issue comment context).
+            Keep the response concise.
+            For PRs, report blocker/warning issues with file path and one-line fix.
+            If no blocking issue exists, reply exactly: "LGTM - no blocking issues in current diff."
