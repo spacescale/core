@@ -2,57 +2,70 @@ type: http_request
 model: http_request
 id: rq_rrCeBnxzQE
 createdAt: 2026-02-03T04:59:17.161868
-updatedAt: 2026-02-03T05:28:21.143653
+updatedAt: 2026-02-12T02:03:00.000000
 workspaceId: wk_KJF6oyHis3
-folderId: null
+folderId: fl_mN33FWQe9B
 authentication: {}
 authenticationType: null
 body:
-  text: '{}'
+  text: "{}"
 bodyType: application/json
 description: |-
   ## Create Project
-  Creates a new project for the current user. If no name is provided, the server generates one from the `name_words` dictionary and applies a URL-safe slug.
 
-  **Endpoint**: `POST /v0/projects`
+  Create a new project for the authenticated user.
 
-  ### Headers
-  - `X-User-Github-ID` (required): user identity for ownership
+  ### Endpoint
+  - **Method**: `POST`
+  - **Path**: `/v0/projects`
 
-  ### Body (optional)
+  ### Authentication
+  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+  - token must be signed with trusted BFF secret (`BFF_JWT_SECRET`)
+
+  ### Required JWT Claims
+  - `sub`: required and must use `github:<id>` format
+  - `iss`: must match `BFF_JWT_ISSUER` (default `spacescale-web-bff`)
+  - `aud`: must include `BFF_JWT_AUDIENCE` (default `spacescale-api`)
+  - `exp`: must be present and in the future
+
+  Optional claims accepted and carried in principal context:
+  - `email`
+  - `name`
+  - `avatar_url`
+
+  ### Header Contract
+  - `Authorization` (required): `Bearer ${[ BFF_TOKEN ]}`
+  - `Content-Type` (required for JSON body): `application/json`
+
+  ### Body Contract (Optional)
+  Request body may be empty (`{}`), or contain user-provided overrides:
+
   ```json
   {
-    "name": "misty-harbor",
+    "name": "killer instinct",
     "region": "global"
   }
   ```
 
-  If omitted, the server generates a name and defaults `region` to `global`.
+  ### Success Response
+  - **Status**: `201 Created`
+  - **Headers**: includes `Location: /v0/projects/{id}`
 
-  ### Responses
-  - `201 Created`: project created
-  - `400 Bad Request`: invalid input or malformed JSON
-  - `401 Unauthorized`: missing `X-User-Github-ID`
-  - `409 Conflict`: slug collision after retries (rare)
-  - `500 Internal Server Error`: unexpected error
-
-  ### Example
-  ```bash
-  curl -i -X POST "http://localhost:8080/v0/projects"   -H "X-User-Github-ID: 12345"   -H "Content-Type: application/json"   -d '{}'
-  ```
-
-  **Notes**
-  - The response includes a `Location` header: `/v0/projects/{id}`
-  - Project names are auto-generated unless provided.
+  ### Error Responses
+  - `400 Bad Request`: malformed JSON or invalid input
+  - `401 Unauthorized`: missing/invalid bearer token or invalid claims
+  - `409 Conflict`: slug collision after retries
+  - `500 Internal Server Error`: unexpected runtime error
 headers:
-- enabled: true
-  name: X-User-Github-ID
-  value: '12345'
-  id: null
-- enabled: true
-  name: Content-Type
-  value: application/json
-  id: null
+  - enabled: true
+    name: Authorization
+    value: ${[ secure(value=b64'WUVOQ19lVUUwYXpOdVF3SC9JZkJkMmppc1VaRE5kSk4xQ3Vzb2krRXFGTGlzSTd2WFVKNTFHVExYS21FdHRla3VHdFoybFBnd3NlUEZ3MjBJbUdQWk5OM3FxcndyWU5pTW1mdz0') ]}
+    id: htigSCPhis
+  - enabled: true
+    name: Content-Type
+    value: application/json
+    id: NkPDC5GwqH
 method: POST
 name: Create Project
 sortPriority: 0.0

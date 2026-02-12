@@ -4,6 +4,10 @@
 // The request helper standardizes call execution and response body capture,
 // which keeps assertions consistent across endpoint test files.
 // Update this file when test infrastructure changes affect multiple test suites.
+//
+// Test setup note:
+// - Each test builds its own integration server via newTestServer.
+// - This keeps lifecycle easy to understand (setup inside test, defer close).
 
 // Package http_api_test provides shared HTTP test helpers.
 package http_api_test
@@ -18,20 +22,37 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/t0gun/spacescale/internal/http_api"
 	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
 	"github.com/t0gun/spacescale/internal/service"
 )
 
+const (
+	// testJWTSecret/testIssuer/testAudience are test-only auth settings used
+	// both to configure middleware and to mint valid tokens in test requests.
+	testJWTSecret = "test-bff-secret"
+	testIssuer    = "spacescale-web-bff-test"
+	testAudience  = "spacescale-api-test"
+)
+
+// testServer bundles resources needed by integration tests.
+// server handles HTTP requests in-memory and pool connects to real test DB.
 type testServer struct {
 	server *httptest.Server
 	pool   *pgxpool.Pool
 }
 
-// newTestServer creates an integration test server backed by a real database.
-// Tests are skipped when TEST_DATABASE_URL is missing, otherwise storage,
-// service, and HTTP layers are initialized with production-like wiring.
+// testJWTClaims matches claims expected by auth middleware.
+// Subject carries canonical identity in github:<id> format, while
+// RegisteredClaims carries standard iss/aud/exp metadata.
+type testJWTClaims struct {
+	jwt.RegisteredClaims // embedded so claim fields are promoted to this type.
+}
+
+// newTestServer creates one integration server for the calling test.
+// If TEST_DATABASE_URL is missing, the test is skipped.
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
@@ -39,6 +60,7 @@ func newTestServer(t *testing.T) *testServer {
 		t.Skip("TEST_DATABASE_URL not set")
 	}
 
+	// Use timeout-bounded setup so tests fail fast when DB is unavailable.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	pool, err := pgxpool.New(ctx, url)
@@ -50,10 +72,22 @@ func newTestServer(t *testing.T) *testServer {
 		t.Fatalf("ping db: %v", err)
 	}
 
+	// Configure auth middleware for this integration server instance.
+	authCfg := http_api.AuthConfig{
+		JWTSecret: testJWTSecret,
+		Issuer:    testIssuer,
+		Audience:  testAudience,
+	}
+	if err := authCfg.Validate(); err != nil {
+		pool.Close()
+		t.Fatalf("auth config: %v", err)
+	}
+
 	queries := pgstore.New(pool)
 	svc := service.NewProjectService(queries)
-	api := http_api.NewServer(svc)
+	api := http_api.NewServer(svc, authCfg)
 
+	// httptest server exposes in-memory HTTP endpoint for black-box requests.
 	return &testServer{
 		server: httptest.NewServer(api.Router()),
 		pool:   pool,
@@ -72,13 +106,19 @@ func (ts *testServer) close() {
 // returned so assertions can inspect both status and payload.
 func doRequest(t *testing.T, ts *testServer, method, path string, body []byte, headers map[string]string) (*http.Response, []byte) {
 	t.Helper()
+
+	// Build request against test server URL.
 	req, err := http.NewRequest(method, ts.server.URL+path, bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
+
+	// Apply caller-provided headers (auth/content-type/custom headers, etc).
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
+
+	// Execute request and capture full body for assertions.
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("do request: %v", err)
@@ -89,4 +129,34 @@ func doRequest(t *testing.T, ts *testServer, method, path string, body []byte, h
 		t.Fatalf("read body: %v", err)
 	}
 	return resp, data
+}
+
+// authHeaderForGithubID returns a valid bearer token header for integration tests.
+//
+// The token is signed with the same test secret configured in newTestServer,
+// so auth middleware accepts it as a trusted principal.
+//
+// This helper keeps token construction in one place so endpoint tests can focus
+// on request/response assertions instead of JWT plumbing.
+func authHeaderForGithubID(t *testing.T, githubID string) string {
+	t.Helper()
+
+	// Include required registered claims.
+	claims := testJWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    testIssuer,                                           // who created and signed the token. trusted token authority
+			Subject:   "github:" + githubID,                                 // canonical identity the token represents (“who this token belongs to”).
+			Audience:  jwt.ClaimStrings{testAudience},                       // who is this token meant for
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(10 * time.Minute)), // tokens expire in 10 minutes
+			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-1 * time.Minute)), // token issued 1 minute ago
+		},
+	}
+
+	// Sign with HS256 and return in "Authorization: Bearer <token>" format.
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	raw, err := token.SignedString([]byte(testJWTSecret))
+	if err != nil {
+		t.Fatalf("sign auth token: %v", err)
+	}
+	return "Bearer " + raw
 }

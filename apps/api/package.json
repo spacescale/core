@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "go build -v ./...",
-    "dev": "go run ./cmd/api",
+    "dev": "go run .",
     "test": "go test ./... -race -cover",
     "clean": "rm -f coverage.out coverage.html"
   }

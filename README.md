@@ -11,7 +11,7 @@
 This repo uses [Turborepo](https://turbo.build/) for workspace orchestration. Local infrastructure and migration
 workflows are handled from the root `Makefile`.
 
-### Prerequisites
+##### Prerequisites
 
 - Go `1.25+`
 - Node.js `22+`
@@ -21,15 +21,15 @@ workflows are handled from the root `Makefile`.
 - `sqlc`  for query/codegen workflows
 
 
-### API and DB - Uses Makefile 
+##### API and DB - Uses Makefile 
 Here are some few Targets
 ```bash
 make compose-up # starts container
-make migrate-up
-make goose-create <migration_name>
+make migrate-up # run migrations
+make goose-create <migration_name> # give the makefile a look for complete targets
 ```
 
-## Turbo repo orchestrates web and API services
+##### Turbo repo orchestrates web and API services
 ```bash
 pnpm install
 pnpm dev

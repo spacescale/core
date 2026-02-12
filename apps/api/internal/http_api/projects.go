@@ -1,10 +1,16 @@
 // This file contains transport models and handler logic for project creation.
 // It defines the request and response JSON shapes used by POST /v0/projects and
-// translates HTTP concerns into service-layer calls.
-// Responsibilities here include auth header extraction, request decoding,
-// service error-to-status mapping, and response serialization.
-// Keep business rules out of this file; those belong in service/project.go so
-// HTTP code remains thin and focused on protocol behavior.
+// translates HTTP protocol concerns into service-layer calls.
+//
+// Responsibilities in this file:
+// - Read authenticated principal from request context (set by auth middleware).
+// - Decode and validate JSON request transport shape.
+// - Map service-level errors to stable HTTP status codes and API messages.
+// - Serialize successful responses with API-facing field names and formats.
+//
+// Responsibilities intentionally NOT in this file:
+// - Business rules, validation defaults, slug generation, and persistence rules.
+//   Those stay in service/project.go so HTTP handlers remain thin and predictable.
 
 // Package http_api provides HTTP handlers for the API.
 package http_api
@@ -13,19 +19,25 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/t0gun/spacescale/internal/service"
 )
 
-// createProjectRequest is the optional payload for project creation.
+// createProjectRequest is the optional request payload for project creation.
+// Both fields are optional; missing values are defaulted in the service layer.
+// Keeping transport model optional allows clients to create projects with "{}".
 type createProjectRequest struct {
-	Name   string `json:"name"`
+	// Name is an optional project display name from the client.
+	// When empty, the service may generate a fallback name.
+	Name string `json:"name"`
+	// Region is an optional project region override from the client.
+	// When empty, the service applies its default region.
 	Region string `json:"region"`
 }
 
-// createProjectResponse is the project payload returned to clients.
+// createProjectResponse is the API payload returned on successful creation.
+// Time fields are serialized as RFC3339 strings to keep JSON stable for clients.
 type createProjectResponse struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -35,17 +47,37 @@ type createProjectResponse struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
-// handleCreateProject handles project creation for the authenticated user.
-// It reads the GitHub identity from request headers, accepts an optional JSON
-// payload, and delegates business rules to the service layer.
-// Service outcomes are mapped to stable HTTP status codes before returning the
-// created project payload and a Location header.
+// handleCreateProject creates a new project for the currently authenticated user.
+//
+// Request lifecycle in this handler:
+// - Read AuthPrincipal from request context (set by auth middleware).
+// - Decode optional JSON body into the transport request model.
+// - Delegate project creation business logic to ProjectService.
+// - Map service errors to stable API status codes/messages.
+// - Return 201 Created with Location header and response payload.
+//
+// Authentication contract:
+// - This handler trusts only context principal inserted by middleware.
+// - If principal is missing, request is treated as unauthorized.
+//
+// JSON contract:
+// - Empty request body is allowed and interpreted as default creation.
+// - Malformed JSON returns 400 "invalid json".
+//
+// Error mapping contract:
+// - service.ErrInvalidInput => 400 "invalid input"
+// - service.ErrConflict => 409 "conflict"
+// - any other error => 500 "internal error"
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
-	githubID := strings.TrimSpace(r.Header.Get("X-User-Github-ID"))
-	if githubID == "" {
+	// Ensure auth middleware provided a trusted principal.
+	principal, ok := principalFromContext(r.Context())
+	if !ok {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+
+	// Decode optional request payload.
+	// An empty body is valid and means "create with service defaults".
 	var req createProjectRequest
 	if err := readJSON(r, &req); err != nil {
 		if errors.Is(err, io.EOF) {
@@ -55,10 +87,14 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	project, err := s.svc.CreateProject(r.Context(), githubID, service.CreateProjectParams{
+
+	// Delegate business behavior to service layer.
+	project, err := s.svc.CreateProject(r.Context(), principal.GithubID, service.CreateProjectParams{
 		Name:   req.Name,
 		Region: req.Region,
 	})
+
+	// Convert service errors into stable HTTP API responses.
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidInput) {
 			writeErr(w, http.StatusBadRequest, "invalid input")
@@ -71,6 +107,8 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+
+	// Return resource location and serialized payload.
 	w.Header().Set("Location", "/v0/projects/"+project.ID)
 	writeJSON(w, http.StatusCreated, createProjectResponse{
 		ID:        project.ID,
