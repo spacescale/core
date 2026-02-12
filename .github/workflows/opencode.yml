@@ -27,7 +27,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPEN_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: openai/gpt-5.3-codex
+          model: openai/gpt-5.2
           use_github_token: true
           prompt: |
             Review only the current PR diff (or issue comment context).
