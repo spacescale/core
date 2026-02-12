@@ -165,7 +165,7 @@ func authMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 // - Validate token signature against configured secret and algorithm.
 // - Enforce standard claim requirements (issuer, audience, time validity).
 // - Ensure required identity claims exist before principal construction.
-//
+// - checks github id matches subject
 // Return behavior:
 // - On success, returns fully validated claims ready for middleware use.
 // - On failure, returns an auth-safe error indicating token is invalid.
@@ -194,6 +194,17 @@ func parseAndValidateClaims(tokenString string, cfg AuthConfig) (*bffClaims, err
 		return nil, errInvalidToken
 	}
 	if strings.TrimSpace(claims.Subject) == "" || strings.TrimSpace(claims.GithubID) == "" {
+		return nil, errInvalidToken
+	}
+	sub := strings.TrimSpace(claims.Subject)
+	githubID := strings.TrimSpace(claims.GithubID)
+	// Both claims are required.
+	if sub == "" || githubID == "" {
+		return nil, errInvalidToken
+	}
+	// Enforce association: sub must match github_id.
+	expectedSub := "github:" + githubID
+	if sub != expectedSub {
 		return nil, errInvalidToken
 	}
 	return claims, nil
