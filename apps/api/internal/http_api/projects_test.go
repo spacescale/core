@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 type projectResponse struct {
@@ -36,37 +38,25 @@ func TestCreateProjectDefaults(t *testing.T) {
 	defer ts.close()
 
 	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", []byte(`{}`), map[string]string{
-		"X-User-Github-ID": "12345",
-		"Content-Type":     "application/json",
+		"Authorization": authHeaderForGithubID(t, "12345"),
+		"Content-Type":  "application/json",
 	})
 
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("expected status 201, got %d: %s", resp.StatusCode, string(data))
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, string(data))
 
 	var out projectResponse
-	if err := json.Unmarshal(data, &out); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if out.ID == "" || out.Name == "" || out.Slug == "" {
-		t.Fatalf("missing required fields: %+v", out)
-	}
-	if out.Region != "global" {
-		t.Fatalf("expected region global, got %q", out.Region)
-	}
-	if out.Name != out.Slug {
-		t.Fatalf("expected name and slug to match, got %q and %q", out.Name, out.Slug)
-	}
-	if resp.Header.Get("Location") == "" {
-		t.Fatalf("expected Location header")
-	}
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.NotEmpty(t, out.ID)
+	require.NotEmpty(t, out.Name)
+	require.NotEmpty(t, out.Slug)
+	require.Equal(t, "global", out.Region)
+	require.Equal(t, out.Name, out.Slug)
+	require.NotEmpty(t, resp.Header.Get("Location"))
 
-	if _, err := time.Parse(time.RFC3339, out.CreatedAt); err != nil {
-		t.Fatalf("invalid createdAt: %v", err)
-	}
-	if _, err := time.Parse(time.RFC3339, out.UpdatedAt); err != nil {
-		t.Fatalf("invalid updatedAt: %v", err)
-	}
+	_, err := time.Parse(time.RFC3339, out.CreatedAt)
+	require.NoError(t, err)
+	_, err = time.Parse(time.RFC3339, out.UpdatedAt)
+	require.NoError(t, err)
 }
 
 // TestCreateProjectOverrides verifies explicit request values are preserved.
@@ -78,24 +68,17 @@ func TestCreateProjectOverrides(t *testing.T) {
 
 	body := []byte(`{"name":"misty-harbor","region":"global"}`)
 	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", body, map[string]string{
-		"X-User-Github-ID": "12345",
-		"Content-Type":     "application/json",
+		"Authorization": authHeaderForGithubID(t, "12345"),
+		"Content-Type":  "application/json",
 	})
 
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("expected status 201, got %d: %s", resp.StatusCode, string(data))
-	}
+	require.Equal(t, http.StatusCreated, resp.StatusCode, string(data))
 
 	var out projectResponse
-	if err := json.Unmarshal(data, &out); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if out.Name != "misty-harbor" || out.Slug != "misty-harbor" {
-		t.Fatalf("unexpected name/slug: %+v", out)
-	}
-	if out.Region != "global" {
-		t.Fatalf("expected region global, got %q", out.Region)
-	}
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Equal(t, "misty-harbor", out.Name)
+	require.Equal(t, "misty-harbor", out.Slug)
+	require.Equal(t, "global", out.Region)
 }
 
 // TestCreateProjectMissingHeader verifies authentication header enforcement.
@@ -109,15 +92,11 @@ func TestCreateProjectMissingHeader(t *testing.T) {
 		"Content-Type": "application/json",
 	})
 
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("expected status 401, got %d: %s", resp.StatusCode, string(data))
-	}
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
 
 	var out errorResponse
-	_ = json.Unmarshal(data, &out)
-	if out.Error == "" {
-		t.Fatalf("expected error response")
-	}
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.NotEmpty(t, out.Error)
 }
 
 // TestCreateProjectInvalidJSON verifies malformed JSON handling.
@@ -128,17 +107,13 @@ func TestCreateProjectInvalidJSON(t *testing.T) {
 	defer ts.close()
 
 	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", []byte("{"), map[string]string{
-		"X-User-Github-ID": "12345",
-		"Content-Type":     "application/json",
+		"Authorization": authHeaderForGithubID(t, "12345"),
+		"Content-Type":  "application/json",
 	})
 
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected status 400, got %d: %s", resp.StatusCode, string(data))
-	}
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, string(data))
 
 	var out errorResponse
-	_ = json.Unmarshal(data, &out)
-	if out.Error == "" {
-		t.Fatalf("expected error response")
-	}
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.NotEmpty(t, out.Error)
 }

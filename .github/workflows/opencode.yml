@@ -1,18 +1,15 @@
 name: opencode
 
 on:
-  issues:
-    types: [opened]
   issue_comment:
     types: [created]
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review_comment:
+    types: [created]
 
 jobs:
   opencode:
     if: >-
-      ${{ github.event_name != 'issue_comment' ||
-        contains(github.event.comment.body, '/oc') ||
+      ${{ contains(github.event.comment.body, '/oc') ||
         contains(github.event.comment.body, '/opencode') }}
     runs-on: ubuntu-latest
     permissions:
@@ -27,17 +24,13 @@ jobs:
 
       - uses: anomalyco/opencode/github@latest
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPEN_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: anthropic/claude-opus-4-6
+          model: openai/gpt-5.2
           use_github_token: true
           prompt: |
-            Auto-review this PR or issue. 
-            For PRs: always provide concise extended description i can use for merging after review.
-            For Issues: provide recommendation on how to break problems down concisely.
-            Both PR and Issues: use the internet to verify your responses are up to date.
-            Both PR and Issues: if you have commented before on that trend, your next comment should be 
-            an addition and continuation of the conversation not repeating the same and it it should be concise too 
-            
-            
+            Review only the current PR diff (or issue comment context).
+            Keep the response concise.
+            For PRs, report blocker/warning issues with file path and one-line fix.
+            If no blocking issue exists, reply exactly: "LGTM - no blocking issues in current diff."

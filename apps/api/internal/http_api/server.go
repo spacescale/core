@@ -16,20 +16,24 @@ import (
 	"github.com/t0gun/spacescale/internal/service"
 )
 
-// Server wires HTTP handlers to the project service.
+// Server wires HTTP handlers to service dependencies and auth configuration.
 type Server struct {
-	svc *service.ProjectService
+	svc     *service.ProjectService
+	authCfg AuthConfig
 }
 
 // NewServer creates a Server bound to the provided project service.
 // Keeping wiring here makes dependencies explicit for startup and tests.
-func NewServer(svc *service.ProjectService) *Server {
-	return &Server{svc: svc}
+func NewServer(svc *service.ProjectService, authCfg AuthConfig) *Server {
+	return &Server{
+		svc:     svc,
+		authCfg: authCfg,
+	}
 }
 
 // Router builds the full HTTP router and middleware stack.
 // It registers health and versioned API routes, then applies request-level
-// middleware for traceability, logging, and panic recovery.
+// middleware for traceability, logging, panic recovery, and authentication.
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 
@@ -45,6 +49,7 @@ func (s *Server) Router() http.Handler {
 	})
 
 	r.Route("/v0", func(r chi.Router) {
+		r.Use(authMiddleware(s.authCfg))
 		r.Post("/projects", s.handleCreateProject)
 	})
 
