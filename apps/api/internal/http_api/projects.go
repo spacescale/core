@@ -109,7 +109,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return resource location and serialized payload.
-	w.Header().Set("Location", "/v0/projects/"+project.ID)
+	w.Header().Set("Location", "/v0/projects/"+url.PathEscape(project.ID))
 	writeJSON(w, http.StatusCreated, createProjectResponse{
 		ID:        project.ID,
 		Name:      project.Name,
