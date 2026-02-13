@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -31,21 +32,21 @@ import (
 // within a bounded timeout for graceful termination.
 func main() {
 	// Read runtime config with a sensible default listen address.
-	addr := env("ADDR", ":8080")
-	databaseURL := env("DATABASE_URL", "")
+	addr := envStr("ADDR", ":8080")
+	databaseURL := envStr("DATABASE_URL", "")
 	if databaseURL == "" {
 		log.Fatal("DATABASE_URL is required")
 	}
 
-	bffJWTSecret := env("BFF_JWT_SECRET", "")
+	bffJWTSecret := envStr("BFF_JWT_SECRET", "")
 	if bffJWTSecret == "" {
 		log.Fatal("BFF_JWT_SECRET is required")
 	}
 
 	authCfg := http_api.AuthConfig{
 		JWTSecret: bffJWTSecret,
-		Issuer:    env("BFF_JWT_ISSUER", "spacescale-web-bff"), // which issuer should I trust?
-		Audience:  env("BFF_JWT_AUDIENCE", "spacescale-api"),   // expected audience
+		Issuer:    envStr("BFF_JWT_ISSUER", "spacescale-web-bff"), // which issuer should I trust?
+		Audience:  envStr("BFF_JWT_AUDIENCE", "spacescale-api"),   // expected audience
 	}
 	if err := authCfg.Validate(); err != nil {
 		log.Fatalf("auth config: %v", err)
@@ -94,12 +95,24 @@ func main() {
 	_ = srv.Shutdown(ctx)
 }
 
-// env returns an environment variable or a default value.
+// envStr returns a string environment variable or a default value.
 // It keeps configuration lookups concise at call sites and ensures defaults are
 // explicit near startup logic.
-func env(key, def string) string {
+func envStr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return def
+}
+
+// envInt returns a string environment variable or a default value.
+// It keeps configuration lookups concise at call sites and ensures defaults are
+// explicit near startup logic.
+func envInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		} // convert env number to int
 	}
 	return def
 }
@@ -112,6 +125,12 @@ func openDB(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, err
 	}
+	// tune connections
+	cfg.MaxConns = int32(envInt("DB_MAX_CONNS", 20))
+	cfg.MinConns = int32(envInt("DB_MIN_CONNS", 10))
+	cfg.MaxConnLifetime = time.Hour
+	cfg.MaxConnIdleTime = 30 * time.Minute // close idle connections after 30 minutes
+
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
