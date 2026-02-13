@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/t0gun/spacescale/internal/service"
 )
 
@@ -20,14 +21,16 @@ import (
 type Server struct {
 	svc     *service.ProjectService
 	authCfg AuthConfig
+	dbPool  *pgxpool.Pool
 }
 
 // NewServer creates a Server bound to the provided project service.
 // Keeping wiring here makes dependencies explicit for startup and tests.
-func NewServer(svc *service.ProjectService, authCfg AuthConfig) *Server {
+func NewServer(svc *service.ProjectService, authCfg AuthConfig, dbPool *pgxpool.Pool) *Server {
 	return &Server{
 		svc:     svc,
 		authCfg: authCfg,
+		dbPool:  dbPool,
 	}
 }
 
@@ -45,6 +48,9 @@ func (s *Server) Router() http.Handler {
 
 	// Health check route.
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		if err := s.dbPool.Ping(r.Context()); err != nil { // check database connectivity
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
 		w.WriteHeader(http.StatusOK)
 	})
 
