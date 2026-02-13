@@ -28,6 +28,13 @@
     --input: 220 24% 20%;
     --ring: 239 84% 67%;
     --radius: 0.5rem;
+
+    /* Glass morphism tokens (dark values — marketing is always dark) */
+    --glass-bg: 0 0% 100% / 0.015;
+    --glass-border: 0 0% 100% / 0.06;
+    --glass-blur: 12px;
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    --glow-primary: rgba(99, 102, 241, 0.2);
   }
 
   * {
@@ -143,6 +150,14 @@
   .grid-mask {
     mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
     -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+  }
+
+  .glass {
+    background: hsl(var(--glass-bg));
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid hsl(var(--glass-border));
+    box-shadow: var(--glass-shadow);
   }
 }
 

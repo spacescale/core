@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Badge } from "@spacescale/ui";
 import { MarketingShell } from "@/components/marketing-shell";
 
 export const metadata: Metadata = {
@@ -77,9 +78,9 @@ export default function PricingPage() {
             <div className="mb-4 flex items-baseline justify-between">
               <h2 className="text-xl font-medium text-white">{plan.name}</h2>
               {plan.featured ? (
-                <span className="rounded-full border border-indigo-400/40 bg-indigo-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-300">
+                <Badge variant="deploying" className="rounded-full border-indigo-400/40 bg-indigo-500/15 text-[10px] text-indigo-300">
                   Most Popular
-                </span>
+                </Badge>
               ) : null}
             </div>
             <p className="mb-3 text-3xl font-[200] tracking-tight text-off-white">
