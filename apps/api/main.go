@@ -108,12 +108,22 @@ func envStr(key, def string) string {
 // parseEnvInt32 parses an environment variable as int32 with a default fallback.
 // Returns default if env var is empty, invalid, or out of int32 range.
 func parseEnvInt32(key string, def int32) int32 {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 32); err == nil {
-			return int32(n)
-		}
+	const (
+		int32Max = int64(^uint32(0) >> 1) // 2147483647
+		int32Min = -int32Max - 1          // -2147483648
+	)
+	v := os.Getenv(key)
+	if v == "" {
+		return def
 	}
-	return def
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return def
+	}
+	if n < int32Min || n > int32Max {
+		return def
+	}
+	return int32(n)
 }
 
 // openDB opens a pgx pool and verifies it with a ping.
