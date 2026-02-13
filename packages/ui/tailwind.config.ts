@@ -3,10 +3,7 @@ import type { Config } from "tailwindcss";
 const config: Config = {
   darkMode: ["class"],
   content: [
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/lib/**/*.{js,ts,jsx,tsx,mdx}",
-    "../../packages/ui/src/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
@@ -58,6 +55,9 @@ const config: Config = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      backdropBlur: {
+        xs: "2px",
+      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
@@ -71,11 +71,35 @@ const config: Config = {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.7" },
         },
+        "status-ping": {
+          "75%, 100%": { transform: "scale(2)", opacity: "0" },
+        },
+        "shimmer": {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
+        },
+        "progress-fill": {
+          from: { width: "0%" },
+          to: { width: "var(--progress-value)" },
+        },
+        "fade-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+        "slide-in-up": {
+          from: { opacity: "0", transform: "translateY(4px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "pulse-subtle": "pulse-subtle 2s ease-in-out infinite",
+        "status-ping": "status-ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite",
+        "shimmer": "shimmer 2s linear infinite",
+        "progress-fill": "progress-fill 1s ease-out forwards",
+        "fade-in": "fade-in 0.3s ease-out",
+        "slide-in-up": "slide-in-up 0.3s ease-out",
       },
     },
   },
