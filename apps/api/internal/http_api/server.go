@@ -50,6 +50,7 @@ func (s *Server) Router() http.Handler {
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := s.dbPool.Ping(r.Context()); err != nil { // check database connectivity
 			w.WriteHeader(http.StatusServiceUnavailable)
+			return
 		}
 		w.WriteHeader(http.StatusOK)
 	})
