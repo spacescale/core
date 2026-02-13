@@ -1,4 +1,6 @@
 name: marketing
+permissions:
+  contents: read
 
 on:
   push:
