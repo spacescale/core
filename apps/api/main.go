@@ -105,14 +105,13 @@ func envStr(key, def string) string {
 	return def
 }
 
-// envInt returns a string environment variable or a default value.
-// It keeps configuration lookups concise at call sites and ensures defaults are
-// explicit near startup logic.
-func envInt(key string, def int) int {
+// parseEnvInt32 parses an environment variable as int32 with a default fallback.
+// Returns default if env var is empty, invalid, or out of int32 range.
+func parseEnvInt32(key string, def int32) int32 {
 	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		} // convert env number to int
+		if n, err := strconv.ParseInt(v, 10, 32); err == nil {
+			return int32(n)
+		}
 	}
 	return def
 }
@@ -126,8 +125,8 @@ func openDB(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 	// tune connections
-	cfg.MaxConns = int32(envInt("DB_MAX_CONNS", 20))
-	cfg.MinConns = int32(envInt("DB_MIN_CONNS", 10))
+	cfg.MaxConns = parseEnvInt32("DB_MAX_CONNS", 20)
+	cfg.MinConns = parseEnvInt32("DB_MIN_CONNS", 5)
 	cfg.MaxConnLifetime = time.Hour
 	cfg.MaxConnIdleTime = 30 * time.Minute // close idle connections after 30 minutes
 
