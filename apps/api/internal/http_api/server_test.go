@@ -85,7 +85,7 @@ func newTestServer(t *testing.T) *testServer {
 
 	queries := pgstore.New(pool)
 	svc := service.NewProjectService(queries)
-	api := http_api.NewServer(svc, authCfg)
+	api := http_api.NewServer(svc, authCfg, pool)
 
 	// httptest server exposes in-memory HTTP endpoint for black-box requests.
 	return &testServer{

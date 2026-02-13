@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -31,21 +32,21 @@ import (
 // within a bounded timeout for graceful termination.
 func main() {
 	// Read runtime config with a sensible default listen address.
-	addr := env("ADDR", ":8080")
-	databaseURL := env("DATABASE_URL", "")
+	addr := envStr("ADDR", ":8080")
+	databaseURL := envStr("DATABASE_URL", "")
 	if databaseURL == "" {
 		log.Fatal("DATABASE_URL is required")
 	}
 
-	bffJWTSecret := env("BFF_JWT_SECRET", "")
+	bffJWTSecret := envStr("BFF_JWT_SECRET", "")
 	if bffJWTSecret == "" {
 		log.Fatal("BFF_JWT_SECRET is required")
 	}
 
 	authCfg := http_api.AuthConfig{
 		JWTSecret: bffJWTSecret,
-		Issuer:    env("BFF_JWT_ISSUER", "spacescale-web-bff"), // which issuer should I trust?
-		Audience:  env("BFF_JWT_AUDIENCE", "spacescale-api"),   // expected audience
+		Issuer:    envStr("BFF_JWT_ISSUER", "spacescale-web-bff"), // which issuer should I trust?
+		Audience:  envStr("BFF_JWT_AUDIENCE", "spacescale-api"),   // expected audience
 	}
 	if err := authCfg.Validate(); err != nil {
 		log.Fatalf("auth config: %v", err)
@@ -60,7 +61,7 @@ func main() {
 	queries := pgstore.New(dbPool)
 
 	svc := service.NewProjectService(queries)
-	api := http_api.NewServer(svc, authCfg)
+	api := http_api.NewServer(svc, authCfg, dbPool)
 
 	// Apply a read-header timeout to reduce exposure to slowloris-style abuse.
 	srv := &http.Server{
@@ -94,14 +95,35 @@ func main() {
 	_ = srv.Shutdown(ctx)
 }
 
-// env returns an environment variable or a default value.
+// envStr returns a string environment variable or a default value.
 // It keeps configuration lookups concise at call sites and ensures defaults are
 // explicit near startup logic.
-func env(key, def string) string {
+func envStr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
 	return def
+}
+
+// parseEnvInt32 parses an environment variable as int32 with a default fallback.
+// Returns default if env var is empty, invalid, or out of int32 range.
+func parseEnvInt32(key string, def int32) int32 {
+	const (
+		int32Max = int64(^uint32(0) >> 1) // 2147483647
+		int32Min = -int32Max - 1          // -2147483648
+	)
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return def
+	}
+	if n < int32Min || n > int32Max {
+		return def
+	}
+	return int32(n)
 }
 
 // openDB opens a pgx pool and verifies it with a ping.
@@ -112,6 +134,12 @@ func openDB(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, err
 	}
+	// tune connections
+	cfg.MaxConns = parseEnvInt32("DB_MAX_CONNS", 20)
+	cfg.MinConns = parseEnvInt32("DB_MIN_CONNS", 5)
+	cfg.MaxConnLifetime = time.Hour
+	cfg.MaxConnIdleTime = 30 * time.Minute // close idle connections after 30 minutes
+
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
