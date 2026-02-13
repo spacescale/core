@@ -61,7 +61,7 @@ func main() {
 	queries := pgstore.New(dbPool)
 
 	svc := service.NewProjectService(queries)
-	api := http_api.NewServer(svc, authCfg)
+	api := http_api.NewServer(svc, authCfg, dbPool)
 
 	// Apply a read-header timeout to reduce exposure to slowloris-style abuse.
 	srv := &http.Server{
