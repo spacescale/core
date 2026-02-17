@@ -9,7 +9,9 @@
 package http_api
 
 import (
+	"crypto/subtle"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -21,18 +23,20 @@ import (
 
 // Server wires HTTP handlers to service dependencies and auth configuration.
 type Server struct {
-	svc     *service.ProjectService
-	authCfg AuthConfig
-	dbPool  *pgxpool.Pool
+	svc                *service.ProjectService
+	authCfg            AuthConfig
+	dbPool             *pgxpool.Pool
+	internalAuthSecret string
 }
 
 // NewServer creates a Server bound to the provided project service.
 // Keeping wiring here makes dependencies explicit for startup and tests.
-func NewServer(svc *service.ProjectService, authCfg AuthConfig, dbPool *pgxpool.Pool) *Server {
+func NewServer(svc *service.ProjectService, authCfg AuthConfig, dbPool *pgxpool.Pool, internalAuthSecret string) *Server {
 	return &Server{
-		svc:     svc,
-		authCfg: authCfg,
-		dbPool:  dbPool,
+		svc:                svc,
+		authCfg:            authCfg,
+		dbPool:             dbPool,
+		internalAuthSecret: internalAuthSecret,
 	}
 }
 
@@ -68,6 +72,11 @@ func (s *Server) Router() http.Handler {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	r.Route("/v0/internal", func(r chi.Router) {
+		r.Use(internalAuthMiddleware(s.internalAuthSecret))
+		r.Post("/auth-sync", s.handleSyncAuthUser)
+	})
+
 	r.Route("/v0", func(r chi.Router) {
 		r.Use(authMiddleware(s.authCfg))
 		r.Use(userLimiter)
@@ -96,4 +105,31 @@ func keyByGithubID(r *http.Request) (string, error) {
 		return "github:unknown", nil
 	}
 	return "github:" + p.GithubID, nil
+}
+
+// internalAuthMiddleware protects trusted internal endpoints with a shared
+// secret header.
+//
+// The middleware expects header "X-Internal-Auth" and compares it using
+// constant-time equality. Requests with missing or incorrect secrets receive
+// an unauthorized response.
+func internalAuthMiddleware(expectedSecret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			expected := strings.TrimSpace(expectedSecret)
+			provided := strings.TrimSpace(r.Header.Get("X-Internal-Auth"))
+
+			if expected == "" || provided == "" {
+				writeErr(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+
+			if subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) != 1 {
+				writeErr(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }

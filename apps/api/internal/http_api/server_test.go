@@ -32,9 +32,10 @@ import (
 const (
 	// testJWTSecret/testIssuer/testAudience are test-only auth settings used
 	// both to configure middleware and to mint valid tokens in test requests.
-	testJWTSecret = "test-bff-secret"
-	testIssuer    = "spacescale-web-bff-test"
-	testAudience  = "spacescale-api-test"
+	testJWTSecret          = "test-bff-secret"
+	testIssuer             = "spacescale-web-bff-test"
+	testAudience           = "spacescale-api-test"
+	testInternalAuthSecret = "test-internal-secret"
 )
 
 // testServer bundles resources needed by integration tests.
@@ -85,7 +86,7 @@ func newTestServer(t *testing.T) *testServer {
 
 	queries := pgstore.New(pool)
 	svc := service.NewProjectService(queries)
-	api := http_api.NewServer(svc, authCfg, pool)
+	api := http_api.NewServer(svc, authCfg, pool, testInternalAuthSecret)
 
 	// httptest server exposes in-memory HTTP endpoint for black-box requests.
 	return &testServer{

@@ -52,6 +52,11 @@ func main() {
 		log.Fatalf("auth config: %v", err)
 	}
 
+	internalAuthSyncSecret := envStr("INTERNAL_AUTH_SYNC_SECRET", "")
+	if internalAuthSyncSecret == "" {
+		log.Fatal("INTERNAL_AUTH_SYNC_SECRET is required")
+	}
+
 	// Open a pgx connection pool and verify connectivity up front.
 	dbPool, err := openDB(context.Background(), databaseURL)
 	if err != nil {
@@ -61,7 +66,7 @@ func main() {
 	queries := pgstore.New(dbPool)
 
 	svc := service.NewProjectService(queries)
-	api := http_api.NewServer(svc, authCfg, dbPool)
+	api := http_api.NewServer(svc, authCfg, dbPool, internalAuthSyncSecret)
 
 	// Apply a read-header timeout to reduce exposure to slowloris-style abuse.
 	srv := &http.Server{
