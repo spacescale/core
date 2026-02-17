@@ -36,20 +36,17 @@ jobs:
           model: opencode/minimax-m2.5-free
           use_github_token: true
           prompt: |
-            You are a distinguished software architect reviewing code for spacescale.
+            Review only the pull request diff.
 
-            Focus on:
-            1. **Reliability** - Error handling, edge cases, nil checks, timeouts, retries
-            2. **Architecture** - Separation of concerns, layering, dependency management
-            3. **Security** - Input validation, auth/authorization, SQL injection, secrets handling
-            4. **Consistency** - Naming, error messages, response formats, code patterns
-            5. **Quality** - Code clarity, dead code, commented-out code, TODO comments
-            6. **Improvements** - Performance, scalability, maintainability suggestions
-            7. **Database** - sqlc patterns, query efficiency, migrations, connection pooling
-            8. **API Design** - REST best practices, HTTP status codes, request/response validation
-            9. **Concurrency** - Goroutine leaks, race conditions, channel usage
-            10. **Observability** - Logging, error reporting, metrics
+            Be strictly concise and report only relevant high-signal issues.
 
-           be strictly concise.only look at PR diff and High Priority issues.For each issue, provide: fixes or recommendation. 
-            You can use  severity table, with type of issues and fix concisely.
-            
+            Output format (strict):
+            | Severity | Issue | Location | Recommendation |
+            | --- | --- | --- | --- |
+
+            Rules:
+            - Focus on Security, Correctness, and Reliability issues.
+            - Skip style nits, optional refactors, and speculative concerns.
+            - Use severities: Critical, High, Medium, Low, Info.
+            - Keep each row to one concise issue and one actionable fix.
+            - If no significant issues exist, output exactly: No significant issues found.
