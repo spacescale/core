@@ -87,6 +87,7 @@ func main() {
 		Addr:              addr,
 		Handler:           limitedHandler,
 		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Start serving in the background so the main goroutine can block on signals.
