@@ -179,10 +179,6 @@ func readRateLimitConfig() http_api.RateLimitConfig {
 		Window:   parseEnvDuration("API_USER_RATE_LIMIT_WINDOW", defaults.Window),
 	}
 
-	if cfg.Requests <= 0 {
-		cfg.Requests = defaults.Requests
-	}
-
 	return cfg
 }
 
