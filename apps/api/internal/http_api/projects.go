@@ -109,6 +109,13 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enrich request-scoped access logging metadata with the created project id.
+	// Access logs are emitted by outer middleware after this handler returns, so
+	// writing project id here allows the completion log to include project_id.
+	if lc, ok := logContextFromContext(r.Context()); ok {
+		lc.ProjectID = project.ID
+	}
+
 	// Return resource location and serialized payload.
 	w.Header().Set("Location", "/v0/projects/"+url.PathEscape(project.ID))
 	writeJSON(w, http.StatusCreated, createProjectResponse{

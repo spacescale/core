@@ -11,7 +11,7 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -25,22 +25,32 @@ import (
 	"github.com/t0gun/spacescale/internal/service"
 )
 
+const (
+	// maxBodyBytes caps request body size at 1 MiB for all API endpoints.
+	// This prevents very large payloads from exhausting server resources.
+	maxBodyBytes int64 = 1 << 20
+)
+
 // main starts the API server and waits for a shutdown signal.
 // Startup performs configuration loading, database initialization, service and
 // router wiring, and HTTP server launch.
 // Shutdown listens for process signals and allows in-flight requests to finish
 // within a bounded timeout for graceful termination.
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
 	// Read runtime config with a sensible default listen address.
 	addr := envStr("ADDR", ":8080")
 	databaseURL := envStr("DATABASE_URL", "")
 	if databaseURL == "" {
-		log.Fatal("DATABASE_URL is required")
+		logger.Error("missing required config", "event", "startup_error", "key", "DATABASE_URL")
+		os.Exit(1)
 	}
 
 	bffJWTSecret := envStr("BFF_JWT_SECRET", "")
 	if bffJWTSecret == "" {
-		log.Fatal("BFF_JWT_SECRET is required")
+		logger.Error("missing required config", "event", "startup_error", "key", "BFF_JWT_SECRET")
+		os.Exit(1)
 	}
 
 	authCfg := http_api.AuthConfig{
@@ -49,33 +59,43 @@ func main() {
 		Audience:  envStr("BFF_JWT_AUDIENCE", "spacescale-api"),   // expected audience
 	}
 	if err := authCfg.Validate(); err != nil {
-		log.Fatalf("auth config: %v", err)
+		logger.Error("invalid auth config", "event", "startup_error", "error", err)
+		os.Exit(1)
 	}
+	rateLimitCfg := readRateLimitConfig()
 
 	// Open a pgx connection pool and verify connectivity up front.
 	dbPool, err := openDB(context.Background(), databaseURL)
 	if err != nil {
-		log.Fatalf("database init: %v", err)
+		logger.Error("database init failed", "event", "startup_error", "error", err)
+		os.Exit(1)
 	}
 	defer dbPool.Close()
 	queries := pgstore.New(dbPool)
 
 	svc := service.NewProjectService(queries)
-	api := http_api.NewServer(svc, authCfg, dbPool)
+	api := http_api.NewServer(svc, authCfg, dbPool, rateLimitCfg)
+	// Wrap the router with a global body-size limiter so body reads beyond this
+	// cap fail fast and handlers never process unbounded payloads.
+	limitedHandler := http.MaxBytesHandler(api.Router(), maxBodyBytes)
 
-	// Apply a read-header timeout to reduce exposure to slowloris-style abuse.
+	// Apply server-level request bounds to reduce exposure to abuse patterns.
+	// - ReadHeaderTimeout limits how long clients may spend sending headers.
+	// - We intentionally rely on net/http default MaxHeaderBytes (1 MiB).
+	// - limitedHandler limits total request body size.
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           api.Router(),
+		Handler:           limitedHandler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	// Start serving in the background so the main goroutine can block on signals.
 	go func() {
-		log.Printf("api listening on %s ", addr)
+		logger.Info("api listening", "event", "startup", "addr", addr)
 		// ListenAndServe returns on startup failure or after Shutdown is called.
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("listen: %v", err)
+			logger.Error("listen failed", "event", "runtime_error", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -90,7 +110,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	log.Printf("shutting down...")
+	logger.Info("shutting down", "event", "shutdown")
 	// Stop accepting new connections and wait for in-flight handlers until timeout.
 	_ = srv.Shutdown(ctx)
 }
@@ -124,6 +144,45 @@ func parseEnvInt32(key string, def int32) int32 {
 		return def
 	}
 	return int32(n)
+}
+
+// parseEnvDuration parses an environment variable as a Go duration value.
+// It returns def when the variable is empty, invalid, or non-positive.
+func parseEnvDuration(key string, def time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		return def
+	}
+	return d
+}
+
+// readRateLimitConfig loads API per-user rate-limiter settings from environment.
+//
+// This keeps runtime config lookup in one place and avoids repeating defaults
+// between startup wiring and middleware implementation.
+//
+// Supported environment keys:
+// - API_USER_RATE_LIMIT_REQUESTS (integer > 0)
+// - API_USER_RATE_LIMIT_WINDOW (Go duration, for example "30s", "1m")
+//
+// Invalid or missing values fall back to http_api package defaults.
+func readRateLimitConfig() http_api.RateLimitConfig {
+	defaults := http_api.DefaultRateLimitConfig()
+
+	cfg := http_api.RateLimitConfig{
+		Requests: int(parseEnvInt32("API_USER_RATE_LIMIT_REQUESTS", int32(defaults.Requests))),
+		Window:   parseEnvDuration("API_USER_RATE_LIMIT_WINDOW", defaults.Window),
+	}
+
+	if cfg.Requests <= 0 {
+		cfg.Requests = defaults.Requests
+	}
+
+	return cfg
 }
 
 // openDB opens a pgx pool and verifies it with a ping.

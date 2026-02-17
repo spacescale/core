@@ -9,10 +9,12 @@ package http_api
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -23,8 +25,8 @@ const (
 	// reducing token safety.
 	authTokenLeeway = 30 * time.Second
 
-	// githubSubjectPrefix is the canonical prefix used in sub claim values.
-	// The API treats sub as the single source of identity and derives github id
+	// githubSubjectPrefix is the canonical prefix used in subclaim values.
+	// The API treats sub as the single source of identity and derives GitHub id
 	// from this prefix-based format: github:<id>.
 	githubSubjectPrefix = "github:"
 )
@@ -141,6 +143,7 @@ func authMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 			// Expected format: "Bearer <jwt>".
 			rawToken, err := parseBearerToken(r.Header.Get("Authorization"))
 			if err != nil {
+				logAuthFailure(r, authFailureReason(err))
 				// Always return a generic auth error to avoid leaking parse details.
 				writeErr(w, http.StatusUnauthorized, "unauthorized")
 				return
@@ -148,6 +151,7 @@ func authMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 
 			claims, err := parseAndValidateClaims(rawToken, cfg)
 			if err != nil {
+				logAuthFailure(r, "invalid_token")
 				// Again, keep failure response intentionally generic.
 				writeErr(w, http.StatusUnauthorized, "unauthorized")
 				return
@@ -161,10 +165,50 @@ func authMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 				Name:      claims.Name,
 				AvatarURL: claims.AvatarURL,
 			}
-
-			next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), principal)))
+			ctx := withPrincipal(r.Context(), principal)
+			if lc, ok := logContextFromContext(ctx); ok {
+				lc.UserID = principal.Subject
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// authFailureReason converts internal auth parse errors into stable reason codes.
+//
+// Why we emit codes instead of raw errors:
+// - Keeps logs queryable and consistent.
+// - Avoids accidentally leaking sensitive token/header details.
+func authFailureReason(err error) string {
+	switch {
+	case errors.Is(err, errMissingAuthorizationHeader):
+		return "missing_authorization_header"
+	case errors.Is(err, errMalformedAuthorizationHeader):
+		return "malformed_authorization_header"
+	default:
+		return "invalid_token"
+	}
+}
+
+// logAuthFailure emits a structured warning event for unauthorized request paths.
+//
+// Redaction/safety rules:
+// - Do not log Authorization header values.
+// - Do not log token text, cookies, or request bodies.
+// - Emit only stable reason codes and request metadata.
+func logAuthFailure(r *http.Request, reason string) {
+	attrs := []any{
+		"event", "auth_failure",
+		"request_id", middleware.GetReqID(r.Context()),
+		"method", r.Method,
+		"route", routePatternFromContext(r.Context()),
+		"path", r.URL.Path,
+		"status_code", http.StatusUnauthorized,
+		"reason", reason,
+		"client_ip", clientIP(r.RemoteAddr),
+		"user_agent", r.UserAgent(),
+	}
+	slog.Warn("auth failure", attrs...)
 }
 
 // parseAndValidateClaims parses a JWT string into bffClaims and applies all
@@ -174,7 +218,7 @@ func authMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 // - Validate token signature against configured secret and algorithm.
 // - Enforce standard claim requirements (issuer, audience, time validity).
 // - Ensure required identity claims exist before principal construction.
-// - Derive github id from canonical subject format: github:<id>.
+// - Derive GitHub id from canonical subject format: github:<id>.
 // Return behavior:
 // - On success, returns fully validated claims ready for middleware use.
 // - On failure, returns an auth-safe error indicating token is invalid.
@@ -197,7 +241,7 @@ func parseAndValidateClaims(tokenString string, cfg AuthConfig) (*bffClaims, err
 		jwt.WithAudience(cfg.Audience),
 		// Allow a small clock-skew tolerance for time-based claim checks.
 		jwt.WithLeeway(authTokenLeeway),
-		jwt.WithExpirationRequired(), // prevents token that omits  expiration to pass validation
+		jwt.WithExpirationRequired(), // Reject tokens that omit the exp claim.
 	)
 	if err != nil || !token.Valid {
 		return nil, errInvalidToken
@@ -215,7 +259,7 @@ func parseAndValidateClaims(tokenString string, cfg AuthConfig) (*bffClaims, err
 	return claims, nil
 }
 
-// githubIDFromSubject extracts GitHub identity from the canonical sub claim.
+// githubIDFromSubject extracts GitHub identity from the canonical subclaim.
 // Expected format is: github:<id>
 // Returns false when subject is empty, has a different prefix, or has no id.
 func githubIDFromSubject(subject string) (string, bool) {
