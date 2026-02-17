@@ -209,8 +209,8 @@ func parseAndValidateClaims(tokenString string, cfg AuthConfig) (*bffClaims, err
 		return nil, errInvalidToken
 	}
 
-	// Normalize and persist derived identity fields used by downstream handlers.
-	claims.Subject = githubSubjectPrefix + githubID
+	// Store the extracted GitHub ID for downstream handlers.
+	// Keep the original Subject unchanged to preserve the validated JWT claim.
 	claims.GithubID = githubID
 	return claims, nil
 }

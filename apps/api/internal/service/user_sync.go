@@ -9,6 +9,7 @@ package service
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -51,6 +52,9 @@ func (s *ProjectService) SyncAuthUser(ctx context.Context, p SyncAuthUserParams)
 	// not continuously overwrite avatar/name on each login.
 	existingUser, err := s.queries.GetUserByGithubID(ctx, identityKey)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		// Log database errors (connection issues, permission errors, etc.) for debugging.
+		// ErrNoRows is expected for new users, so we only log unexpected errors.
+		log.Printf("user sync: failed to fetch existing user for identity %s: %v", identityKey, err)
 		return User{}, err
 	}
 	if err == nil {

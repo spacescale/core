@@ -10,6 +10,7 @@ package http_api
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/t0gun/spacescale/internal/service"
 )
@@ -39,6 +40,10 @@ func (s *Server) handleSyncAuthUser(w http.ResponseWriter, r *http.Request) {
 	var req syncAuthUserRequest
 	if err := readJSON(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if strings.TrimSpace(req.IdentityKey) == "" {
+		writeErr(w, http.StatusBadRequest, "invalid input")
 		return
 	}
 

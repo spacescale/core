@@ -11,6 +11,10 @@ const DEFAULT_BFF_REFRESH_TOKEN_AUDIENCE = "spacescale-api-refresh";
 const DEFAULT_BFF_JWT_TTL_SECONDS = 3600;
 const DEFAULT_BFF_REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 const API_ACCESS_TOKEN_REFRESH_WINDOW_SECONDS = 60;
+const inFlightAccessTokenRefreshByIdentity = new Map<
+	string,
+	Promise<MintBffAccessTokenResult | null>
+>();
 
 type SyncAuthUserResponse = {
 	id: string;
@@ -239,6 +243,31 @@ function mintBffAccessToken({
 	};
 }
 
+async function mintBffAccessTokenDebounced(
+	params: MintBffAccessTokenParams,
+): Promise<MintBffAccessTokenResult | null> {
+	const identityKey = params.identityKey.trim();
+	if (identityKey === "") {
+		return null;
+	}
+
+	const inFlightRefresh = inFlightAccessTokenRefreshByIdentity.get(identityKey);
+	if (inFlightRefresh) {
+		return inFlightRefresh;
+	}
+
+	const refreshPromise = Promise.resolve()
+		.then(() => mintBffAccessToken(params))
+		.finally(() => {
+			if (inFlightAccessTokenRefreshByIdentity.get(identityKey) === refreshPromise) {
+				inFlightAccessTokenRefreshByIdentity.delete(identityKey);
+			}
+		});
+
+	inFlightAccessTokenRefreshByIdentity.set(identityKey, refreshPromise);
+	return refreshPromise;
+}
+
 function mintBffRefreshToken(identityKey: string): MintBffRefreshTokenResult | null {
 	const secret = getRefreshSigningSecret();
 	if (secret === "") {
@@ -394,7 +423,28 @@ const authOptions: NextAuthOptions = {
 					token.id = syncedUser?.id ?? identityKey;
 					token.onboardingCompleted = syncedUser?.onboardingCompleted ?? false;
 				} catch (error) {
-					console.error("Unable to persist auth user profile", error);
+					// Log the failure with structured data for monitoring/alerting
+					console.error(
+						"[AUTH CRITICAL] Failed to sync user profile to database",
+						{
+							identityKey,
+							email: user.email,
+							error: error instanceof Error ? error.message : String(error),
+							timestamp: new Date().toISOString(),
+						},
+					);
+
+					// In production, fail auth if database sync fails to prevent data loss
+					if (process.env.NODE_ENV === "production") {
+						throw new Error(
+							"Authentication failed: unable to persist user profile. Please try again.",
+						);
+					}
+
+					// In development, allow fallback for easier testing
+					console.warn(
+						"[AUTH WARNING] Allowing auth with fallback values in development mode",
+					);
 					token.id = buildIdentityKey(account, user);
 					token.onboardingCompleted = false;
 				}
@@ -487,7 +537,7 @@ const authOptions: NextAuthOptions = {
 					return token;
 				}
 
-				const mintedToken = mintBffAccessToken({
+				const mintedToken = await mintBffAccessTokenDebounced({
 					identityKey: token.identityKey,
 					email: token.profileEmail ?? "",
 					name: token.profileName ?? "",

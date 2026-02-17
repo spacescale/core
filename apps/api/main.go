@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -53,6 +54,7 @@ func main() {
 	}
 
 	internalAuthSyncSecret := envStr("INTERNAL_AUTH_SYNC_SECRET", "")
+	internalAuthSyncSecret = strings.TrimSpace(internalAuthSyncSecret)
 	if internalAuthSyncSecret == "" {
 		log.Fatal("INTERNAL_AUTH_SYNC_SECRET is required")
 	}
