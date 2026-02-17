@@ -64,6 +64,9 @@ coverage:
 	go tool cover -html=coverage.out -o coverage.html
 	open coverage.html
 
+random-hash:
+	openssl rand -hex 32
+
 ## Mint a BFF JWT for local API testing.
 ## Reads values from .env.local.
 ## Required keys:
