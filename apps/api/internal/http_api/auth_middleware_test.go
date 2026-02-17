@@ -1,17 +1,6 @@
-// This file documents white-box test intent for auth middleware helper logic.
-// It exists as a test-layer placeholder so auth-focused unit cases can be added
-// incrementally without mixing them into integration-heavy endpoint suites.
-//
-// Planned white-box suites in this file:
-// - AuthConfig.Validate: required runtime configuration checks.
-// - parseBearerToken: Authorization header parsing and malformed edge cases.
-// - parseAndValidateClaims: JWT claim validation regressions (exp/sub format,
-//   issuer, audience, signing method expectations).
-//
-// Why this separation is useful:
-// - Keeps helper-level auth behavior tests fast and deterministic.
-// - Makes utility regressions easier to detect during middleware refactors.
-// - Preserves clear boundaries between helper-unit tests and HTTP contract tests.
+// This file contains white-box tests for auth helper behavior.
+// It keeps token/config parsing validation close to middleware internals, while
+// endpoint-level HTTP contract tests live in separate integration suites.
 
 package http_api
 
@@ -23,14 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test constants mirror the middleware defaults/config used in local development.
-// Keeping them centralized makes each test case easier to read and avoids repeated
-// string literals across helper and table-driven setups.
 const (
-	testJWTSecret   = "test-bff-secret"
-	testJWTIssuer   = "spacescale-web-bff"
-	testJWTAudience = "spacescale-api"
-	testGithubID    = "t0gun"
+	testJWTSecret   = "test-bff-secret"    // shared test signing secret.
+	testJWTIssuer   = "spacescale-web-bff" // expected issuer in auth middleware tests.
+	testJWTAudience = "spacescale-api"     // expected audience in auth middleware tests.
+	testGithubID    = "t0gun"              // canonical GitHub subject id used in test claims.
 )
 
 // testJWTClaims models claims expected by middleware tests.

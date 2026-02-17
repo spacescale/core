@@ -1,13 +1,6 @@
-// This file provides shared integration test helpers for HTTP API tests.
-// It hides setup boilerplate for database connectivity, service wiring, and
-// httptest server lifecycle so individual test cases can stay focused.
-// The request helper standardizes call execution and response body capture,
-// which keeps assertions consistent across endpoint test files.
-// Update this file when test infrastructure changes affect multiple test suites.
-//
-// Test setup note:
-// - Each test builds its own integration server via newTestServer.
-// - This keeps lifecycle easy to understand (setup inside test, defer close).
+// This file contains server wiring tests and shared HTTP integration helpers.
+// It covers configuration behavior and keeps test server setup reusable across
+// endpoint suites without duplicating database/router bootstrapping code.
 
 // Package http_api_test provides shared HTTP test helpers.
 package http_api_test
@@ -15,6 +8,7 @@ package http_api_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -24,17 +18,16 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/stretchr/testify/require"
 	"github.com/t0gun/spacescale/internal/http_api"
 	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
 	"github.com/t0gun/spacescale/internal/service"
 )
 
 const (
-	// testJWTSecret/testIssuer/testAudience are test-only auth settings used
-	// both to configure middleware and to mint valid tokens in test requests.
-	testJWTSecret = "test-bff-secret"
-	testIssuer    = "spacescale-web-bff-test"
-	testAudience  = "spacescale-api-test"
+	testJWTSecret = "test-bff-secret"         // shared test JWT secret for server auth middleware and token minting.
+	testIssuer    = "spacescale-web-bff-test" // shared test token issuer.
+	testAudience  = "spacescale-api-test"     // shared test token audience.
 )
 
 // testServer bundles resources needed by integration tests.
@@ -51,9 +44,46 @@ type testJWTClaims struct {
 	jwt.RegisteredClaims // embedded so claim fields are promoted to this type.
 }
 
+// TestDefaultRateLimitConfig verifies package-default limiter settings.
+// This guards against accidental default drift in server wiring.
+func TestDefaultRateLimitConfig(t *testing.T) {
+	cfg := http_api.DefaultRateLimitConfig()
+
+	require.Equal(t, 100, cfg.Requests)
+	require.Equal(t, time.Minute, cfg.Window)
+}
+
+// TestNewServerNormalizesInvalidRateLimitConfig verifies that invalid limiter
+// values are normalized by server wiring so requests are not incorrectly
+// blocked by zero-value configuration.
+func TestNewServerNormalizesInvalidRateLimitConfig(t *testing.T) {
+	ts := newTestServerWithRateLimitConfig(t, http_api.RateLimitConfig{})
+	defer ts.close()
+
+	name := fmt.Sprintf("normalize-rate-limit-%d", time.Now().UnixNano())
+	body := []byte(fmt.Sprintf(`{"name":"%s","region":"global"}`, name))
+
+	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", body, map[string]string{
+		"Authorization": authHeaderForGithubID(t, "12345"),
+		"Content-Type":  "application/json",
+	})
+
+	require.Equal(t, http.StatusCreated, resp.StatusCode, string(data))
+	require.NotEqual(t, http.StatusTooManyRequests, resp.StatusCode, string(data))
+}
+
 // newTestServer creates one integration server for the calling test.
+// It uses package-default rate limiting.
 // If TEST_DATABASE_URL is missing, the test is skipped.
 func newTestServer(t *testing.T) *testServer {
+	t.Helper()
+	return newTestServerWithRateLimitConfig(t, http_api.DefaultRateLimitConfig())
+}
+
+// newTestServerWithRateLimitConfig creates one integration server using the
+// supplied rate-limit configuration.
+// If TEST_DATABASE_URL is missing, the test is skipped.
+func newTestServerWithRateLimitConfig(t *testing.T, rateLimitCfg http_api.RateLimitConfig) *testServer {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
@@ -85,7 +115,7 @@ func newTestServer(t *testing.T) *testServer {
 
 	queries := pgstore.New(pool)
 	svc := service.NewProjectService(queries)
-	api := http_api.NewServer(svc, authCfg, pool)
+	api := http_api.NewServer(svc, authCfg, pool, rateLimitCfg, http_api.DefaultLogPrivacyConfig())
 
 	// httptest server exposes in-memory HTTP endpoint for black-box requests.
 	return &testServer{

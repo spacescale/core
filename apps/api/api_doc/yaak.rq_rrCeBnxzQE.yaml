@@ -2,13 +2,13 @@ type: http_request
 model: http_request
 id: rq_rrCeBnxzQE
 createdAt: 2026-02-03T04:59:17.161868
-updatedAt: 2026-02-12T02:03:00.000000
+updatedAt: 2026-02-17T00:28:51.515217
 workspaceId: wk_KJF6oyHis3
 folderId: fl_mN33FWQe9B
 authentication: {}
 authenticationType: null
 body:
-  text: "{}"
+  text: '{}'
 bodyType: application/json
 description: |-
   ## Create Project
@@ -58,14 +58,14 @@ description: |-
   - `409 Conflict`: slug collision after retries
   - `500 Internal Server Error`: unexpected runtime error
 headers:
-  - enabled: true
-    name: Authorization
-    value: ${[ secure(value=b64'WUVOQ19lVUUwYXpOdVF3SC9JZkJkMmppc1VaRE5kSk4xQ3Vzb2krRXFGTGlzSTd2WFVKNTFHVExYS21FdHRla3VHdFoybFBnd3NlUEZ3MjBJbUdQWk5OM3FxcndyWU5pTW1mdz0') ]}
-    id: htigSCPhis
-  - enabled: true
-    name: Content-Type
-    value: application/json
-    id: NkPDC5GwqH
+- enabled: true
+  name: Authorization
+  value: ${[ secure(value=b64'WUVOQ19lVUUwYXpOdVF3SC9JZkJkMmppc1VaRE5kSk4xQ3Vzb2krRXFGTGlzSTd2WFVKNTFHVExYS21FdHRla3VHdFoybFBnd3NlUEZ3MjBJbUdQWk5OM3FxcndyWU5pTW1mdz0') ]}
+  id: htigSCPhis
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: NkPDC5GwqH
 method: POST
 name: Create Project
 sortPriority: 0.0

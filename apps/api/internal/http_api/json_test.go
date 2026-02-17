@@ -85,6 +85,19 @@ func TestReadJSON(t *testing.T) {
 		err := readJSON(req, &dst)
 		require.EqualError(t, err, "multiple json values")
 	})
+
+	t.Run("body too large", func(t *testing.T) {
+		req := newJSONTestRequest(`{"name":"` + strings.Repeat("a", 128) + `"}`)
+		var dst readJSONPayload
+
+		// MaxBytesReader mirrors behavior used by the top-level HTTP wrapper in
+		// main, where oversized request bodies are rejected during decode reads.
+		rr := httptest.NewRecorder()
+		req.Body = http.MaxBytesReader(rr, req.Body, 32)
+
+		err := readJSON(req, &dst)
+		require.ErrorIs(t, err, errRequestBodyTooLarge)
+	})
 }
 
 // TestWriteJSON verifies response metadata and JSON body serialization.
