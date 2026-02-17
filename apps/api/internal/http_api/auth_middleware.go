@@ -19,25 +19,14 @@ import (
 )
 
 const (
-	// authTokenLeeway gives a small clock-skew buffer when validating time-based
-	// JWT claims (for example exp, nbf, iat). Distributed systems can have slightly
-	// different clocks; a short leeway reduces false negatives without meaningfully
-	// reducing token safety.
-	authTokenLeeway = 30 * time.Second
-
-	// githubSubjectPrefix is the canonical prefix used in subclaim values.
-	// The API treats sub as the single source of identity and derives GitHub id
-	// from this prefix-based format: github:<id>.
-	githubSubjectPrefix = "github:"
+	authTokenLeeway     = 30 * time.Second // small clock-skew buffer for JWT time-claim validation.
+	githubSubjectPrefix = "github:"        // canonical sub claim prefix used for identity derivation.
 )
 
 var (
-	// errMissingAuthorizationHeader indicates a request did not provide Authorization.
-	errMissingAuthorizationHeader = errors.New("missing authorization header")
-	// errMalformedAuthorizationHeader indicates Authorization is not "Bearer <token>".
-	errMalformedAuthorizationHeader = errors.New("malformed authorization header")
-	// errInvalidToken indicates token signature/claims failed verification.
-	errInvalidToken = errors.New("invalid token")
+	errMissingAuthorizationHeader   = errors.New("missing authorization header")   // request did not provide Authorization header.
+	errMalformedAuthorizationHeader = errors.New("malformed authorization header") // Authorization is not in "Bearer <token>" shape.
+	errInvalidToken                 = errors.New("invalid token")                  // token signature or claims failed verification.
 )
 
 // AuthConfig defines runtime settings used to verify incoming BFF-issued JWTs.

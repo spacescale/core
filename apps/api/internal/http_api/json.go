@@ -16,9 +16,7 @@ import (
 	"net/http"
 )
 
-// errRequestBodyTooLarge is returned by readJSON when the request body exceeds
-// the configured maximum size enforced by http.MaxBytesHandler/MaxBytesReader.
-var errRequestBodyTooLarge = errors.New("request body too large")
+var errRequestBodyTooLarge = errors.New("request body too large") // returned when request body exceeds configured max size.
 
 // isRequestBodyTooLarge reports whether an error came from net/http body-size
 // enforcement. This keeps size-limit detection logic centralized.

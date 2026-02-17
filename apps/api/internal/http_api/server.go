@@ -25,12 +25,8 @@ import (
 )
 
 const (
-	// defaultUserRateLimitRequests is the default per-user request budget used
-	// when no explicit request count is configured.
-	defaultUserRateLimitRequests = 100
-	// defaultUserRateLimitWindow is the default limiter window for per-user
-	// request budgeting.
-	defaultUserRateLimitWindow = time.Minute
+	defaultUserRateLimitRequests = 100         // fallback per-user request budget when not explicitly configured.
+	defaultUserRateLimitWindow   = time.Minute // fallback limiter window duration when not explicitly configured.
 )
 
 // RateLimitConfig describes per-authenticated-user API rate-limiting behavior.

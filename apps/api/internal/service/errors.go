@@ -10,8 +10,6 @@ package service
 import "errors"
 
 var (
-	// ErrInvalidInput indicates request validation failure.
-	ErrInvalidInput = errors.New("invalid input")
-	// ErrConflict indicates a conflicting write or duplicate resource.
-	ErrConflict = errors.New("conflict")
+	ErrInvalidInput = errors.New("invalid input") // request validation failed.
+	ErrConflict     = errors.New("conflict")      // conflicting write or duplicate resource.
 )

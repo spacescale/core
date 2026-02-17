@@ -1,17 +1,6 @@
-// This file provides server-focused tests and shared integration test helpers
-// for HTTP API endpoint suites.
-//
-// It owns:
-// - server configuration behavior checks (for example rate-limit defaults)
-// - reusable setup boilerplate for database connectivity and router wiring
-// - request helper utilities that keep endpoint assertions consistent
-//
-// Update this file when server wiring or shared integration infrastructure
-// changes affect multiple HTTP test suites.
-//
-// Test setup note:
-// - Each test builds its own integration server via newTestServer.
-// - This keeps lifecycle easy to understand (setup inside test, defer close).
+// This file contains server wiring tests and shared HTTP integration helpers.
+// It covers configuration behavior and keeps test server setup reusable across
+// endpoint suites without duplicating database/router bootstrapping code.
 
 // Package http_api_test provides shared HTTP test helpers.
 package http_api_test
@@ -36,11 +25,9 @@ import (
 )
 
 const (
-	// testJWTSecret/testIssuer/testAudience are test-only auth settings used
-	// both to configure middleware and to mint valid tokens in test requests.
-	testJWTSecret = "test-bff-secret"
-	testIssuer    = "spacescale-web-bff-test"
-	testAudience  = "spacescale-api-test"
+	testJWTSecret = "test-bff-secret"         // shared test JWT secret for server auth middleware and token minting.
+	testIssuer    = "spacescale-web-bff-test" // shared test token issuer.
+	testAudience  = "spacescale-api-test"     // shared test token audience.
 )
 
 // testServer bundles resources needed by integration tests.
