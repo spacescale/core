@@ -49,10 +49,7 @@ jobs:
             8. **API Design** - REST best practices, HTTP status codes, request/response validation
             9. **Concurrency** - Goroutine leaks, race conditions, channel usage
             10. **Observability** - Logging, error reporting, metrics
-            11. **Testing** - Test coverage, edge cases, mocking
 
-            its not ncessary you comment  on all these part at once if they have no issues.
-            its only parts where you need to provide recommendation or fix that should be talked about
-            Be very concise. For each issue, provide: fixes or recommendation. 
-            You can use  severity table, with type of issues and fix to make things concise
+           be strictly concise.only look at PR diff and High Priority issues.For each issue, provide: fixes or recommendation. 
+            You can use  severity table, with type of issues and fix concisely.
             
