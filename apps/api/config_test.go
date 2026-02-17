@@ -84,6 +84,8 @@ func TestLoadAppConfigBuildsTypedDefaults(t *testing.T) {
 	require.Equal(t, defaultDBMaxConns, cfg.Database.MaxConns)
 	require.Equal(t, defaultDBMinConns, cfg.Database.MinConns)
 	require.Equal(t, defaultHTTPServerConfig().MaxBodyBytes, cfg.HTTPServer.MaxBodyBytes)
+	require.Equal(t, defaultHTTPServerConfig().MaxHeaderBytes, cfg.HTTPServer.MaxHeaderBytes)
 	require.Equal(t, defaultHTTPServerConfig().ReadHeaderTimeout, cfg.HTTPServer.ReadHeaderTimeout)
+	require.Equal(t, defaultHTTPServerConfig().WriteTimeout, cfg.HTTPServer.WriteTimeout)
 	require.Equal(t, defaultHTTPServerConfig().IdleTimeout, cfg.HTTPServer.IdleTimeout)
 }

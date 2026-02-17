@@ -1,16 +1,6 @@
-// This file is the process entrypoint for the API binary.
-//
-// Responsibilities in this file:
-// - Initialize process-wide structured logging.
-// - Load typed startup configuration and fail fast on invalid setup.
-// - Open the database pool and verify connectivity before serving traffic.
-// - Wire service dependencies and HTTP router/middleware composition.
-// - Configure and start the HTTP server with runtime safety limits.
-// - Handle graceful shutdown signals and terminate predictably on failure.
-//
-// Design note:
-// - Configuration parsing and normalization now live in config.go so this file
-//   stays focused on orchestration and lifecycle management.
+// This file is the API process entrypoint.
+// It loads validated startup config, wires dependencies, starts HTTP serving,
+// and handles graceful shutdown lifecycle.
 
 package main
 
@@ -55,13 +45,16 @@ func main() {
 
 	// Apply server-level request bounds to reduce exposure to abuse patterns.
 	// - ReadHeaderTimeout limits how long clients may spend sending headers.
-	// - We intentionally rely on net/http default MaxHeaderBytes (1 MiB).
+	// - WriteTimeout limits how long a response write may block.
+	// - MaxHeaderBytes explicitly caps total request header bytes.
 	// - limitedHandler limits total request body size.
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           limitedHandler,
 		ReadHeaderTimeout: cfg.HTTPServer.ReadHeaderTimeout,
+		WriteTimeout:      cfg.HTTPServer.WriteTimeout,
 		IdleTimeout:       cfg.HTTPServer.IdleTimeout,
+		MaxHeaderBytes:    cfg.HTTPServer.MaxHeaderBytes,
 	}
 
 	// Start serving in the background so the main goroutine can block on signals.
@@ -76,7 +69,7 @@ func main() {
 
 	// Use a buffered channel so one incoming signal is never dropped.
 	stop := make(chan os.Signal, 1)
-	// Handle both local interrupt  signals.
+	// Handle both local interrupt and container orchestrator termination signals.
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(stop)
 	// Block until shutdown is requested.
@@ -88,7 +81,9 @@ func main() {
 
 	logger.Info("shutting down", "event", "shutdown")
 	// Stop accepting new connections and wait for in-flight handlers until timeout.
+	shutdownFailed := false
 	if err := srv.Shutdown(ctx); err != nil {
+		shutdownFailed = true
 		logger.Error("graceful shutdown failed", "event", "shutdown_error", "error", err)
 		// Force-close listeners when graceful shutdown does not complete so the
 		// process can still terminate predictably after logging the failure.
@@ -96,22 +91,20 @@ func main() {
 			logger.Error("forced close failed", "event", "shutdown_error", "error", closeErr)
 		}
 	}
+	if shutdownFailed {
+		// Exit non-zero when graceful shutdown fails so supervisors and CI systems
+		// can detect abnormal termination.
+		os.Exit(1)
+	}
 }
 
-// openDB opens a pgx pool and verifies it with a ping.
-// A short ping timeout fails fast during startup so the process does not begin
-// serving requests with an unavailable database.
-//
-// Caller contract:
-// - cfg.URL must be a valid PostgreSQL connection string.
-// - cfg connection pool fields should already be normalized by config loading.
+// openDB initializes pgx pool from validated config and verifies connectivity.
 func openDB(ctx context.Context, cfg DatabaseConfig) (*pgxpool.Pool, error) {
 	poolCfg, err := pgxpool.ParseConfig(cfg.URL)
 	if err != nil {
 		return nil, err
 	}
 
-	// Apply validated pool tuning from startup configuration.
 	poolCfg.MaxConns = cfg.MaxConns
 	poolCfg.MinConns = cfg.MinConns
 	poolCfg.MaxConnLifetime = cfg.MaxConnLifetime
@@ -123,6 +116,7 @@ func openDB(ctx context.Context, cfg DatabaseConfig) (*pgxpool.Pool, error) {
 	}
 	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+	// pool.Ping is pgx's standard readiness check.
 	if err := pool.Ping(pingCtx); err != nil {
 		pool.Close()
 		return nil, err

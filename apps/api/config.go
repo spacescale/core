@@ -1,17 +1,6 @@
-// This file centralizes startup configuration loading for the API process.
-//
-// Why this file exists:
-// - Keep main.go focused on orchestration (boot, wire, serve, shutdown).
-// - Parse environment variables once into typed configuration structs.
-// - Apply defaults and normalization in one place for predictable runtime behavior.
-// - Emit consistent warning logs when invalid env values are defaulted.
-//
-// Configuration domains loaded here:
-// - process/server settings (listen address and HTTP safety limits)
-// - database pool settings
-// - auth validation settings
-// - API rate limiting
-// - log privacy settings (user-agent and panic logging policy)
+// This file centralizes API startup configuration loading.
+// It parses environment variables into typed config structs, applies defaults,
+// and validates required values so main.go can focus on process orchestration.
 
 package main
 
@@ -27,32 +16,26 @@ import (
 )
 
 const (
-	// defaultListenAddr is used when ADDR is not set.
-	defaultListenAddr = ":8080"
-	// defaultAuthIssuer is the expected JWT issuer when no explicit value is set.
-	defaultAuthIssuer = "spacescale-web-bff"
-	// defaultAuthAudience is the expected JWT audience when no explicit value is set.
-	defaultAuthAudience = "spacescale-api"
+	defaultListenAddr   = ":8080"              // default listen address used when ADDR is not set.
+	defaultAuthIssuer   = "spacescale-web-bff" // expected JWT issuer when no explicit value is set.
+	defaultAuthAudience = "spacescale-api"     // expected JWT audience when no explicit value is set.
 
-	// defaultDBMaxConns is the fallback maximum connection count for pgx pool.
-	defaultDBMaxConns int32 = 20
-	// defaultDBMinConns is the fallback minimum connection count for pgx pool.
-	defaultDBMinConns int32 = 5
+	defaultDBMaxConns int32 = 20 // fallback maximum pgx pool connection count.
+	defaultDBMinConns int32 = 5  // fallback minimum pgx pool connection count.
+
+	defaultHTTPReadHeaderTimeout       = 5 * time.Second   // limits header read time per request.
+	defaultHTTPWriteTimeout            = 30 * time.Second  // limits response write time per request.
+	defaultHTTPIdleTimeout             = 120 * time.Second // limits keep-alive idle connection lifetime.
+	defaultHTTPMaxBodyBytes      int64 = 1 << 20           // caps request body size at 1 MiB.
+	defaultHTTPMaxHeaderBytes          = 1 << 20           // explicitly caps request header bytes at 1 MiB.
 )
 
 var (
-	// defaultDBMaxConnLifetime bounds how long a single DB connection can live.
-	defaultDBMaxConnLifetime = time.Hour
-	// defaultDBMaxConnIdleTime bounds how long an idle DB connection is retained.
-	defaultDBMaxConnIdleTime = 30 * time.Minute
+	defaultDBMaxConnLifetime = time.Hour        // bounds lifetime of one DB connection.
+	defaultDBMaxConnIdleTime = 30 * time.Minute // bounds how long an idle DB connection is retained.
 )
 
-// AppConfig is the top-level typed startup configuration used by main.go.
-//
-// Design intent:
-// - Load once at startup.
-// - Pass scoped sub-configs to the components that own each behavior.
-// - Keep configuration boundaries explicit and testable.
+// AppConfig is the top-level startup configuration consumed by main.go.
 type AppConfig struct {
 	Addr       string
 	Database   DatabaseConfig
@@ -76,23 +59,18 @@ type DatabaseConfig struct {
 // HTTPServerConfig defines server-level safety and connection-lifecycle settings.
 //
 // MaxBodyBytes is applied via http.MaxBytesHandler wrapper.
-// ReadHeaderTimeout and IdleTimeout are applied on http.Server directly.
+// ReadHeaderTimeout, WriteTimeout, IdleTimeout, and MaxHeaderBytes are applied
+// on http.Server directly.
 type HTTPServerConfig struct {
 	ReadHeaderTimeout time.Duration
+	WriteTimeout      time.Duration
 	IdleTimeout       time.Duration
 	MaxBodyBytes      int64
+	MaxHeaderBytes    int
 }
 
 // loadAppConfig reads and validates all startup configuration from environment.
-//
-// Return behavior:
-// - Returns a fully typed AppConfig when required values are present and valid.
-// - Returns error when required values are missing or cross-field validation fails.
-//
-// Startup policy:
-// - Required values fail fast.
-// - Optional values default safely.
-// - Invalid optional values default and emit warning logs.
+// Required values fail fast; optional values default safely with warning logs.
 func loadAppConfig() (AppConfig, error) {
 	databaseCfg, err := readDatabaseConfig()
 	if err != nil {
@@ -120,29 +98,19 @@ func loadAppConfig() (AppConfig, error) {
 	}, nil
 }
 
-// defaultHTTPServerConfig returns hardening defaults for HTTP server behavior.
-//
-// These defaults are intentionally conservative and can be promoted to env-backed
-// config later if runtime tuning needs grow.
+// defaultHTTPServerConfig returns conservative HTTP hardening defaults.
 func defaultHTTPServerConfig() HTTPServerConfig {
 	return HTTPServerConfig{
-		ReadHeaderTimeout: 5 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxBodyBytes:      1 << 20,
+		ReadHeaderTimeout: defaultHTTPReadHeaderTimeout,
+		WriteTimeout:      defaultHTTPWriteTimeout,
+		IdleTimeout:       defaultHTTPIdleTimeout,
+		MaxBodyBytes:      defaultHTTPMaxBodyBytes,
+		MaxHeaderBytes:    defaultHTTPMaxHeaderBytes,
 	}
 }
 
-// readDatabaseConfig loads database URL and pool settings from environment.
-//
-// Required key:
-// - DATABASE_URL
-//
-// Optional keys:
-// - DB_MAX_CONNS
-// - DB_MIN_CONNS
-//
-// Normalization:
-// - If DB_MIN_CONNS > DB_MAX_CONNS, min is clamped to max and warning is logged.
+// readDatabaseConfig loads database URL and pool settings.
+// It clamps min connections when DB_MIN_CONNS exceeds DB_MAX_CONNS.
 func readDatabaseConfig() (DatabaseConfig, error) {
 	url := strings.TrimSpace(envStr("DATABASE_URL", ""))
 	if url == "" {
@@ -171,17 +139,7 @@ func readDatabaseConfig() (DatabaseConfig, error) {
 	}, nil
 }
 
-// readAuthConfig loads API auth verification settings from environment.
-//
-// Required key:
-// - BFF_JWT_SECRET
-//
-// Optional keys:
-// - BFF_JWT_ISSUER
-// - BFF_JWT_AUDIENCE
-//
-// Validation delegates to http_api.AuthConfig.Validate for consistency with
-// middleware expectations.
+// readAuthConfig loads auth verification settings and validates them.
 func readAuthConfig() (http_api.AuthConfig, error) {
 	jwtSecret := strings.TrimSpace(envStr("BFF_JWT_SECRET", ""))
 	if jwtSecret == "" {
@@ -200,13 +158,7 @@ func readAuthConfig() (http_api.AuthConfig, error) {
 	return cfg, nil
 }
 
-// readRateLimitConfig loads API per-user limiter settings from environment.
-//
-// Supported keys:
-// - API_USER_RATE_LIMIT_REQUESTS
-// - API_USER_RATE_LIMIT_WINDOW
-//
-// Invalid values default safely and emit startup warnings via parse helpers.
+// readRateLimitConfig loads per-user limiter settings with safe defaults.
 func readRateLimitConfig() http_api.RateLimitConfig {
 	defaults := http_api.DefaultRateLimitConfig()
 
@@ -216,19 +168,8 @@ func readRateLimitConfig() http_api.RateLimitConfig {
 	}
 }
 
-// readLogPrivacyConfig loads request-log privacy behavior from environment.
-//
-// Supported keys:
-// - API_LOG_USER_AGENT_MODE: hash | truncate | off
-// - API_LOG_USER_AGENT_HASH_SECRET: required when mode is hash
-// - API_LOG_USER_AGENT_MAX_LEN
-// - API_LOG_PANIC_VALUE_MAX_LEN
-// - API_LOG_STACK_TRACE
-//
-// Validation behavior:
-// - Unknown mode defaults to package default with warning.
-// - Non-positive numeric values default to package defaults.
-// - Hash mode requires non-empty secret and returns an error when missing.
+// readLogPrivacyConfig loads user-agent and panic-log privacy settings.
+// Hash mode requires API_LOG_USER_AGENT_HASH_SECRET.
 func readLogPrivacyConfig() (http_api.LogPrivacyConfig, error) {
 	defaults := http_api.DefaultLogPrivacyConfig()
 	modeRaw := strings.TrimSpace(strings.ToLower(envStr("API_LOG_USER_AGENT_MODE", string(defaults.UserAgentMode))))
@@ -264,9 +205,6 @@ func readLogPrivacyConfig() (http_api.LogPrivacyConfig, error) {
 }
 
 // envStr returns an environment value or fallback default.
-//
-// It preserves compact call sites while keeping default values explicit at the
-// usage point.
 func envStr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -274,11 +212,7 @@ func envStr(key, def string) string {
 	return def
 }
 
-// logDefaultedEnv emits a standardized startup warning when an invalid env value
-// is supplied and runtime falls back to a safe default.
-//
-// Keeping this function centralized avoids duplicated warning payloads and makes
-// startup diagnostics consistent across all config readers.
+// logDefaultedEnv emits a consistent warning when invalid env input is defaulted.
 func logDefaultedEnv(key, raw string, def any) {
 	slog.Warn(
 		"invalid env value; using default",
@@ -289,12 +223,7 @@ func logDefaultedEnv(key, raw string, def any) {
 	)
 }
 
-// parseEnvInt32 parses an environment variable as int32 with default fallback.
-//
-// Behavior:
-// - Returns def when env is empty.
-// - Returns def and logs warning when value is invalid or out of int32 range.
-// - Returns parsed value when valid.
+// parseEnvInt32 parses an int32 env value with default fallback and warning.
 func parseEnvInt32(key string, def int32) int32 {
 	const (
 		int32Max = int64(^uint32(0) >> 1)
@@ -319,12 +248,7 @@ func parseEnvInt32(key string, def int32) int32 {
 	return int32(n)
 }
 
-// parseEnvDuration parses an environment variable as Go duration with fallback.
-//
-// Behavior:
-// - Returns def when env is empty.
-// - Returns def and logs warning when duration is invalid or non-positive.
-// - Returns parsed duration when valid.
+// parseEnvDuration parses a duration env value with default fallback and warning.
 func parseEnvDuration(key string, def time.Duration) time.Duration {
 	raw := strings.TrimSpace(os.Getenv(key))
 	if raw == "" {
@@ -340,12 +264,7 @@ func parseEnvDuration(key string, def time.Duration) time.Duration {
 	return d
 }
 
-// parseEnvBool parses an environment variable as bool with default fallback.
-//
-// Behavior:
-// - Returns def when env is empty.
-// - Returns def and logs warning when value cannot be parsed as bool.
-// - Returns parsed bool when valid.
+// parseEnvBool parses a bool env value with default fallback and warning.
 func parseEnvBool(key string, def bool) bool {
 	raw := strings.TrimSpace(os.Getenv(key))
 	if raw == "" {
