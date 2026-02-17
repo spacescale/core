@@ -64,6 +64,7 @@ type createProjectResponse struct {
 // JSON contract:
 // - Empty request body is allowed and interpreted as default creation.
 // - Malformed JSON returns 400 "invalid json".
+// - Request bodies that exceed configured limits return 413.
 //
 // Error mapping contract:
 // - service.ErrInvalidInput => 400 "invalid input"
@@ -81,9 +82,13 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	// An empty body is valid and means "create with service defaults".
 	var req createProjectRequest
 	if err := readJSON(r, &req); err != nil {
-		if errors.Is(err, io.EOF) {
-			// empty body is allowed
-		} else {
+		switch {
+		case errors.Is(err, io.EOF):
+			// Empty body is allowed and treated as "use defaults".
+		case errors.Is(err, errRequestBodyTooLarge):
+			writeErr(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		default:
 			writeErr(w, http.StatusBadRequest, "invalid json")
 			return
 		}
@@ -97,16 +102,17 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 
 	// Convert service errors into stable HTTP API responses.
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidInput) {
+		switch {
+		case errors.Is(err, service.ErrInvalidInput):
 			writeErr(w, http.StatusBadRequest, "invalid input")
 			return
-		}
-		if errors.Is(err, service.ErrConflict) {
+		case errors.Is(err, service.ErrConflict):
 			writeErr(w, http.StatusConflict, "conflict")
 			return
+		default:
+			writeErr(w, http.StatusInternalServerError, "internal error")
+			return
 		}
-		writeErr(w, http.StatusInternalServerError, "internal error")
-		return
 	}
 
 	// Enrich request-scoped access logging metadata with the created project id.
