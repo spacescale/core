@@ -5,6 +5,7 @@
 // - Starts a timer before calling the downstream middleware/handler chain.
 // - Attaches a shared request-scoped log context for enrichment (user/project/app).
 // - Logs exactly one JSON access event after request completion.
+// - Applies configured user-agent log privacy policy (hash/truncate/off).
 //
 // Why we log after handler execution:
 // - Final response status is only known after downstream handlers return.
@@ -28,7 +29,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"runtime/debug"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -85,61 +85,65 @@ func logContextFromContext(ctx context.Context) (*logContext, bool) {
 //
 // Emitted fields include request id, method/path/route, status, latency, bytes,
 // client metadata, rate-limit hint, and optional identity/resource ids.
-func accessLogMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Capture request start timestamp before invoking downstream chain.
-		start := time.Now()
+//
+// Privacy behavior:
+// - User-agent field emission is delegated to userAgentLogAttr using logCfg.
+// - This keeps access logs aligned with runtime privacy mode (hash/truncate/off).
+func accessLogMiddleware(logCfg LogPrivacyConfig) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Capture request start timestamp before invoking downstream chain.
+			start := time.Now()
+			// Wrap the writer so we can read final status and bytes after response.
+			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+			// Create and attach shared metadata context before entering downstream chain.
+			// Downstream middleware/handlers can enrich this object (for example user_id).
+			lc := &logContext{}
+			req := r.WithContext(withLogContext(r.Context(), lc))
+			// Call the rest of the middleware+handler chain.
+			// This call is synchronous: execution continues below only when request
+			// handling is finished and response has been written.
+			next.ServeHTTP(ww, req)
+			// If WriteHeader was never called, net/http treats it as 200.
+			// Mirror that behavior so logs match actual response semantics.
+			status := ww.Status()
+			if status == 0 {
+				status = http.StatusOK
+			}
+			// Build base access payload using final request/response metadata.
+			attrs := []any{
+				"event", "http_access",
+				"request_id", middleware.GetReqID(req.Context()),
+				"method", req.Method,
+				"route", routePatternFromContext(req.Context()),
+				"path", req.URL.Path,
+				"status_code", status,
+				"rate_limited", status == http.StatusTooManyRequests,
+				"duration_ms", time.Since(start).Milliseconds(),
+				"bytes_out", ww.BytesWritten(),
+				"client_ip", clientIP(req.RemoteAddr),
+			}
 
-		// Wrap the writer so we can read final status and bytes after response.
-		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
-
-		// Create and attach shared metadata context before entering downstream chain.
-		// Downstream middleware/handlers can enrich this object (for example user_id).
-		lc := &logContext{}
-		req := r.WithContext(withLogContext(r.Context(), lc))
-
-		// Call the rest of the middleware+handler chain.
-		// This call is synchronous: execution continues below only when request
-		// handling is finished and response has been written.
-		next.ServeHTTP(ww, req)
-
-		// If WriteHeader was never called, net/http treats it as 200.
-		// Mirror that behavior so logs match actual response semantics.
-		status := ww.Status()
-		if status == 0 {
-			status = http.StatusOK
-		}
-
-		// Build base access payload using final request/response metadata.
-		attrs := []any{
-			"event", "http_access",
-			"request_id", middleware.GetReqID(req.Context()),
-			"method", req.Method,
-			"route", routePatternFromContext(req.Context()),
-			"path", req.URL.Path,
-			"status_code", status,
-			"rate_limited", status == http.StatusTooManyRequests,
-			"duration_ms", time.Since(start).Milliseconds(),
-			"bytes_out", ww.BytesWritten(),
-			"client_ip", clientIP(req.RemoteAddr),
-			"user_agent", req.UserAgent(),
-		}
-
-		// Emit optional resource/identity fields only when present.
-		// This keeps logs compact and avoids noisy empty-string fields.
-		if lc.UserID != "" {
-			attrs = append(attrs, "user_id", lc.UserID)
-		}
-		if lc.ProjectID != "" {
-			attrs = append(attrs, "project_id", lc.ProjectID)
-		}
-		if lc.AppID != "" {
-			attrs = append(attrs, "app_id", lc.AppID)
-		}
-
-		// Choose log level from final response class and emit one completion event.
-		slog.Log(req.Context(), accessLogLevel(status), "http_access", attrs...)
-	})
+			// Attach user-agent metadata according to configured privacy mode.
+			// Depending on mode, this may add user_agent_hash, user_agent, or nothing.
+			if key, value, ok := userAgentLogAttr(req.UserAgent(), logCfg); ok {
+				attrs = append(attrs, key, value)
+			}
+			// Emit optional resource/identity fields only when present.
+			// This keeps logs compact and avoids noisy empty-string fields.
+			if lc.UserID != "" {
+				attrs = append(attrs, "user_id", lc.UserID)
+			}
+			if lc.ProjectID != "" {
+				attrs = append(attrs, "project_id", lc.ProjectID)
+			}
+			if lc.AppID != "" {
+				attrs = append(attrs, "app_id", lc.AppID)
+			}
+			// Choose log level from final response class and emit one completion event.
+			slog.Log(req.Context(), accessLogLevel(status), "http_access", attrs...)
+		})
+	}
 }
 
 // accessLogLevel maps HTTP response classes to slog levels for access events.
@@ -179,52 +183,65 @@ func accessLogLevel(status int) slog.Level {
 //  2. Execute downstream middleware/handler chain.
 //  3. If panic occurs, recover value, emit structured panic log, and return
 //     generic 500 only when response was not already started.
-func recovererMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			recovered := recover()
-			if recovered == nil {
-				return
-			}
-
-			attrs := []any{
-				"event", "panic",
-				"request_id", middleware.GetReqID(r.Context()),
-				"method", r.Method,
-				"route", routePatternFromContext(r.Context()),
-				"path", r.URL.Path,
-				"status_code", http.StatusInternalServerError,
-				"client_ip", clientIP(r.RemoteAddr),
-				"user_agent", r.UserAgent(),
-				"panic_type", fmt.Sprintf("%T", recovered),
-				"panic_value", fmt.Sprint(recovered),
-				"stack_trace", string(debug.Stack()),
-			}
-
-			if lc, ok := logContextFromContext(r.Context()); ok {
-				if lc.UserID != "" {
-					attrs = append(attrs, "user_id", lc.UserID)
+//
+// Privacy behavior:
+// - User-agent field emission follows runtime privacy mode via logCfg.
+// - This keeps panic logs consistent with access/auth log privacy handling.
+// - Panic value is truncated according to configured max length.
+// - Stack trace emission is optional and controlled by runtime config.
+func recovererMiddleware(logCfg LogPrivacyConfig) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				recovered := recover()
+				if recovered == nil {
+					return
 				}
-				if lc.ProjectID != "" {
-					attrs = append(attrs, "project_id", lc.ProjectID)
+				attrs := []any{
+					"event", "panic",
+					"request_id", middleware.GetReqID(r.Context()),
+					"method", r.Method,
+					"route", routePatternFromContext(r.Context()),
+					"path", r.URL.Path,
+					"status_code", http.StatusInternalServerError,
+					"client_ip", clientIP(r.RemoteAddr),
+					"panic_type", fmt.Sprintf("%T", recovered),
+					"panic_value", panicValueLogValue(recovered, logCfg),
 				}
-				if lc.AppID != "" {
-					attrs = append(attrs, "app_id", lc.AppID)
+
+				// Stack traces are optional and can be disabled in production to avoid
+				// exposing internal file paths/function names in logs.
+				if key, value, ok := panicStackTraceLogAttr(logCfg); ok {
+					attrs = append(attrs, key, value)
 				}
-			}
 
-			slog.Error("panic recovered", attrs...)
+				// Attach user-agent metadata according to configured privacy mode.
+				if key, value, ok := userAgentLogAttr(r.UserAgent(), logCfg); ok {
+					attrs = append(attrs, key, value)
+				}
 
-			// If downstream already wrote a status/body, do not attempt to write
-			// another response during panic recovery.
-			if responseWriterStatus(w) != 0 {
-				return
-			}
-			writeErr(w, http.StatusInternalServerError, "internal error")
-		}()
-
-		next.ServeHTTP(w, r)
-	})
+				if lc, ok := logContextFromContext(r.Context()); ok {
+					if lc.UserID != "" {
+						attrs = append(attrs, "user_id", lc.UserID)
+					}
+					if lc.ProjectID != "" {
+						attrs = append(attrs, "project_id", lc.ProjectID)
+					}
+					if lc.AppID != "" {
+						attrs = append(attrs, "app_id", lc.AppID)
+					}
+				}
+				slog.Error("panic recovered", attrs...)
+				// If downstream already wrote a status/body, do not attempt to write
+				// another response during panic recovery.
+				if responseWriterStatus(w) != 0 {
+					return
+				}
+				writeErr(w, http.StatusInternalServerError, "internal error")
+			}()
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // responseWriterStatus returns the currently written status code when the writer

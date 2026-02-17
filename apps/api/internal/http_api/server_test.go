@@ -128,7 +128,7 @@ func newTestServerWithRateLimitConfig(t *testing.T, rateLimitCfg http_api.RateLi
 
 	queries := pgstore.New(pool)
 	svc := service.NewProjectService(queries)
-	api := http_api.NewServer(svc, authCfg, pool, rateLimitCfg)
+	api := http_api.NewServer(svc, authCfg, pool, rateLimitCfg, http_api.DefaultLogPrivacyConfig())
 
 	// httptest server exposes in-memory HTTP endpoint for black-box requests.
 	return &testServer{

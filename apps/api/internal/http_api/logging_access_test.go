@@ -6,6 +6,7 @@
 // - level mapping follows status class policy (2xx/3xx info, 4xx warn, 5xx error)
 // - rate-limited hint is true only for HTTP 429 responses
 // - panic recovery emits structured panic logs and safe client responses
+// - panic logs respect redaction and stack-trace policy configuration
 //
 // Testing note:
 // - These tests intentionally avoid t.Parallel because they temporarily replace
@@ -35,6 +36,23 @@ func withCapturedAccessLogger(t *testing.T) (*bytes.Buffer, func()) {
 	buf := &bytes.Buffer{}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	return buf, func() { slog.SetDefault(old) }
+}
+
+// testLogPrivacyConfig returns a deterministic privacy mode for access and panic
+// logging tests so assertions can verify raw user-agent fields without requiring
+// hashing secrets.
+//
+// Why truncate mode is used here:
+//   - Production defaults use hash mode, but these middleware tests assert field
+//     names and values directly.
+//   - Truncate mode keeps behavior explicit and stable for test expectations.
+func testLogPrivacyConfig() LogPrivacyConfig {
+	return LogPrivacyConfig{
+		UserAgentMode:     UserAgentLogModeTruncate,
+		UserAgentMaxLen:   100,
+		PanicValueMaxLen:  200,
+		IncludeStackTrace: true,
+	}
 }
 
 // TestAccessLogLevel verifies status-class to slog-level mapping policy.
@@ -106,7 +124,7 @@ func TestAccessLogMiddlewareEmitsStructuredFields(t *testing.T) {
 
 			r := chi.NewRouter()
 			r.Use(middleware.RequestID)
-			r.Use(accessLogMiddleware)
+			r.Use(accessLogMiddleware(testLogPrivacyConfig()))
 
 			r.Get("/v0/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 				if tc.enrichIDs {
@@ -174,8 +192,8 @@ func TestRecovererMiddlewareRecoversPanicAndWritesInternalError(t *testing.T) {
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(accessLogMiddleware)
-	r.Use(recovererMiddleware)
+	r.Use(accessLogMiddleware(testLogPrivacyConfig()))
+	r.Use(recovererMiddleware(testLogPrivacyConfig()))
 
 	r.Get("/v0/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if lc, ok := logContextFromContext(r.Context()); ok {
@@ -228,8 +246,8 @@ func TestRecovererMiddlewareDoesNotRewriteStartedResponse(t *testing.T) {
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(accessLogMiddleware)
-	r.Use(recovererMiddleware)
+	r.Use(accessLogMiddleware(testLogPrivacyConfig()))
+	r.Use(recovererMiddleware(testLogPrivacyConfig()))
 
 	r.Get("/v0/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
@@ -253,6 +271,42 @@ func TestRecovererMiddlewareDoesNotRewriteStartedResponse(t *testing.T) {
 	accessEntry := findEntryByEvent(t, entries, "http_access")
 	require.Equal(t, "INFO", accessEntry["level"])
 	require.Equal(t, float64(http.StatusAccepted), accessEntry["status_code"])
+}
+
+// TestRecovererMiddlewareAppliesPanicPrivacyConfig verifies panic-value
+// truncation and optional stack-trace omission based on log privacy settings.
+func TestRecovererMiddlewareAppliesPanicPrivacyConfig(t *testing.T) {
+	buf, restore := withCapturedAccessLogger(t)
+	defer restore()
+
+	privacyCfg := LogPrivacyConfig{
+		UserAgentMode:     UserAgentLogModeOff,
+		PanicValueMaxLen:  5,
+		IncludeStackTrace: false,
+	}
+
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(accessLogMiddleware(privacyCfg))
+	r.Use(recovererMiddleware(privacyCfg))
+
+	r.Get("/v0/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
+		panic("abcdefghijklmnopqrstuvwxyz")
+	})
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v0/projects/123", nil)
+	req.Header.Set("User-Agent", "yaak")
+
+	r.ServeHTTP(rr, req)
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+
+	entries := decodeJSONLogEntries(t, buf)
+	panicEntry := findEntryByEvent(t, entries, "panic")
+	require.Equal(t, "abcde", panicEntry["panic_value"])
+	require.NotContains(t, panicEntry, "stack_trace")
+	require.NotContains(t, panicEntry, "user_agent")
+	require.NotContains(t, panicEntry, "user_agent_hash")
 }
 
 // decodeJSONLogEntries decodes all JSON log lines from a captured logger

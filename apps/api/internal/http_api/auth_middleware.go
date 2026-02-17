@@ -137,26 +137,24 @@ func (c AuthConfig) Validate() error {
 // Design intent:
 //   - Keep authentication mechanics centralized here so endpoint handlers remain
 //     focused on request/response handling and business logic.
-func authMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
+func authMiddleware(cfg AuthConfig, logCfg LogPrivacyConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Expected format: "Bearer <jwt>".
 			rawToken, err := parseBearerToken(r.Header.Get("Authorization"))
 			if err != nil {
-				logAuthFailure(r, authFailureReason(err))
+				logAuthFailure(r, authFailureReason(err), logCfg)
 				// Always return a generic auth error to avoid leaking parse details.
 				writeErr(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
-
 			claims, err := parseAndValidateClaims(rawToken, cfg)
 			if err != nil {
-				logAuthFailure(r, "invalid_token")
+				logAuthFailure(r, "invalid_token", logCfg)
 				// Again, keep failure response intentionally generic.
 				writeErr(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
-
 			// Handlers consume this trusted object from context.
 			principal := AuthPrincipal{
 				Subject:   claims.Subject,
@@ -196,7 +194,8 @@ func authFailureReason(err error) string {
 // - Do not log Authorization header values.
 // - Do not log token text, cookies, or request bodies.
 // - Emit only stable reason codes and request metadata.
-func logAuthFailure(r *http.Request, reason string) {
+// - Emit user-agent metadata using configured privacy policy.
+func logAuthFailure(r *http.Request, reason string, logCfg LogPrivacyConfig) {
 	attrs := []any{
 		"event", "auth_failure",
 		"request_id", middleware.GetReqID(r.Context()),
@@ -206,8 +205,14 @@ func logAuthFailure(r *http.Request, reason string) {
 		"status_code", http.StatusUnauthorized,
 		"reason", reason,
 		"client_ip", clientIP(r.RemoteAddr),
-		"user_agent", r.UserAgent(),
 	}
+
+	// Apply shared user-agent privacy behavior so auth failure logs stay aligned
+	// with access and panic log output policy.
+	if key, value, ok := userAgentLogAttr(r.UserAgent(), logCfg); ok {
+		attrs = append(attrs, key, value)
+	}
+
 	slog.Warn("auth failure", attrs...)
 }
 

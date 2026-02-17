@@ -3,9 +3,14 @@
 // one Router method used by main and integration tests.
 // Route registration for health checks and versioned endpoints is centralized
 // here so application wiring is discoverable in one place.
-// When adding new endpoints, most HTTP route setup changes should begin here.
+// In addition to routing, this file owns composition wiring for server-level
+// runtime configuration (for example rate limits and log privacy). Config model
+// definitions live in focused files, while this file stays responsible for
+// assembling middleware and route behavior.
+// When adding new endpoints or middleware-level wiring, changes should begin
+// here so composition remains discoverable in one place.
 
-// Package http_api  routing and middleware wiring.
+// Package http_api provides routing and middleware wiring.
 package http_api
 
 import (
@@ -65,21 +70,37 @@ func (c RateLimitConfig) normalized() RateLimitConfig {
 }
 
 // Server wires HTTP handlers to service dependencies and auth configuration.
+//
+// Runtime behavior fields:
+//   - rateLimitCfg controls authenticated-user request budget enforcement.
+//   - logPrivacyCfg controls user-agent representation and panic-log redaction
+//     policy (panic value length and stack trace toggles).
 type Server struct {
-	svc          *service.ProjectService
-	authCfg      AuthConfig
-	dbPool       *pgxpool.Pool
-	rateLimitCfg RateLimitConfig
+	svc           *service.ProjectService
+	authCfg       AuthConfig
+	dbPool        *pgxpool.Pool
+	rateLimitCfg  RateLimitConfig
+	logPrivacyCfg LogPrivacyConfig
 }
 
-// NewServer creates a Server bound to the provided project service.
-// Keeping wiring here makes dependencies explicit for startup and tests.
-func NewServer(svc *service.ProjectService, authCfg AuthConfig, dbPool *pgxpool.Pool, rateLimitCfg RateLimitConfig) *Server {
+// NewServer creates a Server bound to the provided service and middleware
+// runtime configuration.
+//
+// Construction behavior:
+//   - Normalizes rate-limit config so zero-value callers still get safe runtime
+//     limiter behavior.
+//   - Normalizes log-privacy config so middleware sees valid mode/length values
+//     even when startup config is incomplete.
+//
+// Keeping this wiring constructor explicit makes startup and tests easier to
+// understand because dependency and config flow is visible at the call site.
+func NewServer(svc *service.ProjectService, authCfg AuthConfig, dbPool *pgxpool.Pool, rateLimitCfg RateLimitConfig, logPrivacyCfg LogPrivacyConfig) *Server {
 	return &Server{
-		svc:          svc,
-		authCfg:      authCfg,
-		dbPool:       dbPool,
-		rateLimitCfg: rateLimitCfg.normalized(),
+		svc:           svc,
+		authCfg:       authCfg,
+		dbPool:        dbPool,
+		rateLimitCfg:  rateLimitCfg.normalized(),
+		logPrivacyCfg: logPrivacyCfg.normalized(),
 	}
 }
 
@@ -92,8 +113,8 @@ func (s *Server) Router() http.Handler {
 	// Base middleware stack.
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP) // keep client IP extraction before logging middleware
-	r.Use(accessLogMiddleware)
-	r.Use(recovererMiddleware)
+	r.Use(accessLogMiddleware(s.logPrivacyCfg))
+	r.Use(recovererMiddleware(s.logPrivacyCfg))
 
 	// userLimiter applies per-authenticated-user request limits on API v0 routes.
 	// Keys come from keyByGithubID, so limits are enforced by JWT identity
@@ -116,7 +137,7 @@ func (s *Server) Router() http.Handler {
 	})
 
 	r.Route("/v0", func(r chi.Router) {
-		r.Use(authMiddleware(s.authCfg))
+		r.Use(authMiddleware(s.authCfg, s.logPrivacyCfg))
 		r.Use(userLimiter)
 		r.Post("/projects", s.handleCreateProject)
 	})
