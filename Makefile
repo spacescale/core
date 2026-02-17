@@ -3,6 +3,9 @@
 	goose-create \
 	migrate-up-test migrate-down-test coverage clean test mint
 
+DB_URL ?= postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable
+TEST_DB_URL ?= postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable
+
 
 ## Support positional usage: `make goose-create add_users_table`.
 ## Make treats extra words as additional targets, so we:
@@ -21,7 +24,7 @@ test:
 	make compose-reset ## removes volume so database tests wont crash
 	docker compose -f docker-compose.yaml up --build -d
 	make migrate-up-test
-	cd apps/api && TEST_DATABASE_URL="postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" go test ./... -race -cover
+	cd apps/api && TEST_DATABASE_URL="$(TEST_DB_URL)" go test ./internal/http_api ./internal/service -race -cover
 
 compose-up:
 	docker compose -f docker-compose.yaml up --build -d
@@ -42,29 +45,30 @@ compose-psql:
 	docker compose -f docker-compose.yaml exec db psql -U spacescale -d spacescale
 
 migrate-up:
-	goose -dir apps/db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable" up
+	goose -dir apps/db/migrations postgres "$(DB_URL)" up
 
 migrate-down:
-	goose -dir apps/db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable" down
+	goose -dir apps/db/migrations postgres "$(DB_URL)" down
 
 migrate-reset:
-	goose -dir apps/db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable" reset
+	goose -dir apps/db/migrations postgres "$(DB_URL)" reset
 
 goose-create:
 	goose -dir apps/db/migrations create $(MIGRATION_NAME) sql
 
 migrate-up-test:
-	goose -dir apps/db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" up
+	goose -dir apps/db/migrations postgres "$(TEST_DB_URL)" up
 
 migrate-down-test:
-	goose -dir apps/db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" down
+	goose -dir apps/db/migrations postgres "$(TEST_DB_URL)" down
 
 coverage:
-	cd apps/api && TEST_DATABASE_URL="postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" go test ./... -coverprofile=../../coverage.out
+	cd apps/api && TEST_DATABASE_URL="$(TEST_DB_URL)" go test ./internal/http_api ./internal/service -coverprofile=../../coverage.out
 	go tool cover -html=coverage.out -o coverage.html
-	open coverage.html
+	@if command -v open >/dev/null 2>&1; then open coverage.html; else echo "coverage report: coverage.html"; fi
 
 random-hash:
+	# generates 32 random bytes and prints them as hex
 	openssl rand -hex 32
 
 ## Mint a BFF JWT for local API testing.
