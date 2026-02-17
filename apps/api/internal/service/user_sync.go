@@ -37,7 +37,9 @@ type SyncAuthUserParams struct {
 //
 // Persistence behavior:
 // - Upsert by identity key so repeated sign-ins are idempotent.
-// - Profile fields are updated on each successful write.
+// - Existing non-empty profile fields are preserved; incoming data only
+//   populates fields that are currently empty. This prevents OAuth provider
+//   switches from overwriting user-preferred profile data.
 func (s *ProjectService) SyncAuthUser(ctx context.Context, p SyncAuthUserParams) (User, error) {
 	identityKey := strings.TrimSpace(p.IdentityKey)
 	if identityKey == "" {
