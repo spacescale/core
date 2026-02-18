@@ -31,7 +31,7 @@ description: |-
   - applies per-identity guardrail rate limiting
 
   ### Validation
-  - `identityKey` is required and must be <= 255 chars
+  - `identityKey` is required and must be <= 512 chars
   - optional fields are sanitized (invalid optional values are dropped)
 
   ### Success Response

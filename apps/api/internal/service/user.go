@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	maxIdentityKeyChars = 255
+	maxIdentityKeyChars = 512
 	maxEmailChars       = 320
 	maxNameChars        = 255
 	maxAvatarURLChars   = 2048

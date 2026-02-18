@@ -111,7 +111,7 @@ func TestSyncAuthUserRejectsTooLongIdentity(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
-	body := []byte(fmt.Sprintf(`{"identityKey":"%s"}`, strings.Repeat("a", 256)))
+	body := []byte(fmt.Sprintf(`{"identityKey":"%s"}`, strings.Repeat("a", 513)))
 	resp, data := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", body, map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",

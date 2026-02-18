@@ -9,7 +9,7 @@ CREATE TABLE users
     id                   UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
     identity_key         TEXT        NOT NULL UNIQUE CHECK (
         char_length(btrim(identity_key)) > 0
-        AND char_length(identity_key) <= 255
+        AND char_length(identity_key) <= 512
     ),
     email                TEXT CHECK (email IS NULL OR char_length(email) <= 320),
     name                 TEXT CHECK (name IS NULL OR char_length(name) <= 255),
