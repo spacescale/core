@@ -23,7 +23,7 @@ packages/
 
 ## Prerequisites
 
-- **Go** 1.25+
+- **Go** 1.26+
 - **Node.js** 22+
 - **pnpm** 9+
 - **Docker** + Docker Compose
