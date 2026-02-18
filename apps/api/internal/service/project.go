@@ -240,13 +240,14 @@ func randomSuffix(n int) string {
 // UUID and timestamp fields into plain service values.
 func userFromRow(r pgstore.User) User {
 	return User{
-		ID:        uuidToString(r.ID),
-		GithubID:  r.GithubID,
-		Email:     textFromPG(r.Email),
-		Name:      textFromPG(r.Name),
-		AvatarURL: textFromPG(r.AvatarUrl),
-		CreatedAt: timeFromTimestamptz(r.CreatedAt),
-		UpdatedAt: timeFromTimestamptz(r.UpdatedAt),
+		ID:                  uuidToString(r.ID),
+		GithubID:            r.GithubID,
+		Email:               textFromPG(r.Email),
+		Name:                textFromPG(r.Name),
+		AvatarURL:           textFromPG(r.AvatarUrl),
+		OnboardingCompleted: r.OnboardingCompleted,
+		CreatedAt:           timeFromTimestamptz(r.CreatedAt),
+		UpdatedAt:           timeFromTimestamptz(r.UpdatedAt),
 	}
 }
 

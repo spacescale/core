@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -28,6 +29,13 @@ func main() {
 		logger.Error("invalid startup config", "event", "startup_error", "error", err)
 		os.Exit(1)
 	}
+
+	internalAuthSyncSecret := strings.TrimSpace(envStr("INTERNAL_AUTH_SYNC_SECRET", ""))
+	if internalAuthSyncSecret == "" {
+		logger.Error("invalid startup config", "event", "startup_error", "error", "missing required config INTERNAL_AUTH_SYNC_SECRET")
+		os.Exit(1)
+	}
+
 	dbPool, err := openDB(context.Background(), cfg.Database)
 	if err != nil {
 		logger.Error("database init failed", "event", "startup_error", "error", err)
@@ -37,7 +45,7 @@ func main() {
 	queries := pgstore.New(dbPool)
 
 	svc := service.NewProjectService(queries)
-	api := http_api.NewServer(svc, cfg.Auth, dbPool, cfg.RateLimit, cfg.LogPrivacy)
+	api := http_api.NewServer(svc, cfg.Auth, dbPool, cfg.RateLimit, cfg.LogPrivacy, internalAuthSyncSecret)
 
 	// Wrap the router with a global body-size limiter so body reads beyond this
 	// cap fail fast and handlers never process unbounded payloads.

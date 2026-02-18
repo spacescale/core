@@ -14,7 +14,9 @@
 package http_api
 
 import (
+	"crypto/subtle"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -72,11 +74,12 @@ func (c RateLimitConfig) normalized() RateLimitConfig {
 //   - logPrivacyCfg controls user-agent representation and panic-log redaction
 //     policy (panic value length and stack trace toggles).
 type Server struct {
-	svc           *service.ProjectService
-	authCfg       AuthConfig
-	dbPool        *pgxpool.Pool
-	rateLimitCfg  RateLimitConfig
-	logPrivacyCfg LogPrivacyConfig
+	svc                *service.ProjectService
+	authCfg            AuthConfig
+	dbPool             *pgxpool.Pool
+	rateLimitCfg       RateLimitConfig
+	logPrivacyCfg      LogPrivacyConfig
+	internalAuthSecret string
 }
 
 // NewServer creates a Server bound to the provided service and middleware
@@ -90,13 +93,14 @@ type Server struct {
 //
 // Keeping this wiring constructor explicit makes startup and tests easier to
 // understand because dependency and config flow is visible at the call site.
-func NewServer(svc *service.ProjectService, authCfg AuthConfig, dbPool *pgxpool.Pool, rateLimitCfg RateLimitConfig, logPrivacyCfg LogPrivacyConfig) *Server {
+func NewServer(svc *service.ProjectService, authCfg AuthConfig, dbPool *pgxpool.Pool, rateLimitCfg RateLimitConfig, logPrivacyCfg LogPrivacyConfig, internalAuthSecret string) *Server {
 	return &Server{
-		svc:           svc,
-		authCfg:       authCfg,
-		dbPool:        dbPool,
-		rateLimitCfg:  rateLimitCfg.normalized(),
-		logPrivacyCfg: logPrivacyCfg.normalized(),
+		svc:                svc,
+		authCfg:            authCfg,
+		dbPool:             dbPool,
+		rateLimitCfg:       rateLimitCfg.normalized(),
+		logPrivacyCfg:      logPrivacyCfg.normalized(),
+		internalAuthSecret: internalAuthSecret,
 	}
 }
 
@@ -132,6 +136,11 @@ func (s *Server) Router() http.Handler {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	r.Route("/v0/internal", func(r chi.Router) {
+		r.Use(internalAuthMiddleware(s.internalAuthSecret))
+		r.Post("/auth-sync", s.handleSyncAuthUser)
+	})
+
 	r.Route("/v0", func(r chi.Router) {
 		r.Use(authMiddleware(s.authCfg, s.logPrivacyCfg))
 		r.Use(userLimiter)
@@ -160,4 +169,31 @@ func keyByGithubID(r *http.Request) (string, error) {
 		return "github:unknown", nil
 	}
 	return "github:" + p.GithubID, nil
+}
+
+// internalAuthMiddleware protects trusted internal endpoints with a shared
+// secret header.
+//
+// The middleware expects header "X-Internal-Auth" and compares it using
+// constant-time equality. Requests with missing or incorrect secrets receive
+// an unauthorized response.
+func internalAuthMiddleware(expectedSecret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			expected := strings.TrimSpace(expectedSecret)
+			provided := strings.TrimSpace(r.Header.Get("X-Internal-Auth"))
+
+			if expected == "" || provided == "" {
+				writeErr(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+
+			if subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) != 1 {
+				writeErr(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }

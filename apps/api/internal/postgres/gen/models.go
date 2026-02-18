@@ -82,11 +82,12 @@ type RegistryCredential struct {
 }
 
 type User struct {
-	ID        pgtype.UUID
-	GithubID  string
-	Email     pgtype.Text
-	Name      pgtype.Text
-	AvatarUrl pgtype.Text
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	ID                  pgtype.UUID
+	GithubID            string
+	Email               pgtype.Text
+	Name                pgtype.Text
+	AvatarUrl           pgtype.Text
+	OnboardingCompleted bool
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
 }

@@ -25,9 +25,10 @@ import (
 )
 
 const (
-	testJWTSecret = "test-bff-secret"         // shared test JWT secret for server auth middleware and token minting.
-	testIssuer    = "spacescale-web-bff-test" // shared test token issuer.
-	testAudience  = "spacescale-api-test"     // shared test token audience.
+	testJWTSecret          = "test-bff-secret"         // shared test JWT secret for server auth middleware and token minting.
+	testIssuer             = "spacescale-web-bff-test" // shared test token issuer.
+	testAudience           = "spacescale-api-test"     // shared test token audience.
+	testInternalAuthSecret = "test-internal-secret"
 )
 
 // testServer bundles resources needed by integration tests.
@@ -115,7 +116,7 @@ func newTestServerWithRateLimitConfig(t *testing.T, rateLimitCfg http_api.RateLi
 
 	queries := pgstore.New(pool)
 	svc := service.NewProjectService(queries)
-	api := http_api.NewServer(svc, authCfg, pool, rateLimitCfg, http_api.DefaultLogPrivacyConfig())
+	api := http_api.NewServer(svc, authCfg, pool, rateLimitCfg, http_api.DefaultLogPrivacyConfig(), testInternalAuthSecret)
 
 	// httptest server exposes in-memory HTTP endpoint for black-box requests.
 	return &testServer{

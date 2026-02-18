@@ -15,11 +15,12 @@ import "time"
 // The service layer keeps this type database-agnostic so handlers and callers
 // do not depend directly on SQLC-generated wrapper types.
 type User struct {
-	ID        string
-	GithubID  string
-	Email     string
-	Name      string
-	AvatarURL string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID                  string
+	GithubID            string
+	Email               string
+	Name                string
+	AvatarURL           string
+	OnboardingCompleted bool
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
