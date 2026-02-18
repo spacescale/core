@@ -9,6 +9,8 @@
 package http_api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"strings"
@@ -47,6 +49,9 @@ func (s *Server) handleSyncAuthUser(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid input")
 		return
 	}
+	if s.internalIdentityLimiter.RespondOnLimit(w, r, internalIdentityLimiterKey(req.IdentityKey)) {
+		return
+	}
 
 	user, err := s.services.Users.SyncAuthUser(r.Context(), service.SyncAuthUserParams{
 		IdentityKey: req.IdentityKey,
@@ -67,4 +72,13 @@ func (s *Server) handleSyncAuthUser(w http.ResponseWriter, r *http.Request) {
 		ID:                  user.ID,
 		OnboardingCompleted: user.OnboardingCompleted,
 	})
+}
+
+func internalIdentityLimiterKey(identityKey string) string {
+	trimmed := strings.TrimSpace(identityKey)
+	if trimmed == "" {
+		return "internal-identity:unknown"
+	}
+	sum := sha256.Sum256([]byte(trimmed))
+	return "internal-identity:" + hex.EncodeToString(sum[:])
 }

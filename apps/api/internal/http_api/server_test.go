@@ -56,6 +56,13 @@ func TestDefaultRateLimitConfig(t *testing.T) {
 	require.Equal(t, time.Minute, cfg.Window)
 }
 
+func TestDefaultInternalRateLimitConfig(t *testing.T) {
+	identityCfg := config.DefaultInternalIdentityRateLimitConfig()
+
+	require.Equal(t, 30, identityCfg.Requests)
+	require.Equal(t, time.Minute, identityCfg.Window)
+}
+
 // TestNewServerNormalizesInvalidRateLimitConfig verifies that invalid limiter
 // values are normalized by server wiring so requests are not incorrectly
 // blocked by zero-value configuration.
@@ -154,13 +161,46 @@ func TestUnauthorizedRequestsAreNotRateLimited(t *testing.T) {
 // If TEST_DATABASE_URL is missing, the test is skipped.
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
-	return newTestServerWithRateLimitConfig(t, config.DefaultRateLimitConfig())
+	return newTestServerWithRateLimitConfigs(
+		t,
+		config.DefaultRateLimitConfig(),
+		config.DefaultInternalIdentityRateLimitConfig(),
+	)
 }
 
 // newTestServerWithRateLimitConfig creates one integration server using the
 // supplied rate-limit configuration.
 // If TEST_DATABASE_URL is missing, the test is skipped.
 func newTestServerWithRateLimitConfig(t *testing.T, rateLimitCfg config.RateLimitConfig) *testServer {
+	t.Helper()
+	return newTestServerWithRateLimitConfigs(
+		t,
+		rateLimitCfg,
+		config.DefaultInternalIdentityRateLimitConfig(),
+	)
+}
+
+// newTestServerWithInternalRateLimitConfig creates one integration server with
+// internal per-identity limiter override and default /v0 per-user limiting.
+func newTestServerWithInternalRateLimitConfig(
+	t *testing.T,
+	internalIdentityCfg config.RateLimitConfig,
+) *testServer {
+	t.Helper()
+	return newTestServerWithRateLimitConfigs(
+		t,
+		config.DefaultRateLimitConfig(),
+		internalIdentityCfg,
+	)
+}
+
+// newTestServerWithRateLimitConfigs creates one integration server using all
+// supplied limiter configuration values.
+func newTestServerWithRateLimitConfigs(
+	t *testing.T,
+	rateLimitCfg config.RateLimitConfig,
+	internalIdentityCfg config.RateLimitConfig,
+) *testServer {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
@@ -196,10 +236,11 @@ func newTestServerWithRateLimitConfig(t *testing.T, rateLimitCfg config.RateLimi
 		Services: svcs,
 		DBPool:   pool,
 		Config: config.APIConfig{
-			Auth:               authCfg,
-			RateLimit:          rateLimitCfg,
-			LogPrivacy:         config.DefaultLogPrivacyConfig(),
-			InternalAuthSecret: testInternalAuthSecret,
+			Auth:                      authCfg,
+			RateLimit:                 rateLimitCfg,
+			InternalIdentityRateLimit: internalIdentityCfg,
+			LogPrivacy:                config.DefaultLogPrivacyConfig(),
+			InternalAuthSecret:        testInternalAuthSecret,
 		},
 	})
 

@@ -105,10 +105,11 @@ func readAPIServerConfig() (APIConfig, error) {
 	}
 
 	return APIConfig{
-		Auth:               authCfg,
-		RateLimit:          readRateLimitConfig(),
-		LogPrivacy:         logPrivacyCfg,
-		InternalAuthSecret: internalAuthSecret,
+		Auth:                      authCfg,
+		RateLimit:                 readRateLimitConfig(),
+		InternalIdentityRateLimit: readInternalIdentityRateLimitConfig(),
+		LogPrivacy:                logPrivacyCfg,
+		InternalAuthSecret:        internalAuthSecret,
 	}, nil
 }
 
@@ -179,6 +180,17 @@ func readRateLimitConfig() RateLimitConfig {
 	return RateLimitConfig{
 		Requests: int(parseEnvInt32("API_USER_RATE_LIMIT_REQUESTS", int32(defaults.Requests))),
 		Window:   parseEnvDuration("API_USER_RATE_LIMIT_WINDOW", defaults.Window),
+	}
+}
+
+// readInternalIdentityRateLimitConfig loads per-identity limiter settings for
+// trusted internal auth-sync requests.
+func readInternalIdentityRateLimitConfig() RateLimitConfig {
+	defaults := DefaultInternalIdentityRateLimitConfig()
+
+	return RateLimitConfig{
+		Requests: int(parseEnvInt32("API_INTERNAL_IDENTITY_RATE_LIMIT_REQUESTS", int32(defaults.Requests))),
+		Window:   parseEnvDuration("API_INTERNAL_IDENTITY_RATE_LIMIT_WINDOW", defaults.Window),
 	}
 }
 

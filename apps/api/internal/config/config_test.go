@@ -14,6 +14,7 @@ package config
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -97,6 +98,7 @@ func TestLoadAppConfigBuildsTypedDefaults(t *testing.T) {
 	require.Equal(t, defaultAuthIssuer, cfg.API.Auth.Issuer)
 	require.Equal(t, defaultAuthAudience, cfg.API.Auth.Audience)
 	require.Equal(t, DefaultRateLimitConfig(), cfg.API.RateLimit)
+	require.Equal(t, DefaultInternalIdentityRateLimitConfig(), cfg.API.InternalIdentityRateLimit)
 	expectedLogPrivacy := DefaultLogPrivacyConfig()
 	expectedLogPrivacy.UserAgentMode = UserAgentLogModeOff
 	require.Equal(t, expectedLogPrivacy, cfg.API.LogPrivacy)
@@ -106,4 +108,17 @@ func TestLoadAppConfigBuildsTypedDefaults(t *testing.T) {
 	require.Equal(t, defaultHTTPServerConfig().ReadHeaderTimeout, cfg.HTTPServer.ReadHeaderTimeout)
 	require.Equal(t, defaultHTTPServerConfig().WriteTimeout, cfg.HTTPServer.WriteTimeout)
 	require.Equal(t, defaultHTTPServerConfig().IdleTimeout, cfg.HTTPServer.IdleTimeout)
+}
+
+// TestLoadAppConfigParsesInternalRateLimits verifies internal route limiter env
+// overrides are loaded into typed API config fields.
+func TestLoadAppConfigParsesInternalRateLimits(t *testing.T) {
+	setBaselineEnv(t)
+	t.Setenv("API_INTERNAL_IDENTITY_RATE_LIMIT_REQUESTS", "15")
+	t.Setenv("API_INTERNAL_IDENTITY_RATE_LIMIT_WINDOW", "30s")
+
+	cfg, err := LoadFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, 15, cfg.API.InternalIdentityRateLimit.Requests)
+	require.Equal(t, 30*time.Second, cfg.API.InternalIdentityRateLimit.Window)
 }

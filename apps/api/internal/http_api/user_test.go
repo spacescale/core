@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/t0gun/spacescale/internal/config"
 )
 
 type syncAuthUserResponse struct {
@@ -142,4 +144,39 @@ func TestSyncAuthUserSanitizesOptionalFieldsAndContinues(t *testing.T) {
 	var out syncAuthUserResponse
 	require.NoError(t, json.Unmarshal(data, &out))
 	require.NotEmpty(t, out.ID)
+}
+
+func TestSyncAuthUserRateLimitIsPerIdentity(t *testing.T) {
+	ts := newTestServerWithInternalRateLimitConfig(
+		t,
+		config.RateLimitConfig{Requests: 1, Window: time.Minute},
+	)
+	defer ts.close()
+
+	identityA := uniqueIdentityKey(t)
+	bodyA := []byte(fmt.Sprintf(`{"identityKey":"%s"}`, identityA))
+
+	firstResp, firstData := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", bodyA, map[string]string{
+		"X-Internal-Auth": testInternalAuthSecret,
+		"Content-Type":    "application/json",
+	})
+	require.Equal(t, http.StatusOK, firstResp.StatusCode, string(firstData))
+
+	secondResp, secondData := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", bodyA, map[string]string{
+		"X-Internal-Auth": testInternalAuthSecret,
+		"Content-Type":    "application/json",
+	})
+	require.Equal(t, http.StatusTooManyRequests, secondResp.StatusCode, string(secondData))
+
+	var secondOut errorResponse
+	require.NoError(t, json.Unmarshal(secondData, &secondOut))
+	require.Equal(t, "rate limit exceeded", secondOut.Error)
+
+	identityB := uniqueIdentityKey(t)
+	bodyB := []byte(fmt.Sprintf(`{"identityKey":"%s"}`, identityB))
+	thirdResp, thirdData := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", bodyB, map[string]string{
+		"X-Internal-Auth": testInternalAuthSecret,
+		"Content-Type":    "application/json",
+	})
+	require.Equal(t, http.StatusOK, thirdResp.StatusCode, string(thirdData))
 }

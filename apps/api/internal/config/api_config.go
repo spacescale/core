@@ -11,8 +11,10 @@ import (
 )
 
 const (
-	defaultUserRateLimitRequests = 100
-	defaultUserRateLimitWindow   = time.Minute
+	defaultUserRateLimitRequests             = 100
+	defaultUserRateLimitWindow               = time.Minute
+	defaultInternalIdentityRateLimitRequests = 30
+	defaultInternalIdentityRateLimitWindow   = time.Minute
 
 	defaultUserAgentLogMode    = UserAgentLogModeHash
 	defaultUserAgentMaxLength  = 100
@@ -55,15 +57,28 @@ func DefaultRateLimitConfig() RateLimitConfig {
 	}
 }
 
-// Normalized returns safe runtime limiter values when fields are invalid.
-func (c RateLimitConfig) Normalized() RateLimitConfig {
+// DefaultInternalIdentityRateLimitConfig returns defaults for per-identity
+// limiting on internal auth-sync requests.
+func DefaultInternalIdentityRateLimitConfig() RateLimitConfig {
+	return RateLimitConfig{
+		Requests: defaultInternalIdentityRateLimitRequests,
+		Window:   defaultInternalIdentityRateLimitWindow,
+	}
+}
+
+func (c RateLimitConfig) normalizedWith(defaults RateLimitConfig) RateLimitConfig {
 	if c.Requests <= 0 {
-		c.Requests = defaultUserRateLimitRequests
+		c.Requests = defaults.Requests
 	}
 	if c.Window <= 0 {
-		c.Window = defaultUserRateLimitWindow
+		c.Window = defaults.Window
 	}
 	return c
+}
+
+// Normalized returns safe runtime limiter values when fields are invalid.
+func (c RateLimitConfig) Normalized() RateLimitConfig {
+	return c.normalizedWith(DefaultRateLimitConfig())
 }
 
 // UserAgentLogMode controls how user-agent data is emitted in logs.
@@ -115,15 +130,17 @@ func (c LogPrivacyConfig) Normalized() LogPrivacyConfig {
 // APIConfig groups runtime behavior settings for API middleware and internal
 // endpoint protection.
 type APIConfig struct {
-	Auth               AuthConfig
-	RateLimit          RateLimitConfig
-	LogPrivacy         LogPrivacyConfig
-	InternalAuthSecret string
+	Auth                      AuthConfig
+	RateLimit                 RateLimitConfig
+	InternalIdentityRateLimit RateLimitConfig
+	LogPrivacy                LogPrivacyConfig
+	InternalAuthSecret        string
 }
 
 // Normalized returns a safe runtime API config for server wiring.
 func (c APIConfig) Normalized() APIConfig {
-	c.RateLimit = c.RateLimit.Normalized()
+	c.RateLimit = c.RateLimit.normalizedWith(DefaultRateLimitConfig())
+	c.InternalIdentityRateLimit = c.InternalIdentityRateLimit.normalizedWith(DefaultInternalIdentityRateLimitConfig())
 	c.LogPrivacy = c.LogPrivacy.Normalized()
 	c.InternalAuthSecret = strings.TrimSpace(c.InternalAuthSecret)
 	return c

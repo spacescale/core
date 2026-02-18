@@ -33,9 +33,10 @@ import (
 //   - config.LogPrivacy controls user-agent representation and panic-log
 //     redaction policy (panic value length and stack trace toggles).
 type Server struct {
-	services *service.Services
-	dbPool   *pgxpool.Pool
-	config   config.APIConfig
+	services                *service.Services
+	dbPool                  *pgxpool.Pool
+	config                  config.APIConfig
+	internalIdentityLimiter *httprate.RateLimiter
 }
 
 // ServerDeps groups dependencies required to construct the API server.
@@ -78,9 +79,10 @@ func NewServer(deps ServerDeps) *Server {
 	}
 
 	return &Server{
-		services: deps.Services,
-		dbPool:   deps.DBPool,
-		config:   normalizedConfig,
+		services:                deps.Services,
+		dbPool:                  deps.DBPool,
+		config:                  normalizedConfig,
+		internalIdentityLimiter: newInternalIdentityLimiter(normalizedConfig.InternalIdentityRateLimit),
 	}
 }
 
@@ -103,7 +105,7 @@ func (s *Server) Router() http.Handler {
 	// Exceeded requests receive a consistent HTTP 429 JSON error response.
 	userLimiter := httprate.Limit(s.config.RateLimit.Requests, s.config.RateLimit.Window, httprate.WithKeyFuncs(keyByIdentityKey),
 		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
-			writeErr(w, http.StatusTooManyRequests, "rate limit exceeded")
+			rateLimitExceeded(w, r)
 		}),
 	)
 
@@ -117,10 +119,7 @@ func (s *Server) Router() http.Handler {
 	})
 
 	// Internal routes are intended for private-network service-to-service traffic.
-	// Calls originate from the Next.js server (not directly from end-user IPs), so
-	// per-IP limiting is not applied here. If production behavior shows abuse or
-	// retry storms, add a dedicated internal limiter as a safety circuit breaker.
-	// Shared-secret auth remains as a second layer of protection.
+	// They still apply per-identity guardrails to reduce retry storms.
 	r.Route("/v0/internal", func(r chi.Router) {
 		r.Use(internalAuthMiddleware(s.config.InternalAuthSecret))
 		r.Post("/auth-sync", s.handleSyncAuthUser)
@@ -133,6 +132,19 @@ func (s *Server) Router() http.Handler {
 	})
 
 	return r
+}
+
+// rateLimitExceeded keeps 429 responses consistent across route groups.
+func rateLimitExceeded(w http.ResponseWriter, _ *http.Request) {
+	writeErr(w, http.StatusTooManyRequests, "rate limit exceeded")
+}
+
+func newInternalIdentityLimiter(cfg config.RateLimitConfig) *httprate.RateLimiter {
+	return httprate.NewRateLimiter(
+		cfg.Requests,
+		cfg.Window,
+		httprate.WithLimitHandler(rateLimitExceeded),
+	)
 }
 
 // keyByIdentityKey returns the rate-limit key for a request based on the
