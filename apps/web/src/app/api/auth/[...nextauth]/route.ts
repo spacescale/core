@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import type { Account, NextAuthOptions, User } from "next-auth";
+import type { JWT } from "next-auth/jwt";
 import NextAuth from "next-auth";
 import GithubProvider from "next-auth/providers/github";
 import GoogleProvider from "next-auth/providers/google";
@@ -388,6 +389,171 @@ async function syncUserProfile(
 	return (await response.json()) as SyncAuthUserResponse;
 }
 
+/**
+ * Initializes token fields for a newly authenticated user.
+ * Syncs profile to database and mints initial refresh token.
+ */
+async function initializeNewUserToken(
+	token: JWT,
+	user: User,
+	identityKey: string,
+): Promise<void> {
+	token.identityKey = identityKey;
+	token.profileEmail = normalizeEmail(user.email);
+	token.profileName = (user.name ?? "").trim();
+	token.profileAvatarUrl = (user.image ?? "").trim();
+
+	try {
+		const syncedUser = await syncUserProfile(user, identityKey);
+
+		token.id = syncedUser?.id ?? identityKey;
+		token.onboardingCompleted = syncedUser?.onboardingCompleted ?? false;
+	} catch (error) {
+		// Log the failure with structured data for monitoring/alerting
+		console.error("[AUTH CRITICAL] Failed to sync user profile to database", {
+			identityKey,
+			email: user.email,
+			error: error instanceof Error ? error.message : String(error),
+			timestamp: new Date().toISOString(),
+		});
+
+		// In production, fail auth if database sync fails to prevent data loss
+		if (process.env.NODE_ENV === "production") {
+			throw new Error(
+				"Authentication failed: unable to persist user profile. Please try again.",
+			);
+		}
+
+		// In development, allow fallback for easier testing
+		console.warn(
+			"[AUTH WARNING] Allowing auth with fallback values in development mode",
+		);
+		token.id = identityKey;
+		token.onboardingCompleted = false;
+	}
+
+	const mintedRefreshToken = mintBffRefreshToken(identityKey);
+	if (mintedRefreshToken) {
+		token.apiRefreshToken = mintedRefreshToken.value;
+		token.apiRefreshTokenExpiresAt = mintedRefreshToken.expiresAt;
+	} else {
+		console.error(
+			"BFF refresh token secret is missing; unable to mint API refresh token",
+		);
+		token.apiRefreshToken = undefined;
+		token.apiRefreshTokenExpiresAt = undefined;
+	}
+}
+
+/**
+ * Ensures all required token fields are populated with valid values.
+ * Bootstraps missing fields from existing token data or defaults.
+ */
+function ensureTokenFieldsPopulated(token: JWT): void {
+	// Ensure onboardingCompleted is a boolean
+	if (typeof token.onboardingCompleted !== "boolean") {
+		token.onboardingCompleted = false;
+	}
+
+	// Bootstrap identityKey from email if missing
+	if (
+		typeof token.identityKey !== "string" ||
+		token.identityKey.trim() === ""
+	) {
+		const tokenEmail = normalizeEmail(
+			typeof token.email === "string" ? token.email : null,
+		);
+		if (tokenEmail !== "") {
+			token.identityKey = `email:${tokenEmail}`;
+		}
+	}
+
+	// Bootstrap profile fields from NextAuth token if missing
+	if (typeof token.profileEmail !== "string") {
+		token.profileEmail = normalizeEmail(
+			typeof token.email === "string" ? token.email : null,
+		);
+	}
+	if (typeof token.profileName !== "string") {
+		token.profileName =
+			typeof token.name === "string" ? token.name.trim() : "";
+	}
+	if (typeof token.profileAvatarUrl !== "string") {
+		token.profileAvatarUrl =
+			typeof token.picture === "string" ? token.picture.trim() : "";
+	}
+
+	// Bootstrap ID from identityKey if missing
+	if (
+		(typeof token.id !== "string" || token.id.trim() === "") &&
+		typeof token.identityKey === "string" &&
+		token.identityKey.trim() !== ""
+	) {
+		token.id = token.identityKey;
+	}
+
+	// Bootstrap refresh token if missing
+	if (
+		(typeof token.apiRefreshToken !== "string" ||
+			token.apiRefreshToken.trim() === "") &&
+		typeof token.identityKey === "string" &&
+		token.identityKey.trim() !== ""
+	) {
+		const bootstrappedRefreshToken = mintBffRefreshToken(token.identityKey);
+		if (bootstrappedRefreshToken) {
+			token.apiRefreshToken = bootstrappedRefreshToken.value;
+			token.apiRefreshTokenExpiresAt = bootstrappedRefreshToken.expiresAt;
+		}
+	}
+}
+
+/**
+ * Refreshes the API access token if it's expired or near expiration.
+ * Returns early if refresh token is invalid or missing.
+ */
+async function refreshAccessTokenIfNeeded(token: JWT): Promise<void> {
+	if (
+		typeof token.identityKey !== "string" ||
+		token.identityKey.trim() === "" ||
+		!shouldRefreshApiAccessToken(token.apiAccessTokenExpiresAt)
+	) {
+		return;
+	}
+
+	const refreshToken =
+		typeof token.apiRefreshToken === "string" ? token.apiRefreshToken : "";
+
+	if (
+		refreshToken.trim() === "" ||
+		!verifyRefreshToken(refreshToken, token.identityKey)
+	) {
+		console.error(
+			"API refresh token is missing or invalid; unable to mint API access token",
+		);
+		token.accessToken = undefined;
+		token.apiAccessTokenExpiresAt = undefined;
+		return;
+	}
+
+	const mintedToken = await mintBffAccessTokenDebounced({
+		identityKey: token.identityKey,
+		email: token.profileEmail ?? "",
+		name: token.profileName ?? "",
+		avatarUrl: token.profileAvatarUrl ?? "",
+	});
+
+	if (mintedToken) {
+		token.accessToken = mintedToken.value;
+		token.apiAccessTokenExpiresAt = mintedToken.expiresAt;
+	} else {
+		console.error(
+			"BFF_JWT_SECRET is missing; unable to mint API access token",
+		);
+		token.accessToken = undefined;
+		token.apiAccessTokenExpiresAt = undefined;
+	}
+}
+
 const authOptions: NextAuthOptions = {
 	providers: [
 		GithubProvider({
@@ -410,151 +576,17 @@ const authOptions: NextAuthOptions = {
 	},
 	callbacks: {
 		async jwt({ token, account, user }) {
+			// Initialize token for newly authenticated users
 			if (account && user) {
 				const identityKey = buildIdentityKey(account, user);
-				token.identityKey = identityKey;
-				token.profileEmail = normalizeEmail(user.email);
-				token.profileName = (user.name ?? "").trim();
-				token.profileAvatarUrl = (user.image ?? "").trim();
-
-				try {
-					const syncedUser = await syncUserProfile(user, identityKey);
-
-					token.id = syncedUser?.id ?? identityKey;
-					token.onboardingCompleted = syncedUser?.onboardingCompleted ?? false;
-				} catch (error) {
-					// Log the failure with structured data for monitoring/alerting
-					console.error(
-						"[AUTH CRITICAL] Failed to sync user profile to database",
-						{
-							identityKey,
-							email: user.email,
-							error: error instanceof Error ? error.message : String(error),
-							timestamp: new Date().toISOString(),
-						},
-					);
-
-					// In production, fail auth if database sync fails to prevent data loss
-					if (process.env.NODE_ENV === "production") {
-						throw new Error(
-							"Authentication failed: unable to persist user profile. Please try again.",
-						);
-					}
-
-					// In development, allow fallback for easier testing
-					console.warn(
-						"[AUTH WARNING] Allowing auth with fallback values in development mode",
-					);
-					token.id = buildIdentityKey(account, user);
-					token.onboardingCompleted = false;
-				}
-
-				const mintedRefreshToken = mintBffRefreshToken(identityKey);
-				if (mintedRefreshToken) {
-					token.apiRefreshToken = mintedRefreshToken.value;
-					token.apiRefreshTokenExpiresAt = mintedRefreshToken.expiresAt;
-				} else {
-					console.error(
-						"BFF refresh token secret is missing; unable to mint API refresh token",
-					);
-					token.apiRefreshToken = undefined;
-					token.apiRefreshTokenExpiresAt = undefined;
-				}
+				await initializeNewUserToken(token, user, identityKey);
 			}
 
-			if (typeof token.onboardingCompleted !== "boolean") {
-				token.onboardingCompleted = false;
-			}
+			// Ensure all required fields are populated
+			ensureTokenFieldsPopulated(token);
 
-			if (
-				typeof token.identityKey !== "string" ||
-				token.identityKey.trim() === ""
-			) {
-				const tokenEmail = normalizeEmail(
-					typeof token.email === "string" ? token.email : null,
-				);
-				if (tokenEmail !== "") {
-					token.identityKey = `email:${tokenEmail}`;
-				}
-			}
-
-			if (typeof token.profileEmail !== "string") {
-				token.profileEmail = normalizeEmail(
-					typeof token.email === "string" ? token.email : null,
-				);
-			}
-			if (typeof token.profileName !== "string") {
-				token.profileName =
-					typeof token.name === "string" ? token.name.trim() : "";
-			}
-			if (typeof token.profileAvatarUrl !== "string") {
-				token.profileAvatarUrl =
-					typeof token.picture === "string" ? token.picture.trim() : "";
-			}
-
-			if (
-				(typeof token.id !== "string" || token.id.trim() === "") &&
-				typeof token.identityKey === "string" &&
-				token.identityKey.trim() !== ""
-			) {
-				token.id = token.identityKey;
-			}
-
-			if (
-				(typeof token.apiRefreshToken !== "string" ||
-					token.apiRefreshToken.trim() === "") &&
-				typeof token.identityKey === "string" &&
-				token.identityKey.trim() !== ""
-			) {
-				const bootstrappedRefreshToken = mintBffRefreshToken(
-					token.identityKey,
-				);
-				if (bootstrappedRefreshToken) {
-					token.apiRefreshToken = bootstrappedRefreshToken.value;
-					token.apiRefreshTokenExpiresAt =
-						bootstrappedRefreshToken.expiresAt;
-				}
-			}
-
-			if (
-				typeof token.identityKey === "string" &&
-				token.identityKey.trim() !== "" &&
-				shouldRefreshApiAccessToken(token.apiAccessTokenExpiresAt)
-			) {
-				const refreshToken =
-					typeof token.apiRefreshToken === "string"
-						? token.apiRefreshToken
-						: "";
-				if (
-					refreshToken.trim() === "" ||
-					!verifyRefreshToken(refreshToken, token.identityKey)
-				) {
-					console.error(
-						"API refresh token is missing or invalid; unable to mint API access token",
-					);
-					token.accessToken = undefined;
-					token.apiAccessTokenExpiresAt = undefined;
-					return token;
-				}
-
-				const mintedToken = await mintBffAccessTokenDebounced({
-					identityKey: token.identityKey,
-					email: token.profileEmail ?? "",
-					name: token.profileName ?? "",
-					avatarUrl: token.profileAvatarUrl ?? "",
-				});
-
-				if (mintedToken) {
-					token.accessToken = mintedToken.value;
-					token.apiAccessTokenExpiresAt = mintedToken.expiresAt;
-				} else {
-					console.error(
-						"BFF_JWT_SECRET is missing; unable to mint API access token",
-					);
-					token.accessToken = undefined;
-					token.apiAccessTokenExpiresAt = undefined;
-				}
-			}
+			// Refresh access token if needed
+			await refreshAccessTokenIfNeeded(token);
 
 			return token;
 		},

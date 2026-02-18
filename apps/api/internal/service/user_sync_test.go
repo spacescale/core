@@ -126,6 +126,12 @@ func (r scriptedRow) Scan(dest ...interface{}) error {
 				return fmt.Errorf("value %d type mismatch: got %T want pgtype.Text", i, r.values[i])
 			}
 			*d = v
+		case *bool:
+			v, ok := r.values[i].(bool)
+			if !ok {
+				return fmt.Errorf("value %d type mismatch: got %T want bool", i, r.values[i])
+			}
+			*d = v
 		case *pgtype.Timestamptz:
 			v, ok := r.values[i].(pgtype.Timestamptz)
 			if !ok {
@@ -147,6 +153,7 @@ func asUserRowValues(u pgstore.User) []interface{} {
 		u.Email,
 		u.Name,
 		u.AvatarUrl,
+		u.OnboardingCompleted,
 		u.CreatedAt,
 		u.UpdatedAt,
 	}
@@ -172,8 +179,9 @@ func buildSyncTestUser(t *testing.T, githubID, email, name, avatarURL string) pg
 			String: avatarURL,
 			Valid:  strings.TrimSpace(avatarURL) != "",
 		},
-		CreatedAt: pgtype.Timestamptz{Time: now, Valid: true},
-		UpdatedAt: pgtype.Timestamptz{Time: now.Add(5 * time.Minute), Valid: true},
+		OnboardingCompleted: false,
+		CreatedAt:           pgtype.Timestamptz{Time: now, Valid: true},
+		UpdatedAt:           pgtype.Timestamptz{Time: now.Add(5 * time.Minute), Valid: true},
 	}
 }
 
@@ -242,6 +250,7 @@ func TestSyncAuthUserUpsertsNewUser(t *testing.T) {
 	require.Equal(t, "dev@example.com", user.Email)
 	require.Equal(t, "Dev", user.Name)
 	require.Equal(t, "https://example.com/a.png", user.AvatarURL)
+	require.False(t, user.OnboardingCompleted)
 	db.assertDone()
 }
 

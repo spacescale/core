@@ -129,6 +129,12 @@ func (r scriptedAuthSyncRow) Scan(dest ...interface{}) error {
 				return fmt.Errorf("value %d type mismatch: got %T want pgtype.Text", i, r.values[i])
 			}
 			*d = v
+		case *bool:
+			v, ok := r.values[i].(bool)
+			if !ok {
+				return fmt.Errorf("value %d type mismatch: got %T want bool", i, r.values[i])
+			}
+			*d = v
 		case *pgtype.Timestamptz:
 			v, ok := r.values[i].(pgtype.Timestamptz)
 			if !ok {
@@ -150,6 +156,7 @@ func asAuthSyncUserRowValues(u pgstore.User) []interface{} {
 		u.Email,
 		u.Name,
 		u.AvatarUrl,
+		u.OnboardingCompleted,
 		u.CreatedAt,
 		u.UpdatedAt,
 	}
@@ -172,8 +179,9 @@ func buildAuthSyncTestUser(t *testing.T, githubID string) pgstore.User {
 			String: "https://example.com/avatar.png",
 			Valid:  true,
 		},
-		CreatedAt: pgtype.Timestamptz{Time: now, Valid: true},
-		UpdatedAt: pgtype.Timestamptz{Time: now.Add(5 * time.Minute), Valid: true},
+		OnboardingCompleted: true,
+		CreatedAt:           pgtype.Timestamptz{Time: now, Valid: true},
+		UpdatedAt:           pgtype.Timestamptz{Time: now.Add(5 * time.Minute), Valid: true},
 	}
 }
 
@@ -260,6 +268,6 @@ func TestHandleSyncAuthUserSuccess(t *testing.T) {
 	var out syncAuthUserResponse
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &out))
 	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", out.ID)
-	require.False(t, out.OnboardingCompleted)
+	require.True(t, out.OnboardingCompleted)
 	db.assertDone()
 }

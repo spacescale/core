@@ -12,7 +12,7 @@ import (
 )
 
 const getUserByGithubID = `-- name: GetUserByGithubID :one
-SELECT id, github_id, email, name, avatar_url, created_at, updated_at
+SELECT id, github_id, email, name, avatar_url, onboarding_completed, created_at, updated_at
 FROM users
 WHERE github_id = $1
 `
@@ -26,6 +26,7 @@ func (q *Queries) GetUserByGithubID(ctx context.Context, githubID string) (User,
 		&i.Email,
 		&i.Name,
 		&i.AvatarUrl,
+		&i.OnboardingCompleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -33,7 +34,7 @@ func (q *Queries) GetUserByGithubID(ctx context.Context, githubID string) (User,
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, github_id, email, name, avatar_url, created_at, updated_at
+SELECT id, github_id, email, name, avatar_url, onboarding_completed, created_at, updated_at
 FROM users
 WHERE id = $1
 `
@@ -47,6 +48,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.Email,
 		&i.Name,
 		&i.AvatarUrl,
+		&i.OnboardingCompleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -61,7 +63,7 @@ UPDATE
     name = EXCLUDED.name,
     avatar_url = EXCLUDED.avatar_url,
     updated_at = now()
-    RETURNING id, github_id, email, name, avatar_url, created_at, updated_at
+    RETURNING id, github_id, email, name, avatar_url, onboarding_completed, created_at, updated_at
 `
 
 type UpsertUserByGithubIDParams struct {
@@ -85,6 +87,7 @@ func (q *Queries) UpsertUserByGithubID(ctx context.Context, arg UpsertUserByGith
 		&i.Email,
 		&i.Name,
 		&i.AvatarUrl,
+		&i.OnboardingCompleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

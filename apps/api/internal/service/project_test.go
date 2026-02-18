@@ -118,12 +118,14 @@ func TestRowMappers(t *testing.T) {
 			String: "https://example.com/avatar.png",
 			Valid:  true,
 		},
-		CreatedAt: pgtype.Timestamptz{Time: created, Valid: true},
-		UpdatedAt: pgtype.Timestamptz{Time: updated, Valid: true},
+		OnboardingCompleted: true,
+		CreatedAt:           pgtype.Timestamptz{Time: created, Valid: true},
+		UpdatedAt:           pgtype.Timestamptz{Time: updated, Valid: true},
 	})
 	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", gotUser.ID)
 	require.Equal(t, "12345", gotUser.GithubID)
 	require.Equal(t, "dev@example.com", gotUser.Email)
+	require.True(t, gotUser.OnboardingCompleted)
 
 	gotProject := projectFromRow(pgstore.Project{
 		ID:          pid,

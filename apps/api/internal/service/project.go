@@ -245,7 +245,7 @@ func userFromRow(r pgstore.User) User {
 		Email:               textFromPG(r.Email),
 		Name:                textFromPG(r.Name),
 		AvatarURL:           textFromPG(r.AvatarUrl),
-		OnboardingCompleted: false,
+		OnboardingCompleted: r.OnboardingCompleted,
 		CreatedAt:           timeFromTimestamptz(r.CreatedAt),
 		UpdatedAt:           timeFromTimestamptz(r.UpdatedAt),
 	}
