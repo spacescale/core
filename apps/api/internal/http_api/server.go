@@ -116,6 +116,11 @@ func (s *Server) Router() http.Handler {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	// Internal routes are intended for private-network service-to-service traffic.
+	// Calls originate from the Next.js server (not directly from end-user IPs), so
+	// per-IP limiting is not applied here. If production behavior shows abuse or
+	// retry storms, add a dedicated internal limiter as a safety circuit breaker.
+	// Shared-secret auth remains as a second layer of protection.
 	r.Route("/v0/internal", func(r chi.Router) {
 		r.Use(internalAuthMiddleware(s.config.InternalAuthSecret))
 		r.Post("/auth-sync", s.handleSyncAuthUser)

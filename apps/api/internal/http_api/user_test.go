@@ -5,7 +5,9 @@ package http_api_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -52,8 +54,11 @@ func TestSyncAuthUserRejectsEmptyIdentity(t *testing.T) {
 func TestSyncAuthUserSuccess(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
+	identityKey := uniqueIdentityKey(t)
 
-	body := []byte(`{"identityKey":"12345","email":"dev@example.com","name":"Dev","avatarUrl":"https://example.com/avatar.png"}`)
+	body := []byte(fmt.Sprintf(`{"identityKey":"%s","email":"dev@example.com","name":"Dev","avatarUrl":"https://example.com/avatar.png"}`,
+		identityKey,
+	))
 	resp, data := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", body, map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",
@@ -70,8 +75,11 @@ func TestSyncAuthUserSuccess(t *testing.T) {
 func TestSyncAuthUserReturnsSameUserOnResync(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
+	identityKey := uniqueIdentityKey(t)
 
-	firstBody := []byte(`{"identityKey":"12345","email":"first@example.com","name":"First","avatarUrl":"https://example.com/first.png"}`)
+	firstBody := []byte(fmt.Sprintf(`{"identityKey":"%s","email":"first@example.com","name":"First","avatarUrl":"https://example.com/first.png"}`,
+		identityKey,
+	))
 	firstResp, firstData := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", firstBody, map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",
@@ -82,7 +90,9 @@ func TestSyncAuthUserReturnsSameUserOnResync(t *testing.T) {
 	require.NoError(t, json.Unmarshal(firstData, &first))
 	require.NotEmpty(t, first.ID)
 
-	secondBody := []byte(`{"identityKey":"12345","email":"second@example.com","name":"Second","avatarUrl":"https://example.com/second.png"}`)
+	secondBody := []byte(fmt.Sprintf(`{"identityKey":"%s","email":"second@example.com","name":"Second","avatarUrl":"https://example.com/second.png"}`,
+		identityKey,
+	))
 	secondResp, secondData := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", secondBody, map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",
@@ -93,4 +103,43 @@ func TestSyncAuthUserReturnsSameUserOnResync(t *testing.T) {
 	require.NoError(t, json.Unmarshal(secondData, &second))
 	require.Equal(t, first.ID, second.ID)
 	require.Equal(t, first.OnboardingCompleted, second.OnboardingCompleted)
+}
+
+func TestSyncAuthUserRejectsTooLongIdentity(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.close()
+
+	body := []byte(fmt.Sprintf(`{"identityKey":"%s"}`, strings.Repeat("a", 256)))
+	resp, data := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", body, map[string]string{
+		"X-Internal-Auth": testInternalAuthSecret,
+		"Content-Type":    "application/json",
+	})
+
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, string(data))
+
+	var out errorResponse
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Equal(t, "invalid input", out.Error)
+}
+
+func TestSyncAuthUserSanitizesOptionalFieldsAndContinues(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.close()
+	identityKey := uniqueIdentityKey(t)
+
+	body := []byte(fmt.Sprintf(
+		`{"identityKey":"%s","email":"not-an-email","name":"%s","avatarUrl":"javascript:alert(1)"}`,
+		identityKey,
+		strings.Repeat("n", 400),
+	))
+	resp, data := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", body, map[string]string{
+		"X-Internal-Auth": testInternalAuthSecret,
+		"Content-Type":    "application/json",
+	})
+
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
+
+	var out syncAuthUserResponse
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.NotEmpty(t, out.ID)
 }

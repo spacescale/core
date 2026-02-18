@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -17,12 +18,80 @@ func TestSyncAuthUserRejectsEmptyIdentity(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidInput)
 }
 
+func TestSyncAuthUserRejectsTooLongIdentity(t *testing.T) {
+	svc := &UserService{}
+	tooLongIdentity := strings.Repeat("a", maxIdentityKeyChars+1)
+
+	_, err := svc.SyncAuthUser(t.Context(), SyncAuthUserParams{IdentityKey: tooLongIdentity})
+
+	require.ErrorIs(t, err, ErrInvalidInput)
+}
+
 func TestGetUserByIdentityKeyRejectsEmptyIdentity(t *testing.T) {
 	svc := &UserService{}
 
 	_, err := svc.GetUserByIdentityKey(t.Context(), "   ")
 
 	require.ErrorIs(t, err, ErrInvalidInput)
+}
+
+func TestGetUserByIdentityKeyRejectsTooLongIdentity(t *testing.T) {
+	svc := &UserService{}
+	tooLongIdentity := strings.Repeat("a", maxIdentityKeyChars+1)
+
+	_, err := svc.GetUserByIdentityKey(t.Context(), tooLongIdentity)
+
+	require.ErrorIs(t, err, ErrInvalidInput)
+}
+
+func TestSanitizeEmail(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "empty stays empty", in: "   ", want: ""},
+		{name: "invalid email is dropped", in: "not-an-email", want: ""},
+		{name: "valid email is normalized", in: "  Dev@Example.COM  ", want: "dev@example.com"},
+		{name: "too long email is dropped", in: strings.Repeat("a", maxEmailChars+1), want: ""},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, sanitizeEmail(tc.in))
+		})
+	}
+}
+
+func TestSanitizeName(t *testing.T) {
+	tooLong := strings.Repeat("a", maxNameChars+10)
+	got := sanitizeName(tooLong)
+	require.Len(t, []rune(got), maxNameChars)
+
+	require.Equal(t, "Dev", sanitizeName("  Dev  "))
+	require.Equal(t, "", sanitizeName("   "))
+}
+
+func TestSanitizeAvatarURL(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "empty stays empty", in: "   ", want: ""},
+		{name: "invalid url is dropped", in: "not-a-url", want: ""},
+		{name: "non-http scheme is dropped", in: "javascript:alert(1)", want: ""},
+		{name: "valid https url is kept", in: "https://example.com/avatar.png", want: "https://example.com/avatar.png"},
+		{name: "too long url is dropped", in: "https://example.com/" + strings.Repeat("a", maxAvatarURLChars+1), want: ""},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, sanitizeAvatarURL(tc.in))
+		})
+	}
 }
 
 func TestTextToPG(t *testing.T) {
