@@ -11,30 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getUserByGithubID = `-- name: GetUserByGithubID :one
-SELECT id, github_id, email, name, avatar_url, onboarding_completed, created_at, updated_at
-FROM users
-WHERE github_id = $1
-`
-
-func (q *Queries) GetUserByGithubID(ctx context.Context, githubID string) (User, error) {
-	row := q.db.QueryRow(ctx, getUserByGithubID, githubID)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.GithubID,
-		&i.Email,
-		&i.Name,
-		&i.AvatarUrl,
-		&i.OnboardingCompleted,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, github_id, email, name, avatar_url, onboarding_completed, created_at, updated_at
+SELECT id, identity_key, email, name, avatar_url, onboarding_completed, created_at, updated_at
 FROM users
 WHERE id = $1
 `
@@ -44,7 +22,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	var i User
 	err := row.Scan(
 		&i.ID,
-		&i.GithubID,
+		&i.IdentityKey,
 		&i.Email,
 		&i.Name,
 		&i.AvatarUrl,
@@ -55,27 +33,49 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	return i, err
 }
 
-const upsertUserByGithubID = `-- name: UpsertUserByGithubID :one
-INSERT INTO users (github_id, email, name, avatar_url, created_at, updated_at)
-VALUES ($1, $2, $3, $4, now(), now()) ON CONFLICT (github_id) DO
+const getUserByIdentityKey = `-- name: GetUserByIdentityKey :one
+SELECT id, identity_key, email, name, avatar_url, onboarding_completed, created_at, updated_at
+FROM users
+WHERE identity_key = $1
+`
+
+func (q *Queries) GetUserByIdentityKey(ctx context.Context, identityKey string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByIdentityKey, identityKey)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.IdentityKey,
+		&i.Email,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.OnboardingCompleted,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertUserByIdentityKey = `-- name: UpsertUserByIdentityKey :one
+INSERT INTO users (identity_key, email, name, avatar_url, created_at, updated_at)
+VALUES ($1, $2, $3, $4, now(), now()) ON CONFLICT (identity_key) DO
 UPDATE
     SET email = EXCLUDED.email,
     name = EXCLUDED.name,
     avatar_url = EXCLUDED.avatar_url,
     updated_at = now()
-    RETURNING id, github_id, email, name, avatar_url, onboarding_completed, created_at, updated_at
+    RETURNING id, identity_key, email, name, avatar_url, onboarding_completed, created_at, updated_at
 `
 
-type UpsertUserByGithubIDParams struct {
-	GithubID  string
-	Email     pgtype.Text
-	Name      pgtype.Text
-	AvatarUrl pgtype.Text
+type UpsertUserByIdentityKeyParams struct {
+	IdentityKey string
+	Email       pgtype.Text
+	Name        pgtype.Text
+	AvatarUrl   pgtype.Text
 }
 
-func (q *Queries) UpsertUserByGithubID(ctx context.Context, arg UpsertUserByGithubIDParams) (User, error) {
-	row := q.db.QueryRow(ctx, upsertUserByGithubID,
-		arg.GithubID,
+func (q *Queries) UpsertUserByIdentityKey(ctx context.Context, arg UpsertUserByIdentityKeyParams) (User, error) {
+	row := q.db.QueryRow(ctx, upsertUserByIdentityKey,
+		arg.IdentityKey,
 		arg.Email,
 		arg.Name,
 		arg.AvatarUrl,
@@ -83,7 +83,7 @@ func (q *Queries) UpsertUserByGithubID(ctx context.Context, arg UpsertUserByGith
 	var i User
 	err := row.Scan(
 		&i.ID,
-		&i.GithubID,
+		&i.IdentityKey,
 		&i.Email,
 		&i.Name,
 		&i.AvatarUrl,

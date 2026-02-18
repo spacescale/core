@@ -9,7 +9,7 @@ package service
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -36,10 +36,10 @@ type SyncAuthUserParams struct {
 // - IdentityKey is required after trimming.
 //
 // Persistence behavior:
-// - Upsert by identity key so repeated sign-ins are idempotent.
-// - Existing non-empty profile fields are preserved; incoming data only
-//   populates fields that are currently empty. This prevents OAuth provider
-//   switches from overwriting user-preferred profile data.
+//   - Upsert by identity key so repeated sign-ins are idempotent.
+//   - Existing non-empty profile fields are preserved; incoming data only
+//     populates fields that are currently empty. This prevents OAuth provider
+//     switches from overwriting user-preferred profile data.
 func (s *ProjectService) SyncAuthUser(ctx context.Context, p SyncAuthUserParams) (User, error) {
 	identityKey := strings.TrimSpace(p.IdentityKey)
 	if identityKey == "" {
@@ -52,11 +52,15 @@ func (s *ProjectService) SyncAuthUser(ctx context.Context, p SyncAuthUserParams)
 
 	// Preserve existing profile fields once set so switching OAuth providers does
 	// not continuously overwrite avatar/name on each login.
-	existingUser, err := s.queries.GetUserByGithubID(ctx, identityKey)
+	existingUser, err := s.queries.GetUserByIdentityKey(ctx, identityKey)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		// Log database errors (connection issues, permission errors, etc.) for debugging.
 		// ErrNoRows is expected for new users, so we only log unexpected errors.
-		log.Printf("user sync: failed to fetch existing user for identity %s: %v", identityKey, err)
+		slog.Error(
+			"user sync: failed to fetch existing user",
+			"identity_key", identityKey,
+			"error", err,
+		)
 		return User{}, err
 	}
 	if err == nil {
@@ -68,11 +72,11 @@ func (s *ProjectService) SyncAuthUser(ctx context.Context, p SyncAuthUserParams)
 		)
 	}
 
-	row, err := s.queries.UpsertUserByGithubID(ctx, pgstore.UpsertUserByGithubIDParams{
-		GithubID:  identityKey,
-		Email:     textToPG(incomingEmail),
-		Name:      textToPG(incomingName),
-		AvatarUrl: textToPG(incomingAvatarURL),
+	row, err := s.queries.UpsertUserByIdentityKey(ctx, pgstore.UpsertUserByIdentityKeyParams{
+		IdentityKey: identityKey,
+		Email:       textToPG(incomingEmail),
+		Name:        textToPG(incomingName),
+		AvatarUrl:   textToPG(incomingAvatarURL),
 	})
 	if err != nil {
 		return User{}, err

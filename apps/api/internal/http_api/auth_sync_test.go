@@ -152,7 +152,7 @@ func (r scriptedAuthSyncRow) Scan(dest ...interface{}) error {
 func asAuthSyncUserRowValues(u pgstore.User) []interface{} {
 	return []interface{}{
 		u.ID,
-		u.GithubID,
+		u.IdentityKey,
 		u.Email,
 		u.Name,
 		u.AvatarUrl,
@@ -163,7 +163,7 @@ func asAuthSyncUserRowValues(u pgstore.User) []interface{} {
 }
 
 // buildAuthSyncTestUser returns a deterministic persisted user row for tests.
-func buildAuthSyncTestUser(t *testing.T, githubID string) pgstore.User {
+func buildAuthSyncTestUser(t *testing.T, identityKey string) pgstore.User {
 	t.Helper()
 
 	var id pgtype.UUID
@@ -171,10 +171,10 @@ func buildAuthSyncTestUser(t *testing.T, githubID string) pgstore.User {
 	now := time.Date(2026, 2, 17, 12, 0, 0, 0, time.UTC)
 
 	return pgstore.User{
-		ID:       id,
-		GithubID: githubID,
-		Email:    pgtype.Text{String: "dev@example.com", Valid: true},
-		Name:     pgtype.Text{String: "Dev", Valid: true},
+		ID:          id,
+		IdentityKey: identityKey,
+		Email:       pgtype.Text{String: "dev@example.com", Valid: true},
+		Name:        pgtype.Text{String: "Dev", Valid: true},
 		AvatarUrl: pgtype.Text{
 			String: "https://example.com/avatar.png",
 			Valid:  true,
@@ -218,7 +218,7 @@ func TestHandleSyncAuthUserMapsServiceError(t *testing.T) {
 	lookupErr := errors.New("db lookup failed")
 	db := newScriptedAuthSyncDB(t, []authSyncQueryExpectation{
 		{
-			queryNameMatch: "GetUserByGithubID",
+			queryNameMatch: "GetUserByIdentityKey",
 			row:            scriptedAuthSyncRow{err: lookupErr},
 		},
 	})
@@ -243,11 +243,11 @@ func TestHandleSyncAuthUserSuccess(t *testing.T) {
 	userRow := buildAuthSyncTestUser(t, "github:12345")
 	db := newScriptedAuthSyncDB(t, []authSyncQueryExpectation{
 		{
-			queryNameMatch: "GetUserByGithubID",
+			queryNameMatch: "GetUserByIdentityKey",
 			row:            scriptedAuthSyncRow{err: pgx.ErrNoRows},
 		},
 		{
-			queryNameMatch: "UpsertUserByGithubID",
+			queryNameMatch: "UpsertUserByIdentityKey",
 			assertArgs: func(args ...interface{}) {
 				require.Len(t, args, 4)
 				require.Equal(t, "github:12345", args[0])

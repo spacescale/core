@@ -149,7 +149,7 @@ func (r scriptedRow) Scan(dest ...interface{}) error {
 func asUserRowValues(u pgstore.User) []interface{} {
 	return []interface{}{
 		u.ID,
-		u.GithubID,
+		u.IdentityKey,
 		u.Email,
 		u.Name,
 		u.AvatarUrl,
@@ -160,13 +160,13 @@ func asUserRowValues(u pgstore.User) []interface{} {
 }
 
 // buildSyncTestUser constructs deterministic sqlc user rows for sync tests.
-func buildSyncTestUser(t *testing.T, githubID, email, name, avatarURL string) pgstore.User {
+func buildSyncTestUser(t *testing.T, identityKey, email, name, avatarURL string) pgstore.User {
 	t.Helper()
 
 	now := time.Date(2026, 2, 17, 12, 0, 0, 0, time.UTC)
 	return pgstore.User{
-		ID:       mustUUID(t, "550e8400-e29b-41d4-a716-446655440000"),
-		GithubID: githubID,
+		ID:          mustUUID(t, "550e8400-e29b-41d4-a716-446655440000"),
+		IdentityKey: identityKey,
 		Email: pgtype.Text{
 			String: email,
 			Valid:  strings.TrimSpace(email) != "",
@@ -207,7 +207,7 @@ func TestSyncAuthUserUpsertsNewUser(t *testing.T) {
 
 	db := newScriptedSyncDB(t, []syncQueryExpectation{
 		{
-			queryNameMatch: "GetUserByGithubID",
+			queryNameMatch: "GetUserByIdentityKey",
 			assertArgs: func(args ...interface{}) {
 				require.Len(t, args, 1)
 				require.Equal(t, "github:12345", args[0])
@@ -215,7 +215,7 @@ func TestSyncAuthUserUpsertsNewUser(t *testing.T) {
 			row: scriptedRow{err: pgx.ErrNoRows},
 		},
 		{
-			queryNameMatch: "UpsertUserByGithubID",
+			queryNameMatch: "UpsertUserByIdentityKey",
 			assertArgs: func(args ...interface{}) {
 				require.Len(t, args, 4)
 				require.Equal(t, "github:12345", args[0])
@@ -246,7 +246,7 @@ func TestSyncAuthUserUpsertsNewUser(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", user.ID)
-	require.Equal(t, "github:12345", user.GithubID)
+	require.Equal(t, "github:12345", user.IdentityKey)
 	require.Equal(t, "dev@example.com", user.Email)
 	require.Equal(t, "Dev", user.Name)
 	require.Equal(t, "https://example.com/a.png", user.AvatarURL)
@@ -263,7 +263,7 @@ func TestSyncAuthUserPreservesExistingProfileValues(t *testing.T) {
 
 	db := newScriptedSyncDB(t, []syncQueryExpectation{
 		{
-			queryNameMatch: "GetUserByGithubID",
+			queryNameMatch: "GetUserByIdentityKey",
 			assertArgs: func(args ...interface{}) {
 				require.Len(t, args, 1)
 				require.Equal(t, "github:12345", args[0])
@@ -271,7 +271,7 @@ func TestSyncAuthUserPreservesExistingProfileValues(t *testing.T) {
 			row: scriptedRow{values: asUserRowValues(existing)},
 		},
 		{
-			queryNameMatch: "UpsertUserByGithubID",
+			queryNameMatch: "UpsertUserByIdentityKey",
 			assertArgs: func(args ...interface{}) {
 				require.Len(t, args, 4)
 				require.Equal(t, "github:12345", args[0])
@@ -312,7 +312,7 @@ func TestSyncAuthUserReturnsLookupError(t *testing.T) {
 	lookupErr := errors.New("lookup failed")
 	db := newScriptedSyncDB(t, []syncQueryExpectation{
 		{
-			queryNameMatch: "GetUserByGithubID",
+			queryNameMatch: "GetUserByIdentityKey",
 			row:            scriptedRow{err: lookupErr},
 		},
 	})
@@ -331,11 +331,11 @@ func TestSyncAuthUserReturnsUpsertError(t *testing.T) {
 	upsertErr := errors.New("upsert failed")
 	db := newScriptedSyncDB(t, []syncQueryExpectation{
 		{
-			queryNameMatch: "GetUserByGithubID",
+			queryNameMatch: "GetUserByIdentityKey",
 			row:            scriptedRow{err: pgx.ErrNoRows},
 		},
 		{
-			queryNameMatch: "UpsertUserByGithubID",
+			queryNameMatch: "UpsertUserByIdentityKey",
 			row:            scriptedRow{err: upsertErr},
 		},
 	})

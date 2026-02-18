@@ -110,10 +110,10 @@ func TestRowMappers(t *testing.T) {
 	updated := created.Add(5 * time.Minute)
 
 	gotUser := userFromRow(pgstore.User{
-		ID:       uid,
-		GithubID: "12345",
-		Email:    pgtype.Text{String: "dev@example.com", Valid: true},
-		Name:     pgtype.Text{String: "Dev", Valid: true},
+		ID:          uid,
+		IdentityKey: "12345",
+		Email:       pgtype.Text{String: "dev@example.com", Valid: true},
+		Name:        pgtype.Text{String: "Dev", Valid: true},
 		AvatarUrl: pgtype.Text{
 			String: "https://example.com/avatar.png",
 			Valid:  true,
@@ -123,7 +123,7 @@ func TestRowMappers(t *testing.T) {
 		UpdatedAt:           pgtype.Timestamptz{Time: updated, Valid: true},
 	})
 	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", gotUser.ID)
-	require.Equal(t, "12345", gotUser.GithubID)
+	require.Equal(t, "12345", gotUser.IdentityKey)
 	require.Equal(t, "dev@example.com", gotUser.Email)
 	require.True(t, gotUser.OnboardingCompleted)
 

@@ -1,5 +1,5 @@
 // This file implements the project-creation workflow in the service layer.
-// It coordinates owner resolution by GitHub identity, request normalization,
+// It coordinates owner resolution by auth identity key, request normalization,
 // validation, defaulting, slug generation, and conflict-retry behavior.
 // It also contains mapping helpers that translate SQLC and pgtype values into
 // plain service structs consumed by HTTP handlers.
@@ -59,20 +59,20 @@ func NewProjectService(queries *pgstore.Queries) *ProjectService {
 	return &ProjectService{queries: queries}
 }
 
-// CreateProject creates a project for a user identified by GitHub ID.
+// CreateProject creates a project for a user identified by identity key.
 // It trims request values, ensures the owner record exists, and generates a
 // fallback name when none is supplied by the caller.
 // After validation and defaulting, it retries inserts on slug conflicts and
 // maps the stored row into the service model returned to handlers.
 // Validation failures are normalized to ErrInvalidInput, and exhausted slug
 // retries are returned as ErrConflict.
-func (s *ProjectService) CreateProject(ctx context.Context, githubID string, p CreateProjectParams) (Project, error) {
-	githubID = strings.TrimSpace(githubID)
-	if githubID == "" {
+func (s *ProjectService) CreateProject(ctx context.Context, identityKey string, p CreateProjectParams) (Project, error) {
+	identityKey = strings.TrimSpace(identityKey)
+	if identityKey == "" {
 		return Project{}, ErrInvalidInput
 	}
 
-	user, err := s.ensureUserByGithubID(ctx, githubID)
+	user, err := s.ensureUserByIdentityKey(ctx, identityKey)
 	if err != nil {
 		return Project{}, err
 	}
@@ -148,21 +148,22 @@ func buildProject(ownerUserID, name, region string) (Project, error) {
 	}, nil
 }
 
-// ensureUserByGithubID returns an existing user for the GitHub ID or creates one.
+// ensureUserByIdentityKey returns an existing user for the identity key or
+// creates one.
 // It first performs a direct lookup to avoid unnecessary writes during normal
 // traffic, then falls back to an upsert only when no row exists.
 // This keeps caller logic simple while preserving idempotent behavior for
-// repeated project-creation requests from the same GitHub identity.
-func (s *ProjectService) ensureUserByGithubID(ctx context.Context, githubID string) (User, error) {
-	row, err := s.queries.GetUserByGithubID(ctx, githubID)
+// repeated project-creation requests from the same authenticated identity.
+func (s *ProjectService) ensureUserByIdentityKey(ctx context.Context, identityKey string) (User, error) {
+	row, err := s.queries.GetUserByIdentityKey(ctx, identityKey)
 	if err == nil {
 		return userFromRow(row), nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return User{}, err
 	}
-	row, err = s.queries.UpsertUserByGithubID(ctx, pgstore.UpsertUserByGithubIDParams{
-		GithubID: githubID,
+	row, err = s.queries.UpsertUserByIdentityKey(ctx, pgstore.UpsertUserByIdentityKeyParams{
+		IdentityKey: identityKey,
 	})
 	if err != nil {
 		return User{}, err
@@ -241,7 +242,7 @@ func randomSuffix(n int) string {
 func userFromRow(r pgstore.User) User {
 	return User{
 		ID:                  uuidToString(r.ID),
-		GithubID:            r.GithubID,
+		IdentityKey:         r.IdentityKey,
 		Email:               textFromPG(r.Email),
 		Name:                textFromPG(r.Name),
 		AvatarURL:           textFromPG(r.AvatarUrl),

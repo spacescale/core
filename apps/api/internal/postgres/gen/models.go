@@ -83,7 +83,7 @@ type RegistryCredential struct {
 
 type User struct {
 	ID                  pgtype.UUID
-	GithubID            string
+	IdentityKey         string
 	Email               pgtype.Text
 	Name                pgtype.Text
 	AvatarUrl           pgtype.Text

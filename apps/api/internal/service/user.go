@@ -16,7 +16,7 @@ import "time"
 // do not depend directly on SQLC-generated wrapper types.
 type User struct {
 	ID                  string
-	GithubID            string
+	IdentityKey         string
 	Email               string
 	Name                string
 	AvatarURL           string
