@@ -16,6 +16,15 @@ import (
 	"net/http"
 )
 
+var errRequestBodyTooLarge = errors.New("request body too large") // returned when request body exceeds configured max size.
+
+// isRequestBodyTooLarge reports whether an error came from net/http body-size
+// enforcement. This keeps size-limit detection logic centralized.
+func isRequestBodyTooLarge(err error) bool {
+	var maxErr *http.MaxBytesError
+	return errors.As(err, &maxErr)
+}
+
 // writeJSON writes a JSON response body with the supplied status code.
 // It also sets the content type header so clients can reliably interpret
 // payloads from every handler in this package.
@@ -28,18 +37,36 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // readJSON decodes a request body into the destination value.
 // Unknown fields are rejected to prevent silent input drift, and trailing data
 // is rejected so one request maps to exactly one JSON object.
+//
+// Return behavior:
+// - errRequestBodyTooLarge when body exceeds configured size limits
+// - decoder errors for malformed/invalid JSON
+// - "multiple json values" when trailing JSON exists after first value
 func readJSON(r *http.Request, dst any) error {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
+		if isRequestBodyTooLarge(err) {
+			return errRequestBodyTooLarge
+		}
 		return err
 	}
+
 	// Reject trailing data after the first JSON value.
 	// Decode one more token: only io.EOF means there was exactly one value.
-	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+	err := dec.Decode(&struct{}{})
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	if err != nil {
+		if isRequestBodyTooLarge(err) {
+			return errRequestBodyTooLarge
+		}
 		return errors.New("multiple json values")
 	}
-	return nil
+
+	// No decode error means there was at least one trailing JSON value.
+	return errors.New("multiple json values")
 }
 
 // errResp is the standard error response payload.

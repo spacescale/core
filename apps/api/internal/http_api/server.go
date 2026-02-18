@@ -3,9 +3,14 @@
 // one Router method used by main and integration tests.
 // Route registration for health checks and versioned endpoints is centralized
 // here so application wiring is discoverable in one place.
-// When adding new endpoints, most HTTP route setup changes should begin here.
+// In addition to routing, this file owns composition wiring for server-level
+// runtime configuration (for example rate limits and log privacy). Config model
+// definitions live in focused files, while this file stays responsible for
+// assembling middleware and route behavior.
+// When adding new endpoints or middleware-level wiring, changes should begin
+// here so composition remains discoverable in one place.
 
-// Package http_api  routing and middleware wiring.
+// Package http_api provides routing and middleware wiring.
 package http_api
 
 import (
@@ -21,21 +26,80 @@ import (
 	"github.com/t0gun/spacescale/internal/service"
 )
 
+const (
+	defaultUserRateLimitRequests = 100         // fallback per-user request budget when not explicitly configured.
+	defaultUserRateLimitWindow   = time.Minute // fallback limiter window duration when not explicitly configured.
+)
+
+// RateLimitConfig describes per-authenticated-user API rate-limiting behavior.
+//
+// Requests defines how many requests one user can make during a single Window.
+// Window defines the duration of one limiter bucket.
+//
+// Values less than or equal to zero are treated as invalid runtime input and
+// normalized to safe defaults before middleware wiring.
+type RateLimitConfig struct {
+	Requests int
+	Window   time.Duration
+}
+
+// DefaultRateLimitConfig returns the package default rate-limit configuration.
+// Keeping defaults centralized here avoids repeating magic numbers across app
+// startup, tests, and future binary entrypoints.
+func DefaultRateLimitConfig() RateLimitConfig {
+	return RateLimitConfig{
+		Requests: defaultUserRateLimitRequests,
+		Window:   defaultUserRateLimitWindow,
+	}
+}
+
+// normalized returns a safe runtime configuration for middleware wiring.
+//
+// This protects the router from accidental zero-value configuration and keeps
+// behavior predictable even if callers forget to validate parsed env values.
+func (c RateLimitConfig) normalized() RateLimitConfig {
+	if c.Requests <= 0 {
+		c.Requests = defaultUserRateLimitRequests
+	}
+	if c.Window <= 0 {
+		c.Window = defaultUserRateLimitWindow
+	}
+	return c
+}
+
 // Server wires HTTP handlers to service dependencies and auth configuration.
+//
+// Runtime behavior fields:
+//   - rateLimitCfg controls authenticated-user request budget enforcement.
+//   - logPrivacyCfg controls user-agent representation and panic-log redaction
+//     policy (panic value length and stack trace toggles).
 type Server struct {
 	svc                *service.ProjectService
 	authCfg            AuthConfig
 	dbPool             *pgxpool.Pool
+	rateLimitCfg       RateLimitConfig
+	logPrivacyCfg      LogPrivacyConfig
 	internalAuthSecret string
 }
 
-// NewServer creates a Server bound to the provided project service.
-// Keeping wiring here makes dependencies explicit for startup and tests.
-func NewServer(svc *service.ProjectService, authCfg AuthConfig, dbPool *pgxpool.Pool, internalAuthSecret string) *Server {
+// NewServer creates a Server bound to the provided service and middleware
+// runtime configuration.
+//
+// Construction behavior:
+//   - Normalizes rate-limit config so zero-value callers still get safe runtime
+//     limiter behavior.
+//   - Normalizes log-privacy config so middleware sees valid mode/length values
+//     even when startup config is incomplete.
+//
+// Keeping this wiring constructor explicit makes startup and tests easier to
+// understand because dependency and config flow is visible at the call site.
+func NewServer(svc *service.ProjectService, authCfg AuthConfig, dbPool *pgxpool.Pool, rateLimitCfg RateLimitConfig, logPrivacyCfg LogPrivacyConfig, internalAuthSecret string) *Server {
 	return &Server{
 		svc:                svc,
 		authCfg:            authCfg,
 		dbPool:             dbPool,
+		rateLimitCfg:       rateLimitCfg.normalized(),
+		logPrivacyCfg:      logPrivacyCfg.normalized(),
 		internalAuthSecret: internalAuthSecret,
 	}
 }
@@ -48,16 +112,16 @@ func (s *Server) Router() http.Handler {
 
 	// Base middleware stack.
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP) // fine to keep for logs; limiter key is user id
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
+	r.Use(middleware.RealIP) // keep client IP extraction before logging middleware
+	r.Use(accessLogMiddleware(s.logPrivacyCfg))
+	r.Use(recovererMiddleware(s.logPrivacyCfg))
 
 	// userLimiter applies per-authenticated-user request limits on API v0 routes.
 	// Keys come from keyByGithubID, so limits are enforced by JWT identity
 	// (github:<id>) instead of source IP. This keeps limits fair when requests
 	// are proxied through Next.js, CLI backends, or shared infrastructure.
 	// Exceeded requests receive a consistent HTTP 429 JSON error response.
-	userLimiter := httprate.Limit(100, time.Minute, httprate.WithKeyFuncs(keyByGithubID),
+	userLimiter := httprate.Limit(s.rateLimitCfg.Requests, s.rateLimitCfg.Window, httprate.WithKeyFuncs(keyByGithubID),
 		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusTooManyRequests, "rate limit exceeded")
 		}),
@@ -78,7 +142,7 @@ func (s *Server) Router() http.Handler {
 	})
 
 	r.Route("/v0", func(r chi.Router) {
-		r.Use(authMiddleware(s.authCfg))
+		r.Use(authMiddleware(s.authCfg, s.logPrivacyCfg))
 		r.Use(userLimiter)
 		r.Post("/projects", s.handleCreateProject)
 	})

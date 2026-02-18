@@ -195,13 +195,9 @@ func slugifyProjectName(name string) string {
 	// uniqueness or readability.
 	normalized := strings.ToLower(strings.TrimSpace(name))
 
-	// Build the slug incrementally to avoid repeated string allocations.
-	var b strings.Builder
+	var b strings.Builder // build slug incrementally to avoid repeated string allocations.
 
-	// prevHyphen tracks whether the most recently written byte was '-'.
-	// This lets us collapse repeated separators like spaces/underscores/punctuation
-	// into a single hyphen.
-	var prevHyphen bool
+	var prevHyphen bool // tracks whether the most recently written byte was '-' for separator collapsing.
 
 	for _, r := range normalized {
 		switch {
