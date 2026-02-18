@@ -12,10 +12,34 @@ const DEFAULT_BFF_REFRESH_TOKEN_AUDIENCE = "spacescale-api-refresh";
 const DEFAULT_BFF_JWT_TTL_SECONDS = 3600;
 const DEFAULT_BFF_REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 const API_ACCESS_TOKEN_REFRESH_WINDOW_SECONDS = 60;
-const inFlightAccessTokenRefreshByIdentity = new Map<
-	string,
-	Promise<MintBffAccessTokenResult | null>
->();
+
+// In-flight token refresh debouncing with TTL-based cleanup to prevent memory leaks.
+// Entries are removed when promises settle OR after 5 minutes (whichever comes first).
+const IN_FLIGHT_REFRESH_TTL_MS = 5 * 60 * 1000; // 5 minutes
+type InFlightEntry = {
+	promise: Promise<MintBffAccessTokenResult | null>;
+	timestamp: number;
+};
+const inFlightAccessTokenRefreshByIdentity = new Map<string, InFlightEntry>();
+
+/**
+ * Removes stale in-flight refresh entries that exceed the TTL.
+ * Called before each debounced refresh to prevent unbounded Map growth.
+ */
+function cleanupStaleRefreshEntries(): void {
+	const now = Date.now();
+	const staleKeys: string[] = [];
+
+	for (const [key, entry] of inFlightAccessTokenRefreshByIdentity) {
+		if (now - entry.timestamp > IN_FLIGHT_REFRESH_TTL_MS) {
+			staleKeys.push(key);
+		}
+	}
+
+	for (const key of staleKeys) {
+		inFlightAccessTokenRefreshByIdentity.delete(key);
+	}
+}
 
 type SyncAuthUserResponse = {
 	id: string;
@@ -252,20 +276,28 @@ async function mintBffAccessTokenDebounced(
 		return null;
 	}
 
-	const inFlightRefresh = inFlightAccessTokenRefreshByIdentity.get(identityKey);
-	if (inFlightRefresh) {
-		return inFlightRefresh;
+	// Clean up stale entries before checking for in-flight refreshes
+	cleanupStaleRefreshEntries();
+
+	const inFlightEntry = inFlightAccessTokenRefreshByIdentity.get(identityKey);
+	if (inFlightEntry) {
+		return inFlightEntry.promise;
 	}
 
 	const refreshPromise = Promise.resolve()
 		.then(() => mintBffAccessToken(params))
 		.finally(() => {
-			if (inFlightAccessTokenRefreshByIdentity.get(identityKey) === refreshPromise) {
+			// Remove entry when promise settles
+			const entry = inFlightAccessTokenRefreshByIdentity.get(identityKey);
+			if (entry?.promise === refreshPromise) {
 				inFlightAccessTokenRefreshByIdentity.delete(identityKey);
 			}
 		});
 
-	inFlightAccessTokenRefreshByIdentity.set(identityKey, refreshPromise);
+	inFlightAccessTokenRefreshByIdentity.set(identityKey, {
+		promise: refreshPromise,
+		timestamp: Date.now(),
+	});
 	return refreshPromise;
 }
 
