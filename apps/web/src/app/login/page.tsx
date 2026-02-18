@@ -56,8 +56,8 @@ export default function LoginPage() {
   const marketingBaseUrl = sanitizeBaseUrl(
     process.env.NEXT_PUBLIC_MARKETING_URL ?? DEFAULT_MARKETING_URL,
   );
-  const docsHref = `${marketingBaseUrl}/terms`;
-  const articlesHref = `${marketingBaseUrl}/pricing`;
+  const docsHref = `${marketingBaseUrl}/docs`;
+  const articlesHref = `${marketingBaseUrl}/articles`;
 
   useEffect(() => {
     if (isAuthenticated) {
