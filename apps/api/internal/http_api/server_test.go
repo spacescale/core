@@ -57,8 +57,11 @@ func TestDefaultRateLimitConfig(t *testing.T) {
 }
 
 func TestDefaultInternalRateLimitConfig(t *testing.T) {
+	globalCfg := config.DefaultInternalGlobalRateLimitConfig()
 	identityCfg := config.DefaultInternalIdentityRateLimitConfig()
 
+	require.Equal(t, 12000, globalCfg.Requests)
+	require.Equal(t, time.Minute, globalCfg.Window)
 	require.Equal(t, 30, identityCfg.Requests)
 	require.Equal(t, time.Minute, identityCfg.Window)
 }
@@ -156,6 +159,32 @@ func TestUnauthorizedRequestsAreNotRateLimited(t *testing.T) {
 	}
 }
 
+// TestInternalRequestsAreGloballyRateLimited verifies internal route circuit
+// breaker behavior across different identity keys.
+func TestInternalRequestsAreGloballyRateLimited(t *testing.T) {
+	ts := newTestServerWithInternalRateLimitConfigs(
+		t,
+		config.RateLimitConfig{Requests: 1, Window: time.Minute},
+		config.RateLimitConfig{Requests: 100, Window: time.Minute},
+	)
+	defer ts.close()
+
+	firstIdentity := uniqueIdentityKey(t)
+	syncAuthUserForTest(t, ts, firstIdentity)
+
+	secondBody := []byte(fmt.Sprintf(`{"identityKey":"%s"}`, uniqueIdentityKey(t)))
+	resp, data := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", secondBody, map[string]string{
+		"X-Internal-Auth": testInternalAuthSecret,
+		"Content-Type":    "application/json",
+	})
+
+	require.Equal(t, http.StatusTooManyRequests, resp.StatusCode, string(data))
+
+	var out errorResponse
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Equal(t, "rate limit exceeded", out.Error)
+}
+
 // newTestServer creates one integration server for the calling test.
 // It uses package-default rate limiting.
 // If TEST_DATABASE_URL is missing, the test is skipped.
@@ -164,6 +193,7 @@ func newTestServer(t *testing.T) *testServer {
 	return newTestServerWithRateLimitConfigs(
 		t,
 		config.DefaultRateLimitConfig(),
+		config.DefaultInternalGlobalRateLimitConfig(),
 		config.DefaultInternalIdentityRateLimitConfig(),
 	)
 }
@@ -176,6 +206,7 @@ func newTestServerWithRateLimitConfig(t *testing.T, rateLimitCfg config.RateLimi
 	return newTestServerWithRateLimitConfigs(
 		t,
 		rateLimitCfg,
+		config.DefaultInternalGlobalRateLimitConfig(),
 		config.DefaultInternalIdentityRateLimitConfig(),
 	)
 }
@@ -190,6 +221,24 @@ func newTestServerWithInternalRateLimitConfig(
 	return newTestServerWithRateLimitConfigs(
 		t,
 		config.DefaultRateLimitConfig(),
+		config.DefaultInternalGlobalRateLimitConfig(),
+		internalIdentityCfg,
+	)
+}
+
+// newTestServerWithInternalRateLimitConfigs creates one integration server with
+// internal global and per-identity limiter overrides and default /v0 per-user
+// limiting.
+func newTestServerWithInternalRateLimitConfigs(
+	t *testing.T,
+	internalGlobalCfg config.RateLimitConfig,
+	internalIdentityCfg config.RateLimitConfig,
+) *testServer {
+	t.Helper()
+	return newTestServerWithRateLimitConfigs(
+		t,
+		config.DefaultRateLimitConfig(),
+		internalGlobalCfg,
 		internalIdentityCfg,
 	)
 }
@@ -199,6 +248,7 @@ func newTestServerWithInternalRateLimitConfig(
 func newTestServerWithRateLimitConfigs(
 	t *testing.T,
 	rateLimitCfg config.RateLimitConfig,
+	internalGlobalCfg config.RateLimitConfig,
 	internalIdentityCfg config.RateLimitConfig,
 ) *testServer {
 	t.Helper()
@@ -238,6 +288,7 @@ func newTestServerWithRateLimitConfigs(
 		Config: config.APIConfig{
 			Auth:                      authCfg,
 			RateLimit:                 rateLimitCfg,
+			InternalGlobalRateLimit:   internalGlobalCfg,
 			InternalIdentityRateLimit: internalIdentityCfg,
 			LogPrivacy:                config.DefaultLogPrivacyConfig(),
 			InternalAuthSecret:        testInternalAuthSecret,

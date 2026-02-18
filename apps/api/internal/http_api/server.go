@@ -39,6 +39,8 @@ type Server struct {
 	internalIdentityLimiter *httprate.RateLimiter
 }
 
+const internalGlobalLimiterKey = "internal:global"
+
 // ServerDeps groups dependencies required to construct the API server.
 // It keeps startup and test wiring concise while making required inputs
 // explicit at one call site.
@@ -109,6 +111,13 @@ func (s *Server) Router() http.Handler {
 		}),
 	)
 
+	internalGlobalLimiter := httprate.NewRateLimiter(
+		s.config.InternalGlobalRateLimit.Requests,
+		s.config.InternalGlobalRateLimit.Window,
+		httprate.WithKeyFuncs(httprate.Key(internalGlobalLimiterKey)),
+		httprate.WithLimitHandler(rateLimitExceeded),
+	)
+
 	// Health check route.
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := s.dbPool.Ping(r.Context()); err != nil { // check database connectivity
@@ -119,9 +128,10 @@ func (s *Server) Router() http.Handler {
 	})
 
 	// Internal routes are intended for private-network service-to-service traffic.
-	// They still apply per-identity guardrails to reduce retry storms.
+	// They apply both a global circuit breaker and per-identity guardrails.
 	r.Route("/v0/internal", func(r chi.Router) {
 		r.Use(internalAuthMiddleware(s.config.InternalAuthSecret))
+		r.Use(internalGlobalLimiter.Handler)
 		r.Post("/auth-sync", s.handleSyncAuthUser)
 	})
 

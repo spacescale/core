@@ -28,7 +28,7 @@ description: |-
   ### Security
   - route is intended for private-network service traffic
   - requires header `X-Internal-Auth: ${[ INTERNAL_AUTH_SYNC_SECRET ]}`
-  - applies per-identity guardrail rate limiting
+  - applies global circuit-breaker and per-identity rate limiting
 
   ### Validation
   - `identityKey` is required and must be <= 512 chars

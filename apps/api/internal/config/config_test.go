@@ -98,6 +98,7 @@ func TestLoadAppConfigBuildsTypedDefaults(t *testing.T) {
 	require.Equal(t, defaultAuthIssuer, cfg.API.Auth.Issuer)
 	require.Equal(t, defaultAuthAudience, cfg.API.Auth.Audience)
 	require.Equal(t, DefaultRateLimitConfig(), cfg.API.RateLimit)
+	require.Equal(t, DefaultInternalGlobalRateLimitConfig(), cfg.API.InternalGlobalRateLimit)
 	require.Equal(t, DefaultInternalIdentityRateLimitConfig(), cfg.API.InternalIdentityRateLimit)
 	expectedLogPrivacy := DefaultLogPrivacyConfig()
 	expectedLogPrivacy.UserAgentMode = UserAgentLogModeOff
@@ -114,11 +115,15 @@ func TestLoadAppConfigBuildsTypedDefaults(t *testing.T) {
 // overrides are loaded into typed API config fields.
 func TestLoadAppConfigParsesInternalRateLimits(t *testing.T) {
 	setBaselineEnv(t)
+	t.Setenv("API_INTERNAL_GLOBAL_RATE_LIMIT_REQUESTS", "20000")
+	t.Setenv("API_INTERNAL_GLOBAL_RATE_LIMIT_WINDOW", "2m")
 	t.Setenv("API_INTERNAL_IDENTITY_RATE_LIMIT_REQUESTS", "15")
 	t.Setenv("API_INTERNAL_IDENTITY_RATE_LIMIT_WINDOW", "30s")
 
 	cfg, err := LoadFromEnv()
 	require.NoError(t, err)
+	require.Equal(t, 20000, cfg.API.InternalGlobalRateLimit.Requests)
+	require.Equal(t, 2*time.Minute, cfg.API.InternalGlobalRateLimit.Window)
 	require.Equal(t, 15, cfg.API.InternalIdentityRateLimit.Requests)
 	require.Equal(t, 30*time.Second, cfg.API.InternalIdentityRateLimit.Window)
 }

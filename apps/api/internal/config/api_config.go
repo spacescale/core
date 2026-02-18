@@ -13,6 +13,8 @@ import (
 const (
 	defaultUserRateLimitRequests             = 100
 	defaultUserRateLimitWindow               = time.Minute
+	defaultInternalGlobalRateLimitRequests   = 12000
+	defaultInternalGlobalRateLimitWindow     = time.Minute
 	defaultInternalIdentityRateLimitRequests = 30
 	defaultInternalIdentityRateLimitWindow   = time.Minute
 
@@ -27,6 +29,15 @@ type AuthConfig struct {
 	JWTSecret string
 	Issuer    string
 	Audience  string
+}
+
+// DefaultInternalGlobalRateLimitConfig returns defaults for global internal
+// route circuit-breaker behavior.
+func DefaultInternalGlobalRateLimitConfig() RateLimitConfig {
+	return RateLimitConfig{
+		Requests: defaultInternalGlobalRateLimitRequests,
+		Window:   defaultInternalGlobalRateLimitWindow,
+	}
 }
 
 // Validate verifies required auth verification settings are present.
@@ -132,6 +143,7 @@ func (c LogPrivacyConfig) Normalized() LogPrivacyConfig {
 type APIConfig struct {
 	Auth                      AuthConfig
 	RateLimit                 RateLimitConfig
+	InternalGlobalRateLimit   RateLimitConfig
 	InternalIdentityRateLimit RateLimitConfig
 	LogPrivacy                LogPrivacyConfig
 	InternalAuthSecret        string
@@ -140,6 +152,7 @@ type APIConfig struct {
 // Normalized returns a safe runtime API config for server wiring.
 func (c APIConfig) Normalized() APIConfig {
 	c.RateLimit = c.RateLimit.normalizedWith(DefaultRateLimitConfig())
+	c.InternalGlobalRateLimit = c.InternalGlobalRateLimit.normalizedWith(DefaultInternalGlobalRateLimitConfig())
 	c.InternalIdentityRateLimit = c.InternalIdentityRateLimit.normalizedWith(DefaultInternalIdentityRateLimitConfig())
 	c.LogPrivacy = c.LogPrivacy.Normalized()
 	c.InternalAuthSecret = strings.TrimSpace(c.InternalAuthSecret)

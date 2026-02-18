@@ -107,6 +107,7 @@ func readAPIServerConfig() (APIConfig, error) {
 	return APIConfig{
 		Auth:                      authCfg,
 		RateLimit:                 readRateLimitConfig(),
+		InternalGlobalRateLimit:   readInternalGlobalRateLimitConfig(),
 		InternalIdentityRateLimit: readInternalIdentityRateLimitConfig(),
 		LogPrivacy:                logPrivacyCfg,
 		InternalAuthSecret:        internalAuthSecret,
@@ -180,6 +181,17 @@ func readRateLimitConfig() RateLimitConfig {
 	return RateLimitConfig{
 		Requests: int(parseEnvInt32("API_USER_RATE_LIMIT_REQUESTS", int32(defaults.Requests))),
 		Window:   parseEnvDuration("API_USER_RATE_LIMIT_WINDOW", defaults.Window),
+	}
+}
+
+// readInternalGlobalRateLimitConfig loads global circuit-breaker settings for
+// trusted internal routes.
+func readInternalGlobalRateLimitConfig() RateLimitConfig {
+	defaults := DefaultInternalGlobalRateLimitConfig()
+
+	return RateLimitConfig{
+		Requests: int(parseEnvInt32("API_INTERNAL_GLOBAL_RATE_LIMIT_REQUESTS", int32(defaults.Requests))),
+		Window:   parseEnvDuration("API_INTERNAL_GLOBAL_RATE_LIMIT_WINDOW", defaults.Window),
 	}
 }
 
