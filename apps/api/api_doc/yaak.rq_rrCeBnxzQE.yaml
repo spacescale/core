@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_rrCeBnxzQE
 createdAt: 2026-02-03T04:59:17.161868
-updatedAt: 2026-02-17T00:28:51.515217
+updatedAt: 2026-02-18T21:10:00.000000
 workspaceId: wk_KJF6oyHis3
 folderId: fl_mN33FWQe9B
 authentication: {}
@@ -22,6 +22,7 @@ description: |-
   ### Authentication
   - `Authorization: Bearer <BFF_JWT_TOKEN>`
   - token must be signed with trusted BFF secret (`BFF_JWT_SECRET`)
+  - user must already exist in API users table (seed via `POST /v0/internal/auth-sync`)
 
   ### Required JWT Claims
   - `sub`: required and must use `github:<id>` format
@@ -55,6 +56,7 @@ description: |-
   ### Error Responses
   - `400 Bad Request`: malformed JSON or invalid input
   - `401 Unauthorized`: missing/invalid bearer token or invalid claims
+  - `429 Too Many Requests`: per-user API rate limit exceeded
   - `409 Conflict`: slug collision after retries
   - `500 Internal Server Error`: unexpected runtime error
 headers:

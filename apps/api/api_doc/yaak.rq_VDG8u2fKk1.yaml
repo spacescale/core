@@ -1,0 +1,61 @@
+type: http_request
+model: http_request
+id: rq_VDG8u2fKk1
+createdAt: 2026-02-18T21:10:00
+updatedAt: 2026-02-18T21:11:05.057225
+workspaceId: wk_KJF6oyHis3
+folderId: fl_Yy2sLBoCtW
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {
+      "identityKey": "demo-user-123",
+      "email": "dev@example.com",
+      "name": "Dev User",
+      "avatarUrl": "https://example.com/avatar.png"
+    }
+bodyType: application/json
+description: |-
+  ## Internal Auth Sync
+
+  Upsert a user profile by stable `identityKey` for trusted server-to-server auth flows.
+
+  ### Endpoint
+  - **Method**: `POST`
+  - **Path**: `/v0/internal/auth-sync`
+
+  ### Security
+  - route is intended for private-network service traffic
+  - requires header `X-Internal-Auth: ${[ INTERNAL_AUTH_SYNC_SECRET ]}`
+  - applies per-identity guardrail rate limiting
+
+  ### Validation
+  - `identityKey` is required and must be <= 255 chars
+  - optional fields are sanitized (invalid optional values are dropped)
+
+  ### Success Response
+  - **Status**: `200 OK`
+  - body includes:
+    - `id`
+    - `onboardingCompleted`
+
+  ### Error Responses
+  - `400 Bad Request`: invalid JSON or invalid input
+  - `401 Unauthorized`: missing/invalid internal secret
+  - `429 Too Many Requests`: per-identity internal rate limit exceeded
+  - `500 Internal Server Error`: unexpected runtime error
+headers:
+- enabled: true
+  name: X-Internal-Auth
+  value: ${[ INTERNAL_AUTH_SYNC_SECRET ]}
+  id: Ovh8gyyYjs
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: pYUrKQpF1v
+method: POST
+name: Internal Auth Sync
+sortPriority: 0.0
+url: http://${[ BASE_URL ]}/v0/internal/auth-sync
+urlParameters: []
