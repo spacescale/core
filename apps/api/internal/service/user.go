@@ -1,15 +1,24 @@
-// This file defines the service-layer user model shared by business workflows.
-// It represents the normalized user shape that handlers and services pass
-// around, independent of database driver wrapper types.
-// Keeping this model small and plain makes it easier for new contributors to
-// understand which user fields are considered part of the service contract.
-// Database-specific conversions should stay in mapping helpers so this struct
-// remains stable even if persistence implementation details change.
+// This file defines user-domain service models and workflows.
+// It centralizes user lookup and auth-sync persistence behavior so user lifecycle
+// responsibilities remain separate from project creation logic.
+// Keeping user workflows in one place clarifies ownership boundaries:
+// - UserService owns user identity resolution and profile upsert behavior.
+// - ProjectService consumes resolved user IDs and focuses only on projects.
 
 // Package service defines core models for service workflows.
 package service
 
-import "time"
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
+)
 
 // User represents a persisted user identity.
 // The service layer keeps this type database-agnostic so handlers and callers
@@ -23,4 +32,137 @@ type User struct {
 	OnboardingCompleted bool
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+}
+
+// UserService provides user identity and profile persistence operations.
+type UserService struct {
+	queries *pgstore.Queries
+}
+
+// NewUserService creates a UserService bound to the provided query set.
+func NewUserService(queries *pgstore.Queries) *UserService {
+	return &UserService{queries: queries}
+}
+
+// SyncAuthUserParams defines the profile payload accepted from trusted auth
+// sync callers.
+//
+// IdentityKey must be a stable, non-empty identifier that the caller controls.
+// Optional profile fields are trimmed and stored as nullable text values.
+type SyncAuthUserParams struct {
+	IdentityKey string
+	Email       string
+	Name        string
+	AvatarURL   string
+}
+
+// GetUserByIdentityKey returns a synced user for the provided identity key.
+// Missing rows are mapped to ErrUnauthorized so callers can treat unknown
+// identities as unauthorized request contexts.
+func (s *UserService) GetUserByIdentityKey(ctx context.Context, identityKey string) (User, error) {
+	identityKey = strings.TrimSpace(identityKey)
+	if identityKey == "" {
+		return User{}, ErrInvalidInput
+	}
+
+	row, err := s.queries.GetUserByIdentityKey(ctx, identityKey)
+	if err == nil {
+		return userFromRow(row), nil
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrUnauthorized
+	}
+	return User{}, err
+}
+
+// SyncAuthUser persists a user profile by stable identity key and returns the
+// normalized service user model.
+//
+// Validation rules:
+// - IdentityKey is required after trimming.
+//
+// Persistence behavior:
+//   - Upsert by identity key so repeated sign-ins are idempotent.
+//   - Existing non-empty profile fields are preserved; incoming data only
+//     populates fields that are currently empty. This prevents OAuth provider
+//     switches from overwriting user-preferred profile data.
+func (s *UserService) SyncAuthUser(ctx context.Context, p SyncAuthUserParams) (User, error) {
+	identityKey := strings.TrimSpace(p.IdentityKey)
+	if identityKey == "" {
+		return User{}, ErrInvalidInput
+	}
+
+	incomingEmail := strings.TrimSpace(p.Email)
+	incomingName := strings.TrimSpace(p.Name)
+	incomingAvatarURL := strings.TrimSpace(p.AvatarURL)
+
+	// Preserve existing profile fields once set so switching OAuth providers does
+	// not continuously overwrite avatar/name on each login.
+	existingUser, err := s.queries.GetUserByIdentityKey(ctx, identityKey)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		// Log database errors (connection issues, permission errors, etc.) for debugging.
+		// ErrNoRows is expected for new users, so we only log unexpected errors.
+		slog.Error(
+			"user sync: failed to fetch existing user",
+			"identity_key", identityKey,
+			"error", err,
+		)
+		return User{}, err
+	}
+	if err == nil {
+		incomingEmail = keepExistingIfPresent(textFromPG(existingUser.Email), incomingEmail)
+		incomingName = keepExistingIfPresent(textFromPG(existingUser.Name), incomingName)
+		incomingAvatarURL = keepExistingIfPresent(
+			textFromPG(existingUser.AvatarUrl),
+			incomingAvatarURL,
+		)
+	}
+
+	row, err := s.queries.UpsertUserByIdentityKey(ctx, pgstore.UpsertUserByIdentityKeyParams{
+		IdentityKey: identityKey,
+		Email:       textToPG(incomingEmail),
+		Name:        textToPG(incomingName),
+		AvatarUrl:   textToPG(incomingAvatarURL),
+	})
+	if err != nil {
+		return User{}, err
+	}
+
+	return userFromRow(row), nil
+}
+
+// userFromRow maps a storage user row into the service user shape.
+// This keeps database-specific wrapper types out of higher layers and normalizes
+// UUID and timestamp fields into plain service values.
+func userFromRow(r pgstore.User) User {
+	return User{
+		ID:                  uuidToString(r.ID),
+		IdentityKey:         r.IdentityKey,
+		Email:               textFromPG(r.Email),
+		Name:                textFromPG(r.Name),
+		AvatarURL:           textFromPG(r.AvatarUrl),
+		OnboardingCompleted: r.OnboardingCompleted,
+		CreatedAt:           timeFromTimestamptz(r.CreatedAt),
+		UpdatedAt:           timeFromTimestamptz(r.UpdatedAt),
+	}
+}
+
+// textToPG converts plain string values into nullable pgtype.Text.
+// Empty strings are normalized to invalid values so storage keeps nullability
+// semantics for optional fields.
+func textToPG(v string) pgtype.Text {
+	if strings.TrimSpace(v) == "" {
+		return pgtype.Text{Valid: false}
+	}
+	return pgtype.Text{String: v, Valid: true}
+}
+
+// keepExistingIfPresent keeps the stored value once available, and only uses
+// new provider data when the stored value is still empty.
+func keepExistingIfPresent(existing, incoming string) string {
+	trimmedExisting := strings.TrimSpace(existing)
+	if trimmedExisting != "" {
+		return trimmedExisting
+	}
+	return strings.TrimSpace(incoming)
 }

@@ -1,4 +1,4 @@
-// This file tests startup configuration loading in package main.
+// This file tests startup configuration loading in package config.
 //
 // Why these tests exist:
 // - loadAppConfig is the single entrypoint for startup config behavior.
@@ -10,7 +10,7 @@
 // - Use environment-driven tests with t.Setenv so behavior matches real startup.
 // - Keep tests focused on externally observable config outcomes.
 
-package main
+package config
 
 import (
 	"testing"
@@ -24,6 +24,7 @@ func setBaselineEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("DATABASE_URL", "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable")
 	t.Setenv("BFF_JWT_SECRET", "test-secret")
+	t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "test-internal-auth-secret")
 	// Use off mode by default so tests that do not care about hash mode are not
 	// coupled to hash-secret requirements.
 	t.Setenv("API_LOG_USER_AGENT_MODE", "off")
@@ -35,7 +36,7 @@ func TestLoadAppConfigMissingDatabaseURL(t *testing.T) {
 	setBaselineEnv(t)
 	t.Setenv("DATABASE_URL", "")
 
-	_, err := loadAppConfig()
+	_, err := LoadFromEnv()
 	require.EqualError(t, err, "missing required config DATABASE_URL")
 }
 
@@ -45,8 +46,18 @@ func TestLoadAppConfigMissingJWTSecret(t *testing.T) {
 	setBaselineEnv(t)
 	t.Setenv("BFF_JWT_SECRET", "")
 
-	_, err := loadAppConfig()
+	_, err := LoadFromEnv()
 	require.EqualError(t, err, "missing required config BFF_JWT_SECRET")
+}
+
+// TestLoadAppConfigMissingInternalAuthSecret verifies startup fails fast when
+// internal auth-sync shared secret is missing.
+func TestLoadAppConfigMissingInternalAuthSecret(t *testing.T) {
+	setBaselineEnv(t)
+	t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "")
+
+	_, err := LoadFromEnv()
+	require.EqualError(t, err, "missing required config INTERNAL_AUTH_SYNC_SECRET")
 }
 
 // TestLoadAppConfigHashModeRequiresSecret verifies that hash mode cannot start
@@ -56,7 +67,7 @@ func TestLoadAppConfigHashModeRequiresSecret(t *testing.T) {
 	t.Setenv("API_LOG_USER_AGENT_MODE", "hash")
 	t.Setenv("API_LOG_USER_AGENT_HASH_SECRET", "")
 
-	_, err := loadAppConfig()
+	_, err := LoadFromEnv()
 	require.EqualError(t, err, "API_LOG_USER_AGENT_HASH_SECRET is required when API_LOG_USER_AGENT_MODE=hash")
 }
 
@@ -67,7 +78,7 @@ func TestLoadAppConfigClampsDBPoolBounds(t *testing.T) {
 	t.Setenv("DB_MAX_CONNS", "10")
 	t.Setenv("DB_MIN_CONNS", "20")
 
-	cfg, err := loadAppConfig()
+	cfg, err := LoadFromEnv()
 	require.NoError(t, err)
 	require.Equal(t, int32(10), cfg.Database.MaxConns)
 	require.Equal(t, int32(10), cfg.Database.MinConns)
@@ -78,11 +89,18 @@ func TestLoadAppConfigClampsDBPoolBounds(t *testing.T) {
 func TestLoadAppConfigBuildsTypedDefaults(t *testing.T) {
 	setBaselineEnv(t)
 
-	cfg, err := loadAppConfig()
+	cfg, err := LoadFromEnv()
 	require.NoError(t, err)
 	require.Equal(t, defaultListenAddr, cfg.Addr)
 	require.Equal(t, defaultDBMaxConns, cfg.Database.MaxConns)
 	require.Equal(t, defaultDBMinConns, cfg.Database.MinConns)
+	require.Equal(t, defaultAuthIssuer, cfg.API.Auth.Issuer)
+	require.Equal(t, defaultAuthAudience, cfg.API.Auth.Audience)
+	require.Equal(t, DefaultRateLimitConfig(), cfg.API.RateLimit)
+	expectedLogPrivacy := DefaultLogPrivacyConfig()
+	expectedLogPrivacy.UserAgentMode = UserAgentLogModeOff
+	require.Equal(t, expectedLogPrivacy, cfg.API.LogPrivacy)
+	require.Equal(t, "test-internal-auth-secret", cfg.API.InternalAuthSecret)
 	require.Equal(t, defaultHTTPServerConfig().MaxBodyBytes, cfg.HTTPServer.MaxBodyBytes)
 	require.Equal(t, defaultHTTPServerConfig().MaxHeaderBytes, cfg.HTTPServer.MaxHeaderBytes)
 	require.Equal(t, defaultHTTPServerConfig().ReadHeaderTimeout, cfg.HTTPServer.ReadHeaderTimeout)

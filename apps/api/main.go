@@ -11,11 +11,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/t0gun/spacescale/internal/config"
 	"github.com/t0gun/spacescale/internal/http_api"
 	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
 	"github.com/t0gun/spacescale/internal/service"
@@ -24,15 +24,9 @@ import (
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
-	cfg, err := loadAppConfig()
+	cfg, err := config.LoadFromEnv()
 	if err != nil {
 		logger.Error("invalid startup config", "event", "startup_error", "error", err)
-		os.Exit(1)
-	}
-
-	internalAuthSyncSecret := strings.TrimSpace(envStr("INTERNAL_AUTH_SYNC_SECRET", ""))
-	if internalAuthSyncSecret == "" {
-		logger.Error("invalid startup config", "event", "startup_error", "error", "missing required config INTERNAL_AUTH_SYNC_SECRET")
 		os.Exit(1)
 	}
 
@@ -44,8 +38,12 @@ func main() {
 	defer dbPool.Close()
 	queries := pgstore.New(dbPool)
 
-	svc := service.NewProjectService(queries)
-	api := http_api.NewServer(svc, cfg.Auth, dbPool, cfg.RateLimit, cfg.LogPrivacy, internalAuthSyncSecret)
+	svcs := service.NewServices(queries)
+	api := http_api.NewServer(http_api.ServerDeps{
+		Services: svcs,
+		DBPool:   dbPool,
+		Config:   cfg.API,
+	})
 
 	// Wrap the router with a global body-size limiter so body reads beyond this
 	// cap fail fast and handlers never process unbounded payloads.
@@ -107,7 +105,7 @@ func main() {
 }
 
 // openDB initializes pgx pool from validated config and verifies connectivity.
-func openDB(ctx context.Context, cfg DatabaseConfig) (*pgxpool.Pool, error) {
+func openDB(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.Pool, error) {
 	poolCfg, err := pgxpool.ParseConfig(cfg.URL)
 	if err != nil {
 		return nil, err

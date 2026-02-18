@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/t0gun/spacescale/internal/config"
 )
 
 // logContext stores optional request metadata that may be discovered mid-request
@@ -43,7 +44,7 @@ func logContextFromContext(ctx context.Context) (*logContext, bool) {
 
 // accessLogMiddleware emits one structured access log after handler completion.
 // It captures final response status, latency, and optional request enrichments.
-func accessLogMiddleware(logCfg LogPrivacyConfig) func(http.Handler) http.Handler {
+func accessLogMiddleware(logCfg config.LogPrivacyConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -103,7 +104,7 @@ func accessLogLevel(status int) slog.Level {
 
 // recovererMiddleware logs panic details and returns a generic 500 when possible.
 // It avoids writing a second response if downstream already started one.
-func recovererMiddleware(logCfg LogPrivacyConfig) func(http.Handler) http.Handler {
+func recovererMiddleware(logCfg config.LogPrivacyConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {

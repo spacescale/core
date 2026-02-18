@@ -10,6 +10,7 @@ package http_api_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -36,9 +37,11 @@ type errorResponse struct {
 func TestCreateProjectDefaults(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
+	identityKey := uniqueIdentityKey(t)
+	syncAuthUserForTest(t, ts, identityKey)
 
 	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", []byte(`{}`), map[string]string{
-		"Authorization": authHeaderForGithubID(t, "12345"),
+		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
 
@@ -65,10 +68,13 @@ func TestCreateProjectDefaults(t *testing.T) {
 func TestCreateProjectOverrides(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
+	identityKey := uniqueIdentityKey(t)
+	syncAuthUserForTest(t, ts, identityKey)
 
-	body := []byte(`{"name":"misty-harbor","region":"global"}`)
+	projectName := fmt.Sprintf("misty-harbor-%d", time.Now().UnixNano())
+	body := []byte(fmt.Sprintf(`{"name":"%s","region":"global"}`, projectName))
 	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", body, map[string]string{
-		"Authorization": authHeaderForGithubID(t, "12345"),
+		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
 
@@ -76,13 +82,13 @@ func TestCreateProjectOverrides(t *testing.T) {
 
 	var out projectResponse
 	require.NoError(t, json.Unmarshal(data, &out))
-	require.Equal(t, "misty-harbor", out.Name)
-	require.Equal(t, "misty-harbor", out.Slug)
+	require.Equal(t, projectName, out.Name)
+	require.Equal(t, projectName, out.Slug)
 	require.Equal(t, "global", out.Region)
 }
 
 // TestCreateProjectMissingHeader verifies authentication header enforcement.
-// It expects an unauthorized response when the request omits GitHub identity,
+// It expects an unauthorized response when the request omits caller identity,
 // which keeps project creation tied to an authenticated user context.
 func TestCreateProjectMissingHeader(t *testing.T) {
 	ts := newTestServer(t)
@@ -99,15 +105,35 @@ func TestCreateProjectMissingHeader(t *testing.T) {
 	require.NotEmpty(t, out.Error)
 }
 
+// TestCreateProjectRequiresSyncedUser verifies project creation requires a
+// user that has already been synced through the internal auth-sync endpoint.
+func TestCreateProjectRequiresSyncedUser(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.close()
+	unsyncedIdentityKey := uniqueIdentityKey(t)
+
+	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", []byte(`{}`), map[string]string{
+		"Authorization": authHeaderForIdentityKey(t, unsyncedIdentityKey),
+		"Content-Type":  "application/json",
+	})
+
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
+
+	var out errorResponse
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Equal(t, "unauthorized", out.Error)
+}
+
 // TestCreateProjectInvalidJSON verifies malformed JSON handling.
 // It expects a bad request response when decoding fails so handlers reject
 // malformed payloads before any service logic executes.
 func TestCreateProjectInvalidJSON(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
+	identityKey := uniqueIdentityKey(t)
 
 	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", []byte("{"), map[string]string{
-		"Authorization": authHeaderForGithubID(t, "12345"),
+		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
 

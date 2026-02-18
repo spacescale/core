@@ -26,6 +26,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/stretchr/testify/require"
+	"github.com/t0gun/spacescale/internal/config"
 )
 
 // withCapturedAccessLogger temporarily replaces the process-wide default slog
@@ -46,9 +47,9 @@ func withCapturedAccessLogger(t *testing.T) (*bytes.Buffer, func()) {
 //   - Production defaults use hash mode, but these middleware tests assert field
 //     names and values directly.
 //   - Truncate mode keeps behavior explicit and stable for test expectations.
-func testLogPrivacyConfig() LogPrivacyConfig {
-	return LogPrivacyConfig{
-		UserAgentMode:     UserAgentLogModeTruncate,
+func testLogPrivacyConfig() config.LogPrivacyConfig {
+	return config.LogPrivacyConfig{
+		UserAgentMode:     config.UserAgentLogModeTruncate,
 		UserAgentMaxLen:   100,
 		PanicValueMaxLen:  200,
 		IncludeStackTrace: true,
@@ -279,8 +280,8 @@ func TestRecovererMiddlewareAppliesPanicPrivacyConfig(t *testing.T) {
 	buf, restore := withCapturedAccessLogger(t)
 	defer restore()
 
-	privacyCfg := LogPrivacyConfig{
-		UserAgentMode:     UserAgentLogModeOff,
+	privacyCfg := config.LogPrivacyConfig{
+		UserAgentMode:     config.UserAgentLogModeOff,
 		PanicValueMaxLen:  5,
 		IncludeStackTrace: false,
 	}

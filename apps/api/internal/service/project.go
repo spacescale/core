@@ -1,6 +1,6 @@
 // This file implements the project-creation workflow in the service layer.
-// It coordinates owner resolution by auth identity key, request normalization,
-// validation, defaulting, slug generation, and conflict-retry behavior.
+// It coordinates project-shape validation, request normalization, defaulting,
+// slug generation, and conflict-retry behavior.
 // It also contains mapping helpers that translate SQLC and pgtype values into
 // plain service structs consumed by HTTP handlers.
 // Keep domain rules here so transport code stays thin and persistence details
@@ -18,7 +18,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
@@ -59,25 +58,21 @@ func NewProjectService(queries *pgstore.Queries) *ProjectService {
 	return &ProjectService{queries: queries}
 }
 
-// CreateProject creates a project for a user identified by identity key.
-// It trims request values, ensures the owner record exists, and generates a
-// fallback name when none is supplied by the caller.
+// CreateProject creates a project for an existing owner user ID.
+// It trims request values and generates a fallback name when none is supplied
+// by the caller.
 // After validation and defaulting, it retries inserts on slug conflicts and
 // maps the stored row into the service model returned to handlers.
 // Validation failures are normalized to ErrInvalidInput, and exhausted slug
 // retries are returned as ErrConflict.
-func (s *ProjectService) CreateProject(ctx context.Context, identityKey string, p CreateProjectParams) (Project, error) {
-	identityKey = strings.TrimSpace(identityKey)
-	if identityKey == "" {
+func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID string, p CreateProjectParams) (Project, error) {
+	ownerUserID = strings.TrimSpace(ownerUserID)
+	if ownerUserID == "" {
 		return Project{}, ErrInvalidInput
 	}
 
-	user, err := s.ensureUserByIdentityKey(ctx, identityKey)
-	if err != nil {
-		return Project{}, err
-	}
-
 	name := strings.TrimSpace(p.Name)
+	var err error
 	if name == "" {
 		name, err = s.generateName(ctx)
 		if err != nil {
@@ -85,7 +80,7 @@ func (s *ProjectService) CreateProject(ctx context.Context, identityKey string, 
 		}
 	}
 
-	project, err := buildProject(user.ID, name, p.Region)
+	project, err := buildProject(ownerUserID, name, p.Region)
 	if err != nil {
 		return Project{}, ErrInvalidInput
 	}
@@ -146,29 +141,6 @@ func buildProject(ownerUserID, name, region string) (Project, error) {
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}, nil
-}
-
-// ensureUserByIdentityKey returns an existing user for the identity key or
-// creates one.
-// It first performs a direct lookup to avoid unnecessary writes during normal
-// traffic, then falls back to an upsert only when no row exists.
-// This keeps caller logic simple while preserving idempotent behavior for
-// repeated project-creation requests from the same authenticated identity.
-func (s *ProjectService) ensureUserByIdentityKey(ctx context.Context, identityKey string) (User, error) {
-	row, err := s.queries.GetUserByIdentityKey(ctx, identityKey)
-	if err == nil {
-		return userFromRow(row), nil
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return User{}, err
-	}
-	row, err = s.queries.UpsertUserByIdentityKey(ctx, pgstore.UpsertUserByIdentityKeyParams{
-		IdentityKey: identityKey,
-	})
-	if err != nil {
-		return User{}, err
-	}
-	return userFromRow(row), nil
 }
 
 // generateName fetches one adjective and one noun from storage.
@@ -234,22 +206,6 @@ func randomSuffix(n int) string {
 		b.WriteByte(alphabet[idx.Int64()])
 	}
 	return b.String()
-}
-
-// userFromRow maps a storage user row into the service user shape.
-// This keeps database-specific wrapper types out of higher layers and normalizes
-// UUID and timestamp fields into plain service values.
-func userFromRow(r pgstore.User) User {
-	return User{
-		ID:                  uuidToString(r.ID),
-		IdentityKey:         r.IdentityKey,
-		Email:               textFromPG(r.Email),
-		Name:                textFromPG(r.Name),
-		AvatarURL:           textFromPG(r.AvatarUrl),
-		OnboardingCompleted: r.OnboardingCompleted,
-		CreatedAt:           timeFromTimestamptz(r.CreatedAt),
-		UpdatedAt:           timeFromTimestamptz(r.UpdatedAt),
-	}
 }
 
 // textFromPG converts pgtype text values into plain strings.

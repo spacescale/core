@@ -1,8 +1,8 @@
 // This file centralizes API startup configuration loading.
 // It parses environment variables into typed config structs, applies defaults,
-// and validates required values so main.go can focus on process orchestration.
+// and validates required values so process entrypoints stay focused on wiring.
 
-package main
+package config
 
 import (
 	"errors"
@@ -11,8 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/t0gun/spacescale/internal/http_api"
 )
 
 const (
@@ -35,13 +33,11 @@ var (
 	defaultDBMaxConnIdleTime = 30 * time.Minute // bounds how long an idle DB connection is retained.
 )
 
-// AppConfig is the top-level startup configuration consumed by main.go.
-type AppConfig struct {
+// Config is the top-level startup configuration consumed by entrypoints.
+type Config struct {
 	Addr       string
 	Database   DatabaseConfig
-	Auth       http_api.AuthConfig
-	RateLimit  http_api.RateLimitConfig
-	LogPrivacy http_api.LogPrivacyConfig
+	API        APIConfig
 	HTTPServer HTTPServerConfig
 }
 
@@ -69,32 +65,50 @@ type HTTPServerConfig struct {
 	MaxHeaderBytes    int
 }
 
-// loadAppConfig reads and validates all startup configuration from environment.
+// LoadFromEnv reads and validates all startup configuration from environment.
 // Required values fail fast; optional values default safely with warning logs.
-func loadAppConfig() (AppConfig, error) {
+func LoadFromEnv() (Config, error) {
 	databaseCfg, err := readDatabaseConfig()
 	if err != nil {
-		return AppConfig{}, err
+		return Config{}, err
 	}
 
-	authCfg, err := readAuthConfig()
+	apiCfg, err := readAPIServerConfig()
 	if err != nil {
-		return AppConfig{}, err
+		return Config{}, err
 	}
 
-	rateLimitCfg := readRateLimitConfig()
-	logPrivacyCfg, err := readLogPrivacyConfig()
-	if err != nil {
-		return AppConfig{}, err
-	}
-
-	return AppConfig{
+	return Config{
 		Addr:       envStr("ADDR", defaultListenAddr),
 		Database:   databaseCfg,
-		Auth:       authCfg,
-		RateLimit:  rateLimitCfg,
-		LogPrivacy: logPrivacyCfg,
+		API:        apiCfg,
 		HTTPServer: defaultHTTPServerConfig(),
+	}, nil
+}
+
+// readAPIServerConfig loads API runtime settings used by server middleware and
+// internal endpoint protection.
+func readAPIServerConfig() (APIConfig, error) {
+	authCfg, err := readAuthConfig()
+	if err != nil {
+		return APIConfig{}, err
+	}
+
+	logPrivacyCfg, err := readLogPrivacyConfig()
+	if err != nil {
+		return APIConfig{}, err
+	}
+
+	internalAuthSecret := strings.TrimSpace(envStr("INTERNAL_AUTH_SYNC_SECRET", ""))
+	if internalAuthSecret == "" {
+		return APIConfig{}, errors.New("missing required config INTERNAL_AUTH_SYNC_SECRET")
+	}
+
+	return APIConfig{
+		Auth:               authCfg,
+		RateLimit:          readRateLimitConfig(),
+		LogPrivacy:         logPrivacyCfg,
+		InternalAuthSecret: internalAuthSecret,
 	}, nil
 }
 
@@ -140,29 +154,29 @@ func readDatabaseConfig() (DatabaseConfig, error) {
 }
 
 // readAuthConfig loads auth verification settings and validates them.
-func readAuthConfig() (http_api.AuthConfig, error) {
+func readAuthConfig() (AuthConfig, error) {
 	jwtSecret := strings.TrimSpace(envStr("BFF_JWT_SECRET", ""))
 	if jwtSecret == "" {
-		return http_api.AuthConfig{}, errors.New("missing required config BFF_JWT_SECRET")
+		return AuthConfig{}, errors.New("missing required config BFF_JWT_SECRET")
 	}
 
-	cfg := http_api.AuthConfig{
+	cfg := AuthConfig{
 		JWTSecret: jwtSecret,
 		Issuer:    envStr("BFF_JWT_ISSUER", defaultAuthIssuer),
 		Audience:  envStr("BFF_JWT_AUDIENCE", defaultAuthAudience),
 	}
 	if err := cfg.Validate(); err != nil {
-		return http_api.AuthConfig{}, err
+		return AuthConfig{}, err
 	}
 
 	return cfg, nil
 }
 
 // readRateLimitConfig loads per-user limiter settings with safe defaults.
-func readRateLimitConfig() http_api.RateLimitConfig {
-	defaults := http_api.DefaultRateLimitConfig()
+func readRateLimitConfig() RateLimitConfig {
+	defaults := DefaultRateLimitConfig()
 
-	return http_api.RateLimitConfig{
+	return RateLimitConfig{
 		Requests: int(parseEnvInt32("API_USER_RATE_LIMIT_REQUESTS", int32(defaults.Requests))),
 		Window:   parseEnvDuration("API_USER_RATE_LIMIT_WINDOW", defaults.Window),
 	}
@@ -170,22 +184,22 @@ func readRateLimitConfig() http_api.RateLimitConfig {
 
 // readLogPrivacyConfig loads user-agent and panic-log privacy settings.
 // Hash mode requires API_LOG_USER_AGENT_HASH_SECRET.
-func readLogPrivacyConfig() (http_api.LogPrivacyConfig, error) {
-	defaults := http_api.DefaultLogPrivacyConfig()
+func readLogPrivacyConfig() (LogPrivacyConfig, error) {
+	defaults := DefaultLogPrivacyConfig()
 	modeRaw := strings.TrimSpace(strings.ToLower(envStr("API_LOG_USER_AGENT_MODE", string(defaults.UserAgentMode))))
 
-	cfg := http_api.LogPrivacyConfig{
+	cfg := LogPrivacyConfig{
 		UserAgentHashSecret: strings.TrimSpace(envStr("API_LOG_USER_AGENT_HASH_SECRET", "")),
 		UserAgentMaxLen:     int(parseEnvInt32("API_LOG_USER_AGENT_MAX_LEN", int32(defaults.UserAgentMaxLen))),
 		PanicValueMaxLen:    int(parseEnvInt32("API_LOG_PANIC_VALUE_MAX_LEN", int32(defaults.PanicValueMaxLen))),
 		IncludeStackTrace:   parseEnvBool("API_LOG_STACK_TRACE", defaults.IncludeStackTrace),
 	}
 
-	switch http_api.UserAgentLogMode(modeRaw) {
-	case http_api.UserAgentLogModeHash,
-		http_api.UserAgentLogModeTruncate,
-		http_api.UserAgentLogModeOff:
-		cfg.UserAgentMode = http_api.UserAgentLogMode(modeRaw)
+	switch UserAgentLogMode(modeRaw) {
+	case UserAgentLogModeHash,
+		UserAgentLogModeTruncate,
+		UserAgentLogModeOff:
+		cfg.UserAgentMode = UserAgentLogMode(modeRaw)
 	default:
 		logDefaultedEnv("API_LOG_USER_AGENT_MODE", modeRaw, string(defaults.UserAgentMode))
 		cfg.UserAgentMode = defaults.UserAgentMode
@@ -197,8 +211,8 @@ func readLogPrivacyConfig() (http_api.LogPrivacyConfig, error) {
 	if cfg.PanicValueMaxLen <= 0 {
 		cfg.PanicValueMaxLen = defaults.PanicValueMaxLen
 	}
-	if cfg.UserAgentMode == http_api.UserAgentLogModeHash && cfg.UserAgentHashSecret == "" {
-		return http_api.LogPrivacyConfig{}, errors.New("API_LOG_USER_AGENT_HASH_SECRET is required when API_LOG_USER_AGENT_MODE=hash")
+	if cfg.UserAgentMode == UserAgentLogModeHash && cfg.UserAgentHashSecret == "" {
+		return LogPrivacyConfig{}, errors.New("API_LOG_USER_AGENT_HASH_SECRET is required when API_LOG_USER_AGENT_MODE=hash")
 	}
 
 	return cfg, nil

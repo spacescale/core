@@ -8,6 +8,7 @@ package http_api_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
+	"github.com/t0gun/spacescale/internal/config"
 	"github.com/t0gun/spacescale/internal/http_api"
 	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
 	"github.com/t0gun/spacescale/internal/service"
@@ -39,7 +41,7 @@ type testServer struct {
 }
 
 // testJWTClaims matches claims expected by auth middleware.
-// Subject carries canonical identity in github:<id> format, while
+// Subject carries canonical identity in github:<identity-key> format, while
 // RegisteredClaims carries standard iss/aud/exp metadata.
 type testJWTClaims struct {
 	jwt.RegisteredClaims // embedded so claim fields are promoted to this type.
@@ -48,7 +50,7 @@ type testJWTClaims struct {
 // TestDefaultRateLimitConfig verifies package-default limiter settings.
 // This guards against accidental default drift in server wiring.
 func TestDefaultRateLimitConfig(t *testing.T) {
-	cfg := http_api.DefaultRateLimitConfig()
+	cfg := config.DefaultRateLimitConfig()
 
 	require.Equal(t, 100, cfg.Requests)
 	require.Equal(t, time.Minute, cfg.Window)
@@ -58,14 +60,15 @@ func TestDefaultRateLimitConfig(t *testing.T) {
 // values are normalized by server wiring so requests are not incorrectly
 // blocked by zero-value configuration.
 func TestNewServerNormalizesInvalidRateLimitConfig(t *testing.T) {
-	ts := newTestServerWithRateLimitConfig(t, http_api.RateLimitConfig{})
+	ts := newTestServerWithRateLimitConfig(t, config.RateLimitConfig{})
 	defer ts.close()
+	syncAuthUserForTest(t, ts, "12345")
 
 	name := fmt.Sprintf("normalize-rate-limit-%d", time.Now().UnixNano())
 	body := []byte(fmt.Sprintf(`{"name":"%s","region":"global"}`, name))
 
 	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", body, map[string]string{
-		"Authorization": authHeaderForGithubID(t, "12345"),
+		"Authorization": authHeaderForIdentityKey(t, "12345"),
 		"Content-Type":  "application/json",
 	})
 
@@ -73,18 +76,91 @@ func TestNewServerNormalizesInvalidRateLimitConfig(t *testing.T) {
 	require.NotEqual(t, http.StatusTooManyRequests, resp.StatusCode, string(data))
 }
 
+// TestNewServerRequiresNonEmptyInternalSecret verifies startup validation for
+// trusted internal endpoint protection.
+func TestNewServerRequiresNonEmptyInternalSecret(t *testing.T) {
+	require.PanicsWithValue(t, "http_api.NewServer requires non-empty internal auth secret", func() {
+		http_api.NewServer(http_api.ServerDeps{
+			Services: &service.Services{
+				Projects: &service.ProjectService{},
+				Users:    &service.UserService{},
+			},
+			DBPool: &pgxpool.Pool{},
+			Config: config.APIConfig{
+				InternalAuthSecret: "   ",
+			},
+		})
+	})
+}
+
+// TestInternalAuthSyncHeaderValidation verifies trusted internal endpoint
+// header checks for missing/invalid headers and the successful pass-through
+// path when the header matches.
+func TestInternalAuthSyncHeaderValidation(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.close()
+
+	tests := []struct {
+		name       string
+		header     string
+		wantStatus int
+		wantErr    string
+	}{
+		{name: "missing header", header: "", wantStatus: http.StatusUnauthorized, wantErr: "unauthorized"},
+		{name: "wrong header", header: "wrong-secret", wantStatus: http.StatusUnauthorized, wantErr: "unauthorized"},
+		{name: "matching header after trim", header: "  " + testInternalAuthSecret + "  ", wantStatus: http.StatusBadRequest, wantErr: "invalid json"},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			headers := map[string]string{"Content-Type": "application/json"}
+			if tc.header != "" {
+				headers["X-Internal-Auth"] = tc.header
+			}
+
+			resp, data := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", []byte("{"), headers)
+			require.Equal(t, tc.wantStatus, resp.StatusCode, string(data))
+
+			var out errorResponse
+			require.NoError(t, json.Unmarshal(data, &out))
+			require.Equal(t, tc.wantErr, out.Error)
+		})
+	}
+}
+
+// TestUnauthorizedRequestsAreNotRateLimited verifies middleware order for /v0
+// routes: auth runs before user limiter, so unauthenticated requests are always
+// rejected as unauthorized rather than sharing a limiter fallback bucket.
+func TestUnauthorizedRequestsAreNotRateLimited(t *testing.T) {
+	ts := newTestServerWithRateLimitConfig(t, config.RateLimitConfig{Requests: 1, Window: time.Minute})
+	defer ts.close()
+
+	for i := 0; i < 3; i++ {
+		resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", []byte(`{}`), map[string]string{
+			"Content-Type": "application/json",
+		})
+
+		require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
+
+		var out errorResponse
+		require.NoError(t, json.Unmarshal(data, &out))
+		require.Equal(t, "unauthorized", out.Error)
+	}
+}
+
 // newTestServer creates one integration server for the calling test.
 // It uses package-default rate limiting.
 // If TEST_DATABASE_URL is missing, the test is skipped.
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
-	return newTestServerWithRateLimitConfig(t, http_api.DefaultRateLimitConfig())
+	return newTestServerWithRateLimitConfig(t, config.DefaultRateLimitConfig())
 }
 
 // newTestServerWithRateLimitConfig creates one integration server using the
 // supplied rate-limit configuration.
 // If TEST_DATABASE_URL is missing, the test is skipped.
-func newTestServerWithRateLimitConfig(t *testing.T, rateLimitCfg http_api.RateLimitConfig) *testServer {
+func newTestServerWithRateLimitConfig(t *testing.T, rateLimitCfg config.RateLimitConfig) *testServer {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
@@ -104,7 +180,7 @@ func newTestServerWithRateLimitConfig(t *testing.T, rateLimitCfg http_api.RateLi
 	}
 
 	// Configure auth middleware for this integration server instance.
-	authCfg := http_api.AuthConfig{
+	authCfg := config.AuthConfig{
 		JWTSecret: testJWTSecret,
 		Issuer:    testIssuer,
 		Audience:  testAudience,
@@ -115,14 +191,42 @@ func newTestServerWithRateLimitConfig(t *testing.T, rateLimitCfg http_api.RateLi
 	}
 
 	queries := pgstore.New(pool)
-	svc := service.NewProjectService(queries)
-	api := http_api.NewServer(svc, authCfg, pool, rateLimitCfg, http_api.DefaultLogPrivacyConfig(), testInternalAuthSecret)
+	svcs := service.NewServices(queries)
+	api := http_api.NewServer(http_api.ServerDeps{
+		Services: svcs,
+		DBPool:   pool,
+		Config: config.APIConfig{
+			Auth:               authCfg,
+			RateLimit:          rateLimitCfg,
+			LogPrivacy:         config.DefaultLogPrivacyConfig(),
+			InternalAuthSecret: testInternalAuthSecret,
+		},
+	})
 
 	// httptest server exposes in-memory HTTP endpoint for black-box requests.
 	return &testServer{
 		server: httptest.NewServer(api.Router()),
 		pool:   pool,
 	}
+}
+
+// syncAuthUserForTest creates or updates a user through the trusted internal
+// auth-sync endpoint so project tests can exercise the same lifecycle as real
+// sign-in flows.
+func syncAuthUserForTest(t *testing.T, ts *testServer, identityKey string) {
+	t.Helper()
+
+	body := []byte(fmt.Sprintf(
+		`{"identityKey":"%s","email":"dev@example.com","name":"Dev","avatarUrl":"https://example.com/avatar.png"}`,
+		identityKey,
+	))
+
+	resp, data := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", body, map[string]string{
+		"X-Internal-Auth": testInternalAuthSecret,
+		"Content-Type":    "application/json",
+	})
+
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
 }
 
 // close releases network and database resources used by the test server.
@@ -162,21 +266,22 @@ func doRequest(t *testing.T, ts *testServer, method, path string, body []byte, h
 	return resp, data
 }
 
-// authHeaderForGithubID returns a valid bearer token header for integration tests.
+// authHeaderForIdentityKey returns a valid bearer token header for integration tests.
 //
 // The token is signed with the same test secret configured in newTestServer,
 // so auth middleware accepts it as a trusted principal.
 //
 // This helper keeps token construction in one place so endpoint tests can focus
 // on request/response assertions instead of JWT plumbing.
-func authHeaderForGithubID(t *testing.T, githubID string) string {
+func authHeaderForIdentityKey(t *testing.T, identityKey string) string {
 	t.Helper()
 
 	// Include required registered claims.
 	claims := testJWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    testIssuer,                                           // who created and signed the token. trusted token authority
-			Subject:   "github:" + githubID,                                 // canonical identity the token represents (“who this token belongs to”).
+			Issuer: testIssuer, // who created and signed the token. trusted token authority
+			// Keep legacy "github:" prefix for current API subject compatibility.
+			Subject:   "github:" + identityKey,
 			Audience:  jwt.ClaimStrings{testAudience},                       // who is this token meant for
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(10 * time.Minute)), // tokens expire in 10 minutes
 			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-1 * time.Minute)), // token issued 1 minute ago
@@ -190,4 +295,11 @@ func authHeaderForGithubID(t *testing.T, githubID string) string {
 		t.Fatalf("sign auth token: %v", err)
 	}
 	return "Bearer " + raw
+}
+
+// uniqueIdentityKey returns a per-test identity key to avoid cross-test data
+// collisions when integration tests share the same database instance.
+func uniqueIdentityKey(t *testing.T) string {
+	t.Helper()
+	return fmt.Sprintf("it-%d", time.Now().UnixNano())
 }

@@ -103,29 +103,11 @@ func TestUUIDHelpers(t *testing.T) {
 	require.Empty(t, uuidToString(invalid))
 }
 
-func TestRowMappers(t *testing.T) {
+func TestProjectFromRow(t *testing.T) {
 	uid := mustUUID(t, "550e8400-e29b-41d4-a716-446655440000")
 	pid := mustUUID(t, "f47ac10b-58cc-4372-a567-0e02b2c3d479")
 	created := time.Date(2026, 2, 9, 1, 2, 3, 0, time.UTC)
 	updated := created.Add(5 * time.Minute)
-
-	gotUser := userFromRow(pgstore.User{
-		ID:          uid,
-		IdentityKey: "12345",
-		Email:       pgtype.Text{String: "dev@example.com", Valid: true},
-		Name:        pgtype.Text{String: "Dev", Valid: true},
-		AvatarUrl: pgtype.Text{
-			String: "https://example.com/avatar.png",
-			Valid:  true,
-		},
-		OnboardingCompleted: true,
-		CreatedAt:           pgtype.Timestamptz{Time: created, Valid: true},
-		UpdatedAt:           pgtype.Timestamptz{Time: updated, Valid: true},
-	})
-	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", gotUser.ID)
-	require.Equal(t, "12345", gotUser.IdentityKey)
-	require.Equal(t, "dev@example.com", gotUser.Email)
-	require.True(t, gotUser.OnboardingCompleted)
 
 	gotProject := projectFromRow(pgstore.Project{
 		ID:          pid,

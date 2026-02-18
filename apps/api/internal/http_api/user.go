@@ -1,5 +1,6 @@
-// This file defines the trusted internal auth-sync endpoint used by the web
-// auth callback to persist user profile records.
+// This file defines user-focused HTTP handlers.
+// It currently contains the trusted internal auth-sync endpoint used by the
+// web auth callback to persist user profile records.
 // The handler is transport-focused: decode request payload, delegate to service
 // workflow, map service errors, and serialize a compact response.
 // Security is enforced by middleware in server.go using a shared internal
@@ -47,7 +48,7 @@ func (s *Server) handleSyncAuthUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.svc.SyncAuthUser(r.Context(), service.SyncAuthUserParams{
+	user, err := s.services.Users.SyncAuthUser(r.Context(), service.SyncAuthUserParams{
 		IdentityKey: req.IdentityKey,
 		Email:       req.Email,
 		Name:        req.Name,

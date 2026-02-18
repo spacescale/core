@@ -15,5 +15,11 @@
 - Add function comments for exported functions and non-obvious private logic.
 - For `const`/`var`, prefer inline trailing comments only when value intent is not obvious.
 - Avoid duplicated comments that restate identifiers.
-- Service package defaults to white-box tests.
+- Service package test policy:
+  - Keep pure helper/business-rule tests white-box.
+  - Do not run DB-backed integration tests in the service package.
+  - Do not use DB mocks/fakes for persistence behavior in service tests.
+  - For service methods that touch persistence, cover behavior via HTTP integration tests against a real DB.
 - HTTP package defaults to black-box tests.
+- DB-backed integration tests belong in the HTTP package.
+- For HTTP auth/project integration tests, seed users through `POST /v0/internal/auth-sync` instead of direct DB inserts when possible.

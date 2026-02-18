@@ -12,4 +12,5 @@ import "errors"
 var (
 	ErrInvalidInput = errors.New("invalid input") // request validation failed.
 	ErrConflict     = errors.New("conflict")      // conflicting write or duplicate resource.
+	ErrUnauthorized = errors.New("unauthorized")  // caller identity is not allowed for requested operation.
 )

@@ -16,11 +16,12 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/t0gun/spacescale/internal/config"
 )
 
 const (
-	authTokenLeeway     = 30 * time.Second // small clock-skew buffer for JWT time-claim validation.
-	githubSubjectPrefix = "github:"        // canonical sub claim prefix used for identity derivation.
+	authTokenLeeway    = 30 * time.Second // small clock-skew buffer for JWT time-claim validation.
+	subjectKeyPrefixV1 = "github:"        // legacy canonical subject prefix used to derive identity key.
 )
 
 var (
@@ -29,39 +30,25 @@ var (
 	errInvalidToken                 = errors.New("invalid token")                  // token signature or claims failed verification.
 )
 
-// AuthConfig defines runtime settings used to verify incoming BFF-issued JWTs.
-// This is intentionally small and focused on verification requirements.
-type AuthConfig struct {
-	// JWTSecret is the HMAC secret used to verify token signatures.
-	// If this does not match the signer secret used by the BFF, every token fails.
-	JWTSecret string
-	// Issuer is the expected "iss" claim value.
-	// Keep this value aligned with the BFF token issuer configuration.
-	Issuer string
-	// Audience is the required "aud" claim that scopes who the token is meant for.
-	// This prevents accepting tokens minted for a different service.
-	Audience string
-}
-
 // AuthPrincipal is the authenticated identity extracted from a verified BFF JWT.
 // Handlers should read this from context and never trust raw user headers.
 type AuthPrincipal struct {
-	Subject   string // Subject is the canonical identity "sub" claim, usually stable per user.
-	GithubID  string
-	Email     string
-	Name      string
-	AvatarURL string
+	Subject     string // Subject is the canonical identity "sub" claim, usually stable per user.
+	IdentityKey string
+	Email       string
+	Name        string
+	AvatarURL   string
 }
 
 // bffClaims models JWT claims expected from the Next.js BFF token.
 // RegisteredClaims provides iss, aud, sub, exp, iat validation support.
 type bffClaims struct {
-	// GithubID is derived from Subject after successful token verification.
+	// IdentityKey is derived from Subject after successful token verification.
 	// It is not decoded directly from token payload; identity source of truth is sub.
-	GithubID  string `json:"-"`
-	Email     string `json:"email,omitempty"`
-	Name      string `json:"name,omitempty"`
-	AvatarURL string `json:"avatar_url,omitempty"`
+	IdentityKey string `json:"-"`
+	Email       string `json:"email,omitempty"`
+	Name        string `json:"name,omitempty"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
 	// RegisteredClaims carries standard JWT claims:
 	// - iss: issuer
 	// - sub: subject/user identity
@@ -74,39 +61,6 @@ type bffClaims struct {
 // principalContextKey is an unexported, zero-sized type used as the context key.
 // Using a private struct type avoids collisions with keys from other packages.
 type principalContextKey struct{}
-
-// Validate verifies that AuthConfig has all required values before middleware
-// is used to authenticate real requests.
-//
-// Why this check is done at startup:
-// - Missing configuration would cause every request to fail authentication.
-// - Failing fast makes deployment/config issues obvious and easier to debug.
-//
-// What this validates:
-// - JWTSecret must be non-empty after trimming whitespace.
-// - Issuer must be non-empty after trimming whitespace.
-// - Audience must be non-empty after trimming whitespace.
-//
-// Return behavior:
-// - Returns a descriptive error for the first missing required value.
-// - Returns nil only when all required fields are present.
-func (c AuthConfig) Validate() error {
-	// JWT signature verification cannot run without a non-empty secret.
-	if strings.TrimSpace(c.JWTSecret) == "" {
-		return errors.New("auth config JWTSecret is required")
-	}
-
-	// Issuer matching is required to ensure the token came from our trusted BFF.
-	if strings.TrimSpace(c.Issuer) == "" {
-		return errors.New("auth config Issuer is required")
-	}
-
-	// Audience matching is required to ensure the token is intended for this API.
-	if strings.TrimSpace(c.Audience) == "" {
-		return errors.New("auth config Audience is required")
-	}
-	return nil
-}
 
 // authMiddleware creates a standard net/http middleware that performs bearer
 // token authentication for each incoming request and enriches request context
@@ -126,7 +80,7 @@ func (c AuthConfig) Validate() error {
 // Design intent:
 //   - Keep authentication mechanics centralized here so endpoint handlers remain
 //     focused on request/response handling and business logic.
-func authMiddleware(cfg AuthConfig, logCfg LogPrivacyConfig) func(http.Handler) http.Handler {
+func authMiddleware(cfg config.AuthConfig, logCfg config.LogPrivacyConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Expected format: "Bearer <jwt>".
@@ -146,11 +100,11 @@ func authMiddleware(cfg AuthConfig, logCfg LogPrivacyConfig) func(http.Handler) 
 			}
 			// Handlers consume this trusted object from context.
 			principal := AuthPrincipal{
-				Subject:   claims.Subject,
-				GithubID:  claims.GithubID,
-				Email:     claims.Email,
-				Name:      claims.Name,
-				AvatarURL: claims.AvatarURL,
+				Subject:     claims.Subject,
+				IdentityKey: claims.IdentityKey,
+				Email:       claims.Email,
+				Name:        claims.Name,
+				AvatarURL:   claims.AvatarURL,
 			}
 			ctx := withPrincipal(r.Context(), principal)
 			if lc, ok := logContextFromContext(ctx); ok {
@@ -184,7 +138,7 @@ func authFailureReason(err error) string {
 // - Do not log token text, cookies, or request bodies.
 // - Emit only stable reason codes and request metadata.
 // - Emit user-agent metadata using configured privacy policy.
-func logAuthFailure(r *http.Request, reason string, logCfg LogPrivacyConfig) {
+func logAuthFailure(r *http.Request, reason string, logCfg config.LogPrivacyConfig) {
 	attrs := []any{
 		"event", "auth_failure",
 		"request_id", middleware.GetReqID(r.Context()),
@@ -212,11 +166,11 @@ func logAuthFailure(r *http.Request, reason string, logCfg LogPrivacyConfig) {
 // - Validate token signature against configured secret and algorithm.
 // - Enforce standard claim requirements (issuer, audience, time validity).
 // - Ensure required identity claims exist before principal construction.
-// - Derive GitHub id from canonical subject format: github:<id>.
+// - Derive identity key from canonical subject format: github:<identity-key>.
 // Return behavior:
 // - On success, returns fully validated claims ready for middleware use.
 // - On failure, returns an auth-safe error indicating token is invalid.
-func parseAndValidateClaims(tokenString string, cfg AuthConfig) (*bffClaims, error) {
+func parseAndValidateClaims(tokenString string, cfg config.AuthConfig) (*bffClaims, error) {
 	claims := &bffClaims{}
 	token, err := jwt.ParseWithClaims(
 		tokenString,
@@ -242,31 +196,31 @@ func parseAndValidateClaims(tokenString string, cfg AuthConfig) (*bffClaims, err
 	}
 
 	sub := strings.TrimSpace(claims.Subject)
-	githubID, ok := githubIDFromSubject(sub)
+	identityKey, ok := identityKeyFromSubject(sub)
 	if !ok {
 		return nil, errInvalidToken
 	}
 
-	// Store the extracted GitHub ID for downstream handlers.
+	// Store the extracted identity key for downstream handlers.
 	// Keep the original Subject unchanged to preserve the validated JWT claim.
-	claims.GithubID = githubID
+	claims.IdentityKey = identityKey
 	return claims, nil
 }
 
-// githubIDFromSubject extracts GitHub identity from the canonical subclaim.
-// Expected format is: github:<id>
+// identityKeyFromSubject extracts identity key from the canonical subclaim.
+// Current expected format is: github:<identity-key>
 // Returns false when subject is empty, has a different prefix, or has no id.
-func githubIDFromSubject(subject string) (string, bool) {
+func identityKeyFromSubject(subject string) (string, bool) {
 	subject = strings.TrimSpace(subject)
-	if !strings.HasPrefix(subject, githubSubjectPrefix) {
+	if !strings.HasPrefix(subject, subjectKeyPrefixV1) {
 		return "", false
 	}
 
-	githubID := strings.TrimSpace(strings.TrimPrefix(subject, githubSubjectPrefix))
-	if githubID == "" {
+	identityKey := strings.TrimSpace(strings.TrimPrefix(subject, subjectKeyPrefixV1))
+	if identityKey == "" {
 		return "", false
 	}
-	return githubID, true
+	return identityKey, true
 }
 
 // withPrincipal returns a new context that carries the authenticated principal
