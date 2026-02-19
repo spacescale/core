@@ -1,30 +1,27 @@
-import type { Account, NextAuthOptions, User } from "next-auth";
+import type { Account, User } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-type JwtCallback = NonNullable<
-  NonNullable<NextAuthOptions["callbacks"]>["jwt"]
->;
-type SessionCallback = NonNullable<
-  NonNullable<NextAuthOptions["callbacks"]>["session"]
->;
+type JwtCallback = (params: Record<string, unknown>) => Promise<JWT>;
+type SessionCallback = (params: Record<string, unknown>) => Promise<unknown>;
+type CapturedAuthOptions = {
+  callbacks?: {
+    jwt?: JwtCallback;
+    session?: SessionCallback;
+  };
+};
 
-let capturedAuthOptions: NextAuthOptions | undefined;
+type NextAuthGlobal = typeof globalThis & {
+  __capturedNextAuthOptions?: CapturedAuthOptions;
+};
 
-vi.mock("next-auth", () => ({
-  default: vi.fn((options: NextAuthOptions) => {
-    capturedAuthOptions = options;
-    return vi.fn();
-  }),
-}), { virtual: true });
+function clearCapturedAuthOptions(): void {
+  delete (globalThis as NextAuthGlobal).__capturedNextAuthOptions;
+}
 
-vi.mock("next-auth/providers/github", () => ({
-  default: vi.fn(() => ({ id: "github", name: "GitHub", type: "oauth" })),
-}), { virtual: true });
-
-vi.mock("next-auth/providers/google", () => ({
-  default: vi.fn(() => ({ id: "google", name: "Google", type: "oauth" })),
-}), { virtual: true });
+function getCapturedAuthOptions(): CapturedAuthOptions | undefined {
+  return (globalThis as NextAuthGlobal).__capturedNextAuthOptions;
+}
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -70,11 +67,12 @@ async function loadAuthCallbacks(
   overrides: Record<string, string | undefined> = {},
 ): Promise<{ jwt: JwtCallback; session: SessionCallback }> {
   vi.resetModules();
-  capturedAuthOptions = undefined;
+  clearCapturedAuthOptions();
 
   setEnv({
     NODE_ENV: "test",
     NEXTAUTH_SECRET: "test-nextauth-secret",
+    API_BASE_URL: "http://localhost:8080",
     NEXT_PUBLIC_API_BASE_URL: "http://localhost:8080",
     INTERNAL_AUTH_SYNC_SECRET: "test-internal-secret",
     BFF_JWT_SECRET: "test-bff-access-secret",
@@ -88,13 +86,15 @@ async function loadAuthCallbacks(
 
   await import("@/app/api/auth/[...nextauth]/route");
 
-  if (!capturedAuthOptions?.callbacks?.jwt || !capturedAuthOptions.callbacks.session) {
+  const callbacks = (getCapturedAuthOptions() ??
+    ({} as CapturedAuthOptions)).callbacks;
+  if (!callbacks?.jwt || !callbacks.session) {
     throw new Error("failed to capture NextAuth callbacks");
   }
 
   return {
-    jwt: capturedAuthOptions.callbacks.jwt as JwtCallback,
-    session: capturedAuthOptions.callbacks.session as SessionCallback,
+    jwt: callbacks.jwt,
+    session: callbacks.session,
   };
 }
 
@@ -122,7 +122,7 @@ describe("NextAuth route callbacks", () => {
         token,
         account: oauthAccount("github", "12345"),
         user: oauthUser("person@example.com"),
-      } as Parameters<JwtCallback>[0]),
+      }),
     ).rejects.toThrow("unable to persist user profile");
 
     expect(getFetchMock()).not.toHaveBeenCalled();
@@ -149,7 +149,7 @@ describe("NextAuth route callbacks", () => {
         token,
         account: oauthAccount("google", "abc-123"),
         user: oauthUser("person@example.com"),
-      } as Parameters<JwtCallback>[0]),
+      }),
     ).rejects.toThrow("unable to issue API refresh token");
 
     expect(getFetchMock()).toHaveBeenCalledTimes(1);
@@ -171,7 +171,7 @@ describe("NextAuth route callbacks", () => {
       profileAvatarUrl: "https://example.com/avatar.png",
     } as JWT;
 
-    await expect(jwt({ token } as Parameters<JwtCallback>[0])).rejects.toThrow(
+    await expect(jwt({ token })).rejects.toThrow(
       "unable to mint API access token",
     );
 
@@ -194,7 +194,7 @@ describe("NextAuth route callbacks", () => {
       apiAccessTokenExpiresAt: 0,
     } as JWT;
 
-    await expect(jwt({ token } as Parameters<JwtCallback>[0])).rejects.toThrow(
+    await expect(jwt({ token })).rejects.toThrow(
       "unable to refresh API access token",
     );
 
@@ -213,7 +213,7 @@ describe("NextAuth route callbacks", () => {
           user: { name: null, email: null, image: null },
         },
         token: {},
-      } as Parameters<SessionCallback>[0]),
+      }),
     ).rejects.toThrow("Session invalid: missing API access token");
   });
 
@@ -230,12 +230,20 @@ describe("NextAuth route callbacks", () => {
         id: "user-123",
         onboardingCompleted: true,
       },
-    } as Parameters<SessionCallback>[0]);
+    });
 
-    expect(result.accessToken).toBe("access-token");
-    expect(result.user).toBeDefined();
-    expect(result.user.id).toBe("user-123");
-    expect(result.user.onboardingCompleted).toBe(true);
+    const typedResult = result as {
+      accessToken?: string;
+      user?: {
+        id?: string;
+        onboardingCompleted?: boolean;
+      };
+    };
+
+    expect(typedResult.accessToken).toBe("access-token");
+    expect(typedResult.user).toBeDefined();
+    expect(typedResult.user?.id).toBe("user-123");
+    expect(typedResult.user?.onboardingCompleted).toBe(true);
   });
 
   it("redacts email from auth-sync failure logs", async () => {
@@ -257,7 +265,7 @@ describe("NextAuth route callbacks", () => {
         token: {} as JWT,
         account: oauthAccount("github", "12345"),
         user: oauthUser("person@example.com"),
-      } as Parameters<JwtCallback>[0]),
+      }),
     ).rejects.toThrow("unable to persist user profile");
 
     const authLogCall = consoleErrorSpy.mock.calls.find((call) =>
