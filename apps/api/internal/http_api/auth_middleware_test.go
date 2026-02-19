@@ -25,6 +25,7 @@ const (
 // format,
 // while embedded RegisteredClaims carry standard JWT fields.
 type testJWTClaims struct {
+	IdentityKeyClaim string `json:"identity_key,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -176,13 +177,19 @@ func TestParseAndValidateClaims(t *testing.T) {
 	invalidSubjectPrefixClaims := baseClaims
 	invalidSubjectPrefixClaims.Subject = "user:" + testIdentityKey
 
+	opaqueSubjectWithIdentityKeyClaim := baseClaims
+	opaqueSubjectWithIdentityKeyClaim.Subject = "github:v2:opaquehash"
+	opaqueSubjectWithIdentityKeyClaim.IdentityKeyClaim = testIdentityKey
+
 	tests := []struct {
-		name    string
-		token   string
-		cfg     config.AuthConfig
-		wantErr bool
+		name        string
+		token       string
+		cfg         config.AuthConfig
+		wantErr     bool
+		wantSubject string
 	}{
-		{name: "valid token", token: mintToken(t, testJWTSecret, baseClaims), cfg: baseCfg, wantErr: false},
+		{name: "valid token", token: mintToken(t, testJWTSecret, baseClaims), cfg: baseCfg, wantErr: false, wantSubject: "github:" + testIdentityKey},
+		{name: "opaque subject with identity_key claim", token: mintToken(t, testJWTSecret, opaqueSubjectWithIdentityKeyClaim), cfg: baseCfg, wantErr: false, wantSubject: opaqueSubjectWithIdentityKeyClaim.Subject},
 		{name: "wrong secret", token: mintToken(t, "other-secret", baseClaims), cfg: baseCfg, wantErr: true},
 		{name: "wrong issuer", token: mintToken(t, testJWTSecret, wrongIssuerClaims), cfg: baseCfg, wantErr: true},
 		{name: "wrong audience", token: mintToken(t, testJWTSecret, wrongAudienceClaims), cfg: baseCfg, wantErr: true},
@@ -210,7 +217,7 @@ func TestParseAndValidateClaims(t *testing.T) {
 			require.NotNil(t, claims)
 			require.Equal(t, tc.cfg.Issuer, claims.Issuer)
 			require.Equal(t, testIdentityKey, claims.IdentityKey)
-			require.Equal(t, "github:"+testIdentityKey, claims.Subject)
+			require.Equal(t, tc.wantSubject, claims.Subject)
 		})
 	}
 }

@@ -8,6 +8,9 @@ package http_api
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -43,12 +46,14 @@ type AuthPrincipal struct {
 // bffClaims models JWT claims expected from the Next.js BFF token.
 // RegisteredClaims provides iss, aud, sub, exp, iat validation support.
 type bffClaims struct {
-	// IdentityKey is derived from Subject after successful token verification.
-	// It is not decoded directly from token payload; identity source of truth is sub.
-	IdentityKey string `json:"-"`
-	Email       string `json:"email,omitempty"`
-	Name        string `json:"name,omitempty"`
-	AvatarURL   string `json:"avatar_url,omitempty"`
+	// IdentityKey is the normalized identity value used by service workflows.
+	// It is resolved from identity_key claim when present and falls back to
+	// legacy subject parsing for backward compatibility.
+	IdentityKey      string `json:"-"`
+	IdentityKeyClaim string `json:"identity_key,omitempty"`
+	Email            string `json:"email,omitempty"`
+	Name             string `json:"name,omitempty"`
+	AvatarURL        string `json:"avatar_url,omitempty"`
 	// RegisteredClaims carries standard JWT claims:
 	// - iss: issuer
 	// - sub: subject/user identity
@@ -108,7 +113,11 @@ func authMiddleware(cfg config.AuthConfig, logCfg config.LogPrivacyConfig) func(
 			}
 			ctx := withPrincipal(r.Context(), principal)
 			if lc, ok := logContextFromContext(ctx); ok {
-				lc.UserID = principal.Subject
+				lc.UserID = hashedUserIDForLogs(
+					principal.IdentityKey,
+					principal.Subject,
+					cfg.JWTSecret,
+				)
 			}
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -163,10 +172,12 @@ func logAuthFailure(r *http.Request, reason string, logCfg config.LogPrivacyConf
 // verification rules required by this API before claims are trusted.
 //
 // Expected verification responsibilities of this helper:
-// - Validate token signature against configured secret and algorithm.
-// - Enforce standard claim requirements (issuer, audience, time validity).
-// - Ensure required identity claims exist before principal construction.
-// - Derive identity key from canonical subject format: github:<identity-key>.
+//   - Validate token signature against configured secret and algorithm.
+//   - Enforce standard claim requirements (issuer, audience, time validity).
+//   - Ensure required identity claims exist before principal construction.
+//   - Resolve identity key from identity_key claim, falling back to legacy
+//     subject format github:<identity-key> for older tokens.
+//
 // Return behavior:
 // - On success, returns fully validated claims ready for middleware use.
 // - On failure, returns an auth-safe error indicating token is invalid.
@@ -196,6 +207,16 @@ func parseAndValidateClaims(tokenString string, cfg config.AuthConfig) (*bffClai
 	}
 
 	sub := strings.TrimSpace(claims.Subject)
+	if sub == "" {
+		return nil, errInvalidToken
+	}
+
+	identityKeyFromClaim := strings.TrimSpace(claims.IdentityKeyClaim)
+	if identityKeyFromClaim != "" {
+		claims.IdentityKey = identityKeyFromClaim
+		return claims, nil
+	}
+
 	identityKey, ok := identityKeyFromSubject(sub)
 	if !ok {
 		return nil, errInvalidToken
@@ -207,7 +228,7 @@ func parseAndValidateClaims(tokenString string, cfg config.AuthConfig) (*bffClai
 	return claims, nil
 }
 
-// identityKeyFromSubject extracts identity key from the canonical subclaim.
+// identityKeyFromSubject extracts identity key from legacy subject format.
 // Current expected format is: github:<identity-key>
 // Returns false when subject is empty, has a different prefix, or has no id.
 func identityKeyFromSubject(subject string) (string, bool) {
@@ -221,6 +242,26 @@ func identityKeyFromSubject(subject string) (string, bool) {
 		return "", false
 	}
 	return identityKey, true
+}
+
+// hashedUserIDForLogs returns a stable, non-reversible identifier for logs.
+//
+// Why this helper exists:
+//   - Prevents raw subjects/identity keys (which may include emails) from being
+//     written into access and panic logs.
+//   - Preserves per-user log grouping with deterministic hashing.
+func hashedUserIDForLogs(identityKey, subject, secret string) string {
+	source := strings.TrimSpace(identityKey)
+	if source == "" {
+		source = strings.TrimSpace(subject)
+	}
+	if source == "" {
+		return ""
+	}
+
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(source))
+	return "uidh:" + hex.EncodeToString(mac.Sum(nil))
 }
 
 // withPrincipal returns a new context that carries the authenticated principal
