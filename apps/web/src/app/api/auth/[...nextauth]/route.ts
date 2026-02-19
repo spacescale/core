@@ -160,11 +160,28 @@ function getBffSigningSecret(): string {
 }
 
 function getRefreshSigningSecret(): string {
-	const refreshSecret = (process.env.BFF_REFRESH_TOKEN_SECRET ?? "").trim();
-	if (refreshSecret !== "") {
-		return refreshSecret;
-	}
-	return getBffSigningSecret();
+	return (process.env.BFF_REFRESH_TOKEN_SECRET ?? "").trim();
+}
+
+function isProductionEnv(): boolean {
+	return process.env.NODE_ENV === "production";
+}
+
+function hasNonEmptyString(value: unknown): value is string {
+	return typeof value === "string" && value.trim() !== "";
+}
+
+function clearTokenForReauth(token: JWT): void {
+	token.accessToken = undefined;
+	token.apiAccessTokenExpiresAt = undefined;
+	token.apiRefreshToken = undefined;
+	token.apiRefreshTokenExpiresAt = undefined;
+	token.id = undefined;
+	token.identityKey = undefined;
+	token.onboardingCompleted = undefined;
+	token.profileEmail = undefined;
+	token.profileName = undefined;
+	token.profileAvatarUrl = undefined;
 }
 
 function signJwt(payload: BffSignedTokenPayload, secret: string): string {
@@ -396,6 +413,9 @@ async function syncUserProfile(
 	);
 
 	if (internalSecret.trim() === "") {
+		if (isProductionEnv()) {
+			throw new Error("INTERNAL_AUTH_SYNC_SECRET is required in production");
+		}
 		return null;
 	}
 
@@ -418,7 +438,18 @@ async function syncUserProfile(
 		throw new Error(`auth-sync failed with status ${response.status}`);
 	}
 
-	return (await response.json()) as SyncAuthUserResponse;
+	const payload = (await response.json()) as Partial<SyncAuthUserResponse>;
+	if (
+		!hasNonEmptyString(payload.id) ||
+		typeof payload.onboardingCompleted !== "boolean"
+	) {
+		throw new Error("auth-sync returned invalid payload");
+	}
+
+	return {
+		id: payload.id,
+		onboardingCompleted: payload.onboardingCompleted,
+	};
 }
 
 /**
@@ -438,19 +469,28 @@ async function initializeNewUserToken(
 	try {
 		const syncedUser = await syncUserProfile(user, identityKey);
 
-		token.id = syncedUser?.id ?? identityKey;
-		token.onboardingCompleted = syncedUser?.onboardingCompleted ?? false;
+		if (!syncedUser) {
+			if (isProductionEnv()) {
+				throw new Error(
+					"Authentication failed: missing auth-sync response in production",
+				);
+			}
+			token.id = identityKey;
+			token.onboardingCompleted = false;
+		} else {
+			token.id = syncedUser.id;
+			token.onboardingCompleted = syncedUser.onboardingCompleted;
+		}
 	} catch (error) {
 		// Log the failure with structured data for monitoring/alerting
 		console.error("[AUTH CRITICAL] Failed to sync user profile to database", {
 			identityKey,
-			email: user.email,
 			error: error instanceof Error ? error.message : String(error),
 			timestamp: new Date().toISOString(),
 		});
 
 		// In production, fail auth if database sync fails to prevent data loss
-		if (process.env.NODE_ENV === "production") {
+		if (isProductionEnv()) {
 			throw new Error(
 				"Authentication failed: unable to persist user profile. Please try again.",
 			);
@@ -469,11 +509,14 @@ async function initializeNewUserToken(
 		token.apiRefreshToken = mintedRefreshToken.value;
 		token.apiRefreshTokenExpiresAt = mintedRefreshToken.expiresAt;
 	} else {
-		console.error(
-			"BFF refresh token secret is missing; unable to mint API refresh token",
-		);
+		console.error("BFF refresh token secret is missing; unable to mint API refresh token");
 		token.apiRefreshToken = undefined;
 		token.apiRefreshTokenExpiresAt = undefined;
+		if (isProductionEnv()) {
+			throw new Error(
+				"Authentication failed: unable to issue API refresh token. Please sign in again.",
+			);
+		}
 	}
 }
 
@@ -541,15 +584,17 @@ function ensureTokenFieldsPopulated(token: JWT): void {
 
 /**
  * Refreshes the API access token if it's expired or near expiration.
- * Returns early if refresh token is invalid or missing.
+ * Throws when a valid API access token cannot be guaranteed.
  */
 async function refreshAccessTokenIfNeeded(token: JWT): Promise<void> {
 	if (
-		typeof token.identityKey !== "string" ||
-		token.identityKey.trim() === "" ||
+		!hasNonEmptyString(token.identityKey) ||
 		!shouldRefreshApiAccessToken(token.apiAccessTokenExpiresAt)
 	) {
-		return;
+		if (hasNonEmptyString(token.accessToken)) {
+			return;
+		}
+		throw new Error("Authentication failed: missing API access token");
 	}
 
 	const refreshToken =
@@ -564,7 +609,9 @@ async function refreshAccessTokenIfNeeded(token: JWT): Promise<void> {
 		);
 		token.accessToken = undefined;
 		token.apiAccessTokenExpiresAt = undefined;
-		return;
+		throw new Error(
+			"Authentication failed: unable to refresh API access token. Please sign in again.",
+		);
 	}
 
 	const mintedToken = await mintBffAccessTokenDebounced({
@@ -583,6 +630,9 @@ async function refreshAccessTokenIfNeeded(token: JWT): Promise<void> {
 		);
 		token.accessToken = undefined;
 		token.apiAccessTokenExpiresAt = undefined;
+		throw new Error(
+			"Authentication failed: unable to mint API access token. Please sign in again.",
+		);
 	}
 }
 
@@ -608,25 +658,53 @@ const authOptions: NextAuthOptions = {
 	},
 	callbacks: {
 		async jwt({ token, account, user }) {
-			// Initialize token for newly authenticated users
-			if (account && user) {
-				const identityKey = buildIdentityKey(account, user);
-				await initializeNewUserToken(token, user, identityKey);
+			try {
+				// Initialize token for newly authenticated users
+				if (account && user) {
+					const identityKey = buildIdentityKey(account, user);
+					await initializeNewUserToken(token, user, identityKey);
+				}
+
+				// Ensure all required fields are populated
+				ensureTokenFieldsPopulated(token);
+
+				// Refresh access token if needed
+				await refreshAccessTokenIfNeeded(token);
+
+				if (!hasNonEmptyString(token.accessToken)) {
+					throw new Error(
+						"Authentication failed: API access token is unavailable. Please sign in again.",
+					);
+				}
+
+				return token;
+			} catch (error) {
+				clearTokenForReauth(token);
+				throw error;
 			}
-
-			// Ensure all required fields are populated
-			ensureTokenFieldsPopulated(token);
-
-			// Refresh access token if needed
-			await refreshAccessTokenIfNeeded(token);
-
-			return token;
 		},
 		async session({ session, token }) {
 			if (token) {
+				if (!hasNonEmptyString(token.accessToken)) {
+					clearTokenForReauth(token);
+					throw new Error(
+						"Session invalid: missing API access token. Please sign in again.",
+					);
+				}
+
 				session.accessToken = token.accessToken;
+				if (!session.user) {
+					session.user = {
+						id: "",
+						onboardingCompleted: false,
+						name: null,
+						email: null,
+						image: null,
+					};
+				}
 				session.user.id = token.id || "";
-				session.user.onboardingCompleted = token.onboardingCompleted === true;
+				session.user.onboardingCompleted =
+					token.onboardingCompleted === true;
 			}
 			return session;
 		},
