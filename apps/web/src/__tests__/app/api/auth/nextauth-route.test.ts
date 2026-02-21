@@ -273,7 +273,11 @@ describe("NextAuth route callbacks", () => {
     );
     expect(authLogCall).toBeDefined();
     const metadata = authLogCall?.[1] as Record<string, unknown>;
-    expect(metadata.identityKey).toBe("email:person@example.com");
+    expect(metadata.identityRef).toEqual(
+      expect.stringMatching(/^email-hash:[a-f0-9]{64}$/),
+    );
+    expect(String(metadata.identityRef)).not.toContain("person@example.com");
+    expect(metadata).not.toHaveProperty("identityKey");
     expect(metadata).not.toHaveProperty("email");
   });
 });

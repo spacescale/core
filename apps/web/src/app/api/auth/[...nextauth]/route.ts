@@ -12,6 +12,7 @@ const DEFAULT_BFF_REFRESH_TOKEN_AUDIENCE = "spacescale-api-refresh";
 const DEFAULT_BFF_JWT_TTL_SECONDS = 3600;
 const DEFAULT_BFF_REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 const API_ACCESS_TOKEN_REFRESH_WINDOW_SECONDS = 60;
+const DEFAULT_INTERNAL_AUTH_SYNC_TIMEOUT_MS = 5000;
 
 // In-flight token refresh debouncing with TTL-based cleanup to prevent memory leaks.
 // Entries are removed when promises settle OR after 5 minutes (whichever comes first).
@@ -262,6 +263,25 @@ function getInternalAPIBaseURL(): string {
   return sanitizeBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL);
 }
 
+function getInternalAuthSyncTimeoutMs(): number {
+  return parsePositiveInteger(
+    process.env.INTERNAL_AUTH_SYNC_TIMEOUT_MS,
+    DEFAULT_INTERNAL_AUTH_SYNC_TIMEOUT_MS
+  );
+}
+
+function buildIdentityKeyLogRef(identityKey: string): string {
+  const normalizedIdentity = identityKey.trim();
+  if (normalizedIdentity === "") {
+    return "unknown";
+  }
+
+  const hash = createHmac("sha256", getSubjectHashSecret())
+    .update(normalizedIdentity)
+    .digest("hex");
+  return normalizedIdentity.startsWith("email:") ? `email-hash:${hash}` : `identity-hash:${hash}`;
+}
+
 function shouldRefreshApiAccessToken(expiresAt: number | undefined): boolean {
   if (!expiresAt) {
     return true;
@@ -448,21 +468,37 @@ async function syncUserProfile(
     return null;
   }
   const apiBaseUrl = getInternalAPIBaseURL();
+  const timeoutMs = getInternalAuthSyncTimeoutMs();
+  const abortController = new AbortController();
+  const timeoutHandle = setTimeout(() => {
+    abortController.abort();
+  }, timeoutMs);
 
-  const response = await fetch(`${apiBaseUrl}/v0/internal/auth-sync`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Internal-Auth": internalSecret,
-    },
-    body: JSON.stringify({
-      identityKey,
-      email: normalizeEmail(user.email),
-      name: user.name ?? "",
-      avatarUrl: user.image ?? "",
-    }),
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}/v0/internal/auth-sync`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth": internalSecret,
+      },
+      body: JSON.stringify({
+        identityKey,
+        email: normalizeEmail(user.email),
+        name: user.name ?? "",
+        avatarUrl: user.image ?? "",
+      }),
+      cache: "no-store",
+      signal: abortController.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`auth-sync request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 
   if (!response.ok) {
     throw new Error(`auth-sync failed with status ${response.status}`);
@@ -505,7 +541,7 @@ async function initializeNewUserToken(token: JWT, user: User, identityKey: strin
   } catch (error) {
     // Log the failure with structured data for monitoring/alerting
     console.error("[AUTH CRITICAL] Failed to sync user profile to database", {
-      identityKey,
+      identityRef: buildIdentityKeyLogRef(identityKey),
       error: error instanceof Error ? error.message : String(error),
       timestamp: new Date().toISOString(),
     });
