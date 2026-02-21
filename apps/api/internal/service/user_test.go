@@ -44,6 +44,20 @@ func TestGetUserByIdentityKeyRejectsTooLongIdentity(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidInput)
 }
 
+func TestIdentityKeyLogRef(t *testing.T) {
+	got := identityKeyLogRef("  email:person@example.com  ")
+
+	require.Regexp(t, `^identity-hash:[a-f0-9]{64}$`, got)
+	require.NotContains(t, got, "person@example.com")
+	require.NotContains(t, got, "email:")
+	require.Equal(t, got, identityKeyLogRef("email:person@example.com"))
+	require.NotEqual(t, got, identityKeyLogRef("email:other@example.com"))
+}
+
+func TestIdentityKeyLogRefUnknown(t *testing.T) {
+	require.Equal(t, "identity:unknown", identityKeyLogRef("   "))
+}
+
 func TestSanitizeEmail(t *testing.T) {
 	tests := []struct {
 		name string

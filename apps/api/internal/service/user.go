@@ -10,6 +10,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"net/mail"
@@ -116,7 +118,7 @@ func (s *UserService) SyncAuthUser(ctx context.Context, p SyncAuthUserParams) (U
 		// ErrNoRows is expected for new users, so we only log unexpected errors.
 		slog.Error(
 			"user sync: failed to fetch existing user",
-			"identity_key", identityKey,
+			"identity_ref", identityKeyLogRef(identityKey),
 			"error", err,
 		)
 		return User{}, err
@@ -189,6 +191,18 @@ func normalizeIdentityKey(raw string) (string, bool) {
 		return "", false
 	}
 	return identityKey, true
+}
+
+// identityKeyLogRef returns a stable opaque identifier for logs.
+// Raw identity keys may include emails, so logs must never emit them directly.
+func identityKeyLogRef(identityKey string) string {
+	normalized := strings.TrimSpace(identityKey)
+	if normalized == "" {
+		return "identity:unknown"
+	}
+
+	sum := sha256.Sum256([]byte(normalized))
+	return "identity-hash:" + hex.EncodeToString(sum[:])
 }
 
 // sanitizeEmail normalizes optional email input.
