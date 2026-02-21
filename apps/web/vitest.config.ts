@@ -15,8 +15,29 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
+    alias: [
+      {
+        find: /^next-auth\/providers\/github$/,
+        replacement: path.resolve(
+          __dirname,
+          "./src/test/mocks/next-auth-provider-github.ts",
+        ),
+      },
+      {
+        find: /^next-auth\/providers\/google$/,
+        replacement: path.resolve(
+          __dirname,
+          "./src/test/mocks/next-auth-provider-google.ts",
+        ),
+      },
+      {
+        find: /^next-auth$/,
+        replacement: path.resolve(__dirname, "./src/test/mocks/next-auth.ts"),
+      },
+      {
+        find: "@",
+        replacement: path.resolve(__dirname, "./src"),
+      },
+    ],
   },
 });

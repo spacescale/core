@@ -68,6 +68,7 @@ type createProjectResponse struct {
 //
 // Error mapping contract:
 // - service.ErrInvalidInput => 400 "invalid input"
+// - service.ErrUnauthorized => 401 "unauthorized"
 // - service.ErrConflict => 409 "conflict"
 // - any other error => 500 "internal error"
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
@@ -94,8 +95,23 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	user, err := s.services.Users.GetUserByIdentityKey(r.Context(), principal.IdentityKey)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidInput):
+			writeErr(w, http.StatusBadRequest, "invalid input")
+			return
+		case errors.Is(err, service.ErrUnauthorized):
+			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			return
+		default:
+			writeErr(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+	}
+
 	// Delegate business behavior to service layer.
-	project, err := s.svc.CreateProject(r.Context(), principal.GithubID, service.CreateProjectParams{
+	project, err := s.services.Projects.CreateProject(r.Context(), user.ID, service.CreateProjectParams{
 		Name:   req.Name,
 		Region: req.Region,
 	})
@@ -105,6 +121,9 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, service.ErrInvalidInput):
 			writeErr(w, http.StatusBadRequest, "invalid input")
+			return
+		case errors.Is(err, service.ErrUnauthorized):
+			writeErr(w, http.StatusUnauthorized, "unauthorized")
 			return
 		case errors.Is(err, service.ErrConflict):
 			writeErr(w, http.StatusConflict, "conflict")

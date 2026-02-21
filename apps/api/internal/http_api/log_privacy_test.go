@@ -22,17 +22,18 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/t0gun/spacescale/internal/config"
 )
 
 // TestDefaultLogPrivacyConfig verifies package defaults used when startup config
 // is absent or invalid.
 func TestDefaultLogPrivacyConfig(t *testing.T) {
-	cfg := DefaultLogPrivacyConfig()
+	cfg := config.DefaultLogPrivacyConfig()
 
-	require.Equal(t, UserAgentLogModeHash, cfg.UserAgentMode)
-	require.Equal(t, defaultUserAgentMaxLength, cfg.UserAgentMaxLen)
-	require.Equal(t, defaultPanicValueMaxLength, cfg.PanicValueMaxLen)
-	require.Equal(t, defaultIncludeStackTrace, cfg.IncludeStackTrace)
+	require.Equal(t, config.UserAgentLogModeHash, cfg.UserAgentMode)
+	require.Equal(t, 100, cfg.UserAgentMaxLen)
+	require.Equal(t, 200, cfg.PanicValueMaxLen)
+	require.False(t, cfg.IncludeStackTrace)
 }
 
 // TestUserAgentLogAttr verifies that user-agent privacy mode selection produces
@@ -50,7 +51,7 @@ func TestUserAgentLogAttr(t *testing.T) {
 	tests := []struct {
 		name      string
 		rawUA     string
-		cfg       LogPrivacyConfig
+		cfg       config.LogPrivacyConfig
 		wantKey   string
 		wantValue string
 		wantOK    bool
@@ -58,16 +59,16 @@ func TestUserAgentLogAttr(t *testing.T) {
 		{
 			name:  "off mode omits field",
 			rawUA: testUA,
-			cfg: LogPrivacyConfig{
-				UserAgentMode: UserAgentLogModeOff,
+			cfg: config.LogPrivacyConfig{
+				UserAgentMode: config.UserAgentLogModeOff,
 			},
 			wantOK: false,
 		},
 		{
 			name:  "truncate mode keeps raw value within limit",
 			rawUA: "yaak",
-			cfg: LogPrivacyConfig{
-				UserAgentMode:   UserAgentLogModeTruncate,
+			cfg: config.LogPrivacyConfig{
+				UserAgentMode:   config.UserAgentLogModeTruncate,
 				UserAgentMaxLen: 100,
 			},
 			wantKey:   "user_agent",
@@ -77,8 +78,8 @@ func TestUserAgentLogAttr(t *testing.T) {
 		{
 			name:  "truncate mode shortens over limit value",
 			rawUA: "postman-runtime",
-			cfg: LogPrivacyConfig{
-				UserAgentMode:   UserAgentLogModeTruncate,
+			cfg: config.LogPrivacyConfig{
+				UserAgentMode:   config.UserAgentLogModeTruncate,
 				UserAgentMaxLen: 7,
 			},
 			wantKey:   "user_agent",
@@ -88,8 +89,8 @@ func TestUserAgentLogAttr(t *testing.T) {
 		{
 			name:  "hash mode emits stable hmac field",
 			rawUA: testUA,
-			cfg: LogPrivacyConfig{
-				UserAgentMode:       UserAgentLogModeHash,
+			cfg: config.LogPrivacyConfig{
+				UserAgentMode:       config.UserAgentLogModeHash,
 				UserAgentHashSecret: testSecret,
 			},
 			wantKey:   "user_agent_hash",
@@ -99,16 +100,16 @@ func TestUserAgentLogAttr(t *testing.T) {
 		{
 			name:  "hash mode without secret omits field",
 			rawUA: testUA,
-			cfg: LogPrivacyConfig{
-				UserAgentMode: UserAgentLogModeHash,
+			cfg: config.LogPrivacyConfig{
+				UserAgentMode: config.UserAgentLogModeHash,
 			},
 			wantOK: false,
 		},
 		{
 			name:  "empty user agent omits field",
 			rawUA: "   ",
-			cfg: LogPrivacyConfig{
-				UserAgentMode: UserAgentLogModeTruncate,
+			cfg: config.LogPrivacyConfig{
+				UserAgentMode: config.UserAgentLogModeTruncate,
 			},
 			wantOK: false,
 		},
@@ -161,19 +162,19 @@ func TestPanicValueLogValue(t *testing.T) {
 	tests := []struct {
 		name      string
 		recovered any
-		cfg       LogPrivacyConfig
+		cfg       config.LogPrivacyConfig
 		want      string
 	}{
 		{
 			name:      "uses default max length when unset",
 			recovered: strings.Repeat("a", 250),
-			cfg:       LogPrivacyConfig{},
+			cfg:       config.LogPrivacyConfig{},
 			want:      strings.Repeat("a", 200),
 		},
 		{
 			name:      "applies configured max length",
 			recovered: "abcdefghijklmnopqrstuvwxyz",
-			cfg: LogPrivacyConfig{
+			cfg: config.LogPrivacyConfig{
 				PanicValueMaxLen: 5,
 			},
 			want: "abcde",
@@ -181,7 +182,7 @@ func TestPanicValueLogValue(t *testing.T) {
 		{
 			name:      "non-string panic values are stringified",
 			recovered: 12345,
-			cfg: LogPrivacyConfig{
+			cfg: config.LogPrivacyConfig{
 				PanicValueMaxLen: 10,
 			},
 			want: "12345",
@@ -202,19 +203,19 @@ func TestPanicValueLogValue(t *testing.T) {
 func TestPanicStackTraceLogAttr(t *testing.T) {
 	tests := []struct {
 		name    string
-		cfg     LogPrivacyConfig
+		cfg     config.LogPrivacyConfig
 		wantKey string
 		wantOK  bool
 	}{
 		{
 			name:    "disabled by default",
-			cfg:     LogPrivacyConfig{},
+			cfg:     config.LogPrivacyConfig{},
 			wantKey: "",
 			wantOK:  false,
 		},
 		{
 			name: "enabled emits stack trace field",
-			cfg: LogPrivacyConfig{
+			cfg: config.LogPrivacyConfig{
 				IncludeStackTrace: true,
 			},
 			wantKey: "stack_trace",
