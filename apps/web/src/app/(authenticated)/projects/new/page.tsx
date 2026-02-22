@@ -93,9 +93,7 @@ export default function NewProjectPage() {
       {
         onSuccess: (data) => {
           reset();
-          const appId =
-            data?.app?.id ?? data?.appId ?? data?.deployment?.appId;
-          router.push(appId ? `/projects/${appId}` : "/projects");
+          router.push(`/projects/${data.deployment.appId}`);
         },
       }
     );
