@@ -102,32 +102,33 @@ export function WorkspaceSwitcher({ currentWorkspace, className }: WorkspaceSwit
             {workspaces.map((ws) => (
               <div
                 key={ws.id}
-                role="option"
-                aria-selected={ws.active}
-                onClick={() => {
-                  // Switch workspace — real navigation would go here
-                  setOpen(false);
-                }}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(false); } }}
-                tabIndex={0}
                 className={cn(
-                  "w-full text-left px-4 py-2 text-[11px] tracking-wide",
-                  "flex items-center justify-between group/item cursor-pointer",
+                  "w-full px-4 py-2 text-[11px] tracking-wide",
+                  "flex items-center justify-between group/item",
                   "transition-colors",
                   ws.active
                     ? "text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
                     : "text-muted-foreground hover:text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
                 )}
               >
-                {/* Name + active dot */}
-                <div className="flex items-center gap-2">
+                {/* Workspace selector */}
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={ws.active}
+                  onClick={() => {
+                    // Switch workspace — real navigation would go here
+                    setOpen(false);
+                  }}
+                  className="flex items-center gap-2 text-left bg-transparent border-none p-0 cursor-pointer"
+                >
                   <span className={ws.active ? "font-[500]" : "font-[200]"}>
                     {ws.name}
                   </span>
                   {ws.active && (
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-sm animate-pulse" />
                   )}
-                </div>
+                </button>
 
                 {/* Edit icon */}
                 <button
@@ -136,8 +137,7 @@ export function WorkspaceSwitcher({ currentWorkspace, className }: WorkspaceSwit
                     "opacity-0 group-hover/item:opacity-100 transition-opacity",
                     "text-muted-foreground hover:text-primary"
                   )}
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  onClick={() => {
                     // Edit workspace name
                   }}
                   aria-label={`Edit ${ws.name}`}

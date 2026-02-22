@@ -26,12 +26,17 @@ interface NavItem {
 interface SidebarProps {
   mobileOpen?: boolean;
   onClose?: () => void;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }
 
-export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
+export function Sidebar({ mobileOpen = false, onClose, collapsed: controlledCollapsed, onToggleCollapsed }: SidebarProps) {
   const pathname = usePathname();
   const { logout, user } = useAuth();
-  const [open, setOpen] = useState(true);
+  const [internalOpen, setInternalOpen] = useState(true);
+
+  const open = controlledCollapsed !== undefined ? !controlledCollapsed : internalOpen;
+  const setOpen = onToggleCollapsed ?? (() => setInternalOpen((prev) => !prev));
 
   const RESERVED_SEGMENTS = new Set(["new"]);
   const rawProjectId = pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? null;
@@ -182,7 +187,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
           {/* Collapse — desktop only */}
           <button
             type="button"
-            onClick={() => setOpen(!open)}
+            onClick={() => setOpen()}
             className={cn(
               "hidden md:flex w-full items-center px-3 py-2 rounded-md transition-all group",
               "text-muted-foreground hover:text-foreground hover:bg-gray-100/50 dark:hover:bg-white/[0.02]",

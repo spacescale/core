@@ -18,7 +18,7 @@ import { PageHeader } from "@/components/layout";
 import { OverviewTab, DeploymentsTab, LogsTab, SettingsTab } from "@/components/app-detail";
 import { useApp } from "@/lib/hooks";
 
-const statusLabels = {
+const statusLabels: Record<string, string> = {
   live: "Live",
   deploying: "Deploying",
   failed: "Failed",
@@ -90,7 +90,7 @@ export default function ProjectDetailPage() {
 
       <div className="mb-6 flex items-center gap-3">
         <Badge variant={app.status} className="text-sm">
-          {statusLabels[app.status]}
+          {statusLabels[app.status] ?? "Unknown"}
         </Badge>
         <span className="text-sm text-muted-foreground">
           {app.subdomain}.{process.env.NEXT_PUBLIC_PLATFORM_DOMAIN || "ourplatform.io"}

@@ -85,7 +85,7 @@ export default function NewProjectPage() {
         subdomain,
         source,
         plan: selectedPlan,
-        envVars: envVars.filter((env) => env.key && env.value),
+        envVars: envVars.filter((env) => env.key),
         buildCommand: buildCommand || undefined,
         startCommand: startCommand || undefined,
         port,
@@ -93,12 +93,9 @@ export default function NewProjectPage() {
       {
         onSuccess: (data) => {
           reset();
-          const appId = (data.app as { id?: string })?.id;
-          if (appId) {
-            router.push(`/projects/${appId}`);
-          } else {
-            router.push("/projects");
-          }
+          const appId =
+            data?.app?.id ?? data?.appId ?? data?.deployment?.appId;
+          router.push(appId ? `/projects/${appId}` : "/projects");
         },
       }
     );

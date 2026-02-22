@@ -83,7 +83,7 @@ describe("DashboardPage", () => {
   describe("Project listing", () => {
     it("renders all 6 mock projects", () => {
       render(<DashboardPage />);
-      expect(screen.getAllByText(/silent-mountain|crimson-tide|neon-vector|oceanic-depth|lunar-orbit|void-runner/i)).toHaveLength(6);
+      expect(screen.getAllByRole("heading", { name: /silent-mountain|crimson-tide|neon-vector|oceanic-depth|lunar-orbit|void-runner/i })).toHaveLength(6);
     });
 
     it("renders silent-mountain project", () => {

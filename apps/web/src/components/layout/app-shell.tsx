@@ -103,6 +103,7 @@ export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const breadcrumb = useBreadcrumb(pathname);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const workspaceName =
     user?.name?.toLowerCase().replace(/\s+/g, "-") ??
@@ -213,8 +214,13 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* Body layout: sidebar + main, offset by header+subheader (92px) */}
       <div className="relative z-10 flex pt-[92px] min-h-[calc(100vh-92px)]">
-        <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
-        <main className="flex-1 min-h-full md:ml-64 transition-all duration-300">
+        <Sidebar
+          mobileOpen={mobileOpen}
+          onClose={() => setMobileOpen(false)}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={() => setSidebarCollapsed((c) => !c)}
+        />
+        <main className={cn("flex-1 min-h-full transition-all duration-300", sidebarCollapsed ? "md:ml-14" : "md:ml-64")}>
           <div className="p-6 lg:p-8">{children}</div>
         </main>
       </div>

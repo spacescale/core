@@ -65,6 +65,7 @@ export function Header({ onMenuClick }: HeaderProps) {
         </div>
 
         <button
+          type="button"
           className="relative flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
           aria-label="Notifications"
         >
@@ -75,6 +76,7 @@ export function Header({ onMenuClick }: HeaderProps) {
         <ThemeToggle />
 
         <button
+          type="button"
           className={cn(
             "h-8 w-8 rounded-full flex items-center justify-center",
             "text-white text-xs font-medium",

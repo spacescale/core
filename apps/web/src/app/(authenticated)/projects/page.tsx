@@ -193,7 +193,7 @@ function ProjectRow({
   return (
     <div
       className={cn(
-        "group relative flex items-center justify-between px-6 py-4 rounded-lg transition-all duration-200",
+        "group relative flex items-center gap-3 px-4 sm:px-6 py-4 rounded-lg transition-all duration-200",
         "bg-card border border-border/60 dark:border-white/[0.08]",
         "hover:bg-muted/40 dark:hover:bg-muted/20",
         "overflow-hidden",
@@ -201,7 +201,7 @@ function ProjectRow({
     >
       <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-gradient-to-b from-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
 
-      <div className="flex items-center gap-5 flex-1 min-w-0">
+      <div className="flex items-center gap-3 sm:gap-5 flex-1 min-w-0">
         <div className={cn(
           "w-8 h-8 rounded flex items-center justify-center flex-shrink-0",
           "bg-muted/50 dark:bg-white/[0.05] text-muted-foreground",
@@ -211,25 +211,53 @@ function ProjectRow({
 
         <Link
           href={`/projects/${project.id}`}
-          className="text-[14px] font-[200] text-foreground tracking-wide hover:text-primary transition-colors min-w-[180px]"
+          className="text-[14px] font-[200] text-foreground tracking-wide hover:text-primary transition-colors truncate"
           onClick={(e) => e.stopPropagation()}
         >
           {project.name}
         </Link>
 
-        <div className="flex items-center gap-2 min-w-[110px]">
+        <div className="hidden sm:flex items-center gap-2">
           <StatusDot status={project.status} />
-          <span className={cn("text-[11px] font-medium tracking-wide", statusConfig[project.status].textClass)}>
+          <span className={cn("text-[11px] font-medium tracking-wide whitespace-nowrap", statusConfig[project.status].textClass)}>
             {label}
           </span>
         </div>
 
-        <div className="hidden sm:block text-[12px] text-muted-foreground font-[200] tracking-wide min-w-[100px]">
+        <div className="hidden md:block text-[12px] text-muted-foreground font-[200] tracking-wide whitespace-nowrap">
           {project.resources} Resources
         </div>
       </div>
 
-      <div className="flex items-center gap-5 pr-2 flex-shrink-0">
+      {/* Mobile: status dot + settings + star */}
+      <div className="flex sm:hidden items-center gap-2 flex-shrink-0">
+        <StatusDot status={project.status} />
+        <button
+          type="button"
+          aria-label="Project settings"
+          className="p-1 rounded text-muted-foreground hover:text-foreground"
+        >
+          <Settings className="h-[15px] w-[15px]" strokeWidth={1.5} />
+        </button>
+        <button
+          type="button"
+          onClick={() => onToggleStar(project.id)}
+          aria-label={project.starred ? "Unstar project" : "Star project"}
+        >
+          <Star
+            className={cn(
+              "h-4 w-4 transition-colors",
+              project.starred
+                ? "fill-current text-primary"
+                : "text-muted-foreground/25 hover:text-muted-foreground",
+            )}
+            strokeWidth={1.5}
+          />
+        </button>
+      </div>
+
+      {/* Desktop: full actions */}
+      <div className="hidden sm:flex items-center gap-5 flex-shrink-0">
         <span className="hidden md:block text-[11px] font-[200] text-muted-foreground font-mono tabular-nums group-hover:text-foreground/50 transition-colors">
           {project.updatedAt}
         </span>
