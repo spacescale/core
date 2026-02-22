@@ -100,18 +100,19 @@ export function WorkspaceSwitcher({ currentWorkspace, className }: WorkspaceSwit
           {/* Workspace list */}
           <div className="py-1.5">
             {workspaces.map((ws) => (
-              <button
+              <div
                 key={ws.id}
-                type="button"
                 role="option"
                 aria-selected={ws.active}
                 onClick={() => {
                   // Switch workspace — real navigation would go here
                   setOpen(false);
                 }}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(false); } }}
+                tabIndex={0}
                 className={cn(
                   "w-full text-left px-4 py-2 text-[11px] tracking-wide",
-                  "flex items-center justify-between group/item",
+                  "flex items-center justify-between group/item cursor-pointer",
                   "transition-colors",
                   ws.active
                     ? "text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
@@ -129,7 +130,8 @@ export function WorkspaceSwitcher({ currentWorkspace, className }: WorkspaceSwit
                 </div>
 
                 {/* Edit icon */}
-                <span
+                <button
+                  type="button"
                   className={cn(
                     "opacity-0 group-hover/item:opacity-100 transition-opacity",
                     "text-muted-foreground hover:text-primary"
@@ -138,14 +140,11 @@ export function WorkspaceSwitcher({ currentWorkspace, className }: WorkspaceSwit
                     e.stopPropagation();
                     // Edit workspace name
                   }}
-                  role="button"
-                  tabIndex={0}
                   aria-label={`Edit ${ws.name}`}
-                  onKeyDown={(e) => e.key === "Enter" && e.stopPropagation()}
                 >
                   <Pencil className="h-3 w-3" strokeWidth={1.5} />
-                </span>
-              </button>
+                </button>
+              </div>
             ))}
           </div>
 

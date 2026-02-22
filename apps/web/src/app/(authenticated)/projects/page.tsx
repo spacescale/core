@@ -81,8 +81,7 @@ function ProjectCard({
   const { label } = statusConfig[project.status];
 
   return (
-    <Link
-      href={`/projects/${project.id}`}
+    <div
       className={cn(
         "group relative h-48 rounded-xl hairline-border p-6",
         "flex flex-col items-start justify-between text-left",
@@ -96,6 +95,11 @@ function ProjectCard({
         "dark:hover:shadow-[0_0_24px_-4px_rgba(99,102,241,0.12)]",
       )}
     >
+      {/* Stretched link covers the entire card for navigation */}
+      <Link href={`/projects/${project.id}`} className="absolute inset-0 z-0" aria-label={`Open ${project.name}`}>
+        <span className="sr-only">Open {project.name}</span>
+      </Link>
+
       {/* Top row */}
       <div className="relative z-10 w-full flex items-start justify-between">
         <div className={cn(
@@ -107,10 +111,10 @@ function ProjectCard({
 
         <button
           type="button"
-          onClick={(e) => e.preventDefault()}
+          onClick={(e) => e.stopPropagation()}
           aria-label="Project settings"
           className={cn(
-            "absolute top-0 right-0 p-1 rounded transition-opacity duration-300",
+            "relative z-10 top-0 right-0 p-1 rounded transition-opacity duration-300",
             "opacity-0 group-hover:opacity-100",
             "text-muted-foreground hover:text-foreground",
           )}
@@ -124,9 +128,9 @@ function ProjectCard({
           </span>
           <button
             type="button"
-            onClick={(e) => { e.preventDefault(); onToggleStar(project.id); }}
+            onClick={(e) => { e.stopPropagation(); onToggleStar(project.id); }}
             aria-label={project.starred ? "Unstar project" : "Star project"}
-            className="leading-none"
+            className="relative z-10 leading-none"
           >
             <Star
               className={cn(
@@ -142,7 +146,7 @@ function ProjectCard({
       </div>
 
       {/* Bottom */}
-      <div className="relative z-10 w-full mt-auto">
+      <div className="relative z-10 w-full mt-auto pointer-events-none">
         <div className="flex items-center gap-2 mb-2">
           <StatusDot status={project.status} />
           <span
@@ -171,7 +175,7 @@ function ProjectCard({
           </div>
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 

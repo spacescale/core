@@ -93,8 +93,9 @@ export default function NewProjectPage() {
       {
         onSuccess: (data) => {
           reset();
-          if (data.deployment?.id) {
-            router.push(`/projects/${data.deployment.id}`);
+          const appId = (data.app as { id?: string })?.id;
+          if (appId) {
+            router.push(`/projects/${appId}`);
           } else {
             router.push("/projects");
           }

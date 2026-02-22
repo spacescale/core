@@ -33,7 +33,9 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const { logout, user } = useAuth();
   const [open, setOpen] = useState(true);
 
-  const projectId = pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? null;
+  const RESERVED_SEGMENTS = new Set(["new"]);
+  const rawProjectId = pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? null;
+  const projectId = rawProjectId && !RESERVED_SEGMENTS.has(rawProjectId) ? rawProjectId : null;
 
   const resourceItems: NavItem[] = [
     { href: projectId ? `/projects/${projectId}` : "/projects", label: "Applications", icon: LayoutGrid },
