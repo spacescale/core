@@ -18,18 +18,18 @@ import { PageHeader } from "@/components/layout";
 import { OverviewTab, DeploymentsTab, LogsTab, SettingsTab } from "@/components/app-detail";
 import { useApp } from "@/lib/hooks";
 
-const statusLabels = {
+const statusLabels: Record<string, string> = {
   live: "Live",
   deploying: "Deploying",
   failed: "Failed",
   stopped: "Stopped",
 };
 
-export default function AppDetailPage() {
+export default function ProjectDetailPage() {
   const params = useParams();
-  const appId = params.appId as string;
+  const projectId = params.projectId as string;
 
-  const { data: app, isLoading, error } = useApp(appId);
+  const { data: app, isLoading, error } = useApp(projectId);
 
   if (isLoading) {
     return (
@@ -57,18 +57,18 @@ export default function AppDetailPage() {
   if (error || !app) {
     return (
       <>
-        <PageHeader title="App Not Found" />
+        <PageHeader title="Project Not Found" />
         <Card className="py-12">
           <CardContent className="text-center">
             <AlertCircle className="mx-auto h-12 w-12 text-destructive" />
-            <h3 className="mt-4 text-lg font-semibold">App not found</h3>
+            <h3 className="mt-4 text-lg font-semibold">Project not found</h3>
             <p className="mt-2 text-muted-foreground">
-              The app you are looking for does not exist or has been deleted.
+              The project you are looking for does not exist or has been deleted.
             </p>
             <Button asChild className="mt-6">
-              <Link href="/app">
+              <Link href="/projects">
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Dashboard
+                Back to Projects
               </Link>
             </Button>
           </CardContent>
@@ -81,16 +81,16 @@ export default function AppDetailPage() {
     <>
       <PageHeader title={app.name}>
         <Button variant="outline" asChild>
-          <Link href="/app">
+          <Link href="/projects">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Dashboard
+            Projects
           </Link>
         </Button>
       </PageHeader>
 
       <div className="mb-6 flex items-center gap-3">
         <Badge variant={app.status} className="text-sm">
-          {statusLabels[app.status]}
+          {statusLabels[app.status] ?? "Unknown"}
         </Badge>
         <span className="text-sm text-muted-foreground">
           {app.subdomain}.{process.env.NEXT_PUBLIC_PLATFORM_DOMAIN || "ourplatform.io"}
