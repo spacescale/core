@@ -27,7 +27,7 @@ export function LogoMark({
             <div
               key={`block-${columnIndex}-${blockIndex}`}
               className={cn(
-                "h-1.5 w-1.5 rounded-[1px] bg-white",
+                "h-1.5 w-1.5 rounded-[1px] bg-foreground",
                 blockClassName,
               )}
             />
