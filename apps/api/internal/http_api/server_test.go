@@ -75,9 +75,11 @@ func TestNewServerNormalizesInvalidRateLimitConfig(t *testing.T) {
 	syncAuthUserForTest(t, ts, "12345")
 
 	name := fmt.Sprintf("normalize-rate-limit-%d", time.Now().UnixNano())
+	workspaceName := fmt.Sprintf("workspace-%d", time.Now().UnixNano())
+	workspaceID := createWorkspaceForIdentity(t, ts, "12345", workspaceName)
 	body := []byte(fmt.Sprintf(`{"name":"%s","region":"global"}`, name))
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", body, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces/"+workspaceID+"/projects", body, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, "12345"),
 		"Content-Type":  "application/json",
 	})
@@ -147,7 +149,7 @@ func TestUnauthorizedRequestsAreNotRateLimited(t *testing.T) {
 	defer ts.close()
 
 	for i := 0; i < 3; i++ {
-		resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", []byte(`{}`), map[string]string{
+		resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces/00000000-0000-0000-0000-000000000000/projects", []byte(`{}`), map[string]string{
 			"Content-Type": "application/json",
 		})
 
@@ -319,6 +321,24 @@ func syncAuthUserForTest(t *testing.T, ts *testServer, identityKey string) {
 	})
 
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
+}
+
+// createWorkspaceForIdentity inserts one workspace for an already synced user.
+// It is used by project endpoint tests that require a workspace path parameter.
+func createWorkspaceForIdentity(t *testing.T, ts *testServer, identityKey, name string) string {
+	t.Helper()
+
+	queries := pgstore.New(ts.pool)
+	user, err := queries.GetUserByIdentityKey(context.Background(), identityKey)
+	require.NoError(t, err)
+
+	workspace, err := queries.CreateWorkspace(context.Background(), pgstore.CreateWorkspaceParams{
+		OwnerUserID: user.ID,
+		Name:        name,
+	})
+	require.NoError(t, err)
+
+	return workspace.ID.String()
 }
 
 // close releases network and database resources used by the test server.

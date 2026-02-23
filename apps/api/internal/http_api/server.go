@@ -138,7 +138,11 @@ func (s *Server) Router() http.Handler {
 	r.Route("/v0", func(r chi.Router) {
 		r.Use(authMiddleware(s.config.Auth, s.config.LogPrivacy))
 		r.Use(userLimiter)
-		r.Post("/projects", s.handleCreateProject)
+
+		r.Route("/workspaces/{workspaceId}", func(r chi.Router) {
+			r.Post("/projects", s.handleCreateProject)
+		})
+
 	})
 
 	return r

@@ -1,20 +1,21 @@
 -- +goose Up
 -- V0 schema for apps-only control plane.
 -- pgcrypto enables gen_random_uuid() for DB-side UUIDs.
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE
+EXTENSION IF NOT EXISTS pgcrypto;
 
 
 CREATE TABLE users
 (
     id                   UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
     identity_key         TEXT        NOT NULL UNIQUE CHECK (
-        char_length(btrim(identity_key)) > 0
-        AND char_length(identity_key) <= 512
-    ),
-    email                TEXT CHECK (email IS NULL OR char_length(email) <= 320),
-    name                 TEXT CHECK (name IS NULL OR char_length(name) <= 255),
-    avatar_url           TEXT CHECK (avatar_url IS NULL OR char_length(avatar_url) <= 2048),
-    onboarding_completed BOOLEAN     NOT NULL DEFAULT false,
+        CHAR_LENGTH(btrim(identity_key)) > 0
+            AND CHAR_LENGTH(identity_key) <= 512
+        ),
+    email                TEXT CHECK (email IS NULL OR CHAR_LENGTH(email) <= 320),
+    name                 TEXT CHECK (name IS NULL OR CHAR_LENGTH(name) <= 255),
+    avatar_url           TEXT CHECK (avatar_url IS NULL OR CHAR_LENGTH(avatar_url) <= 2048),
+    onboarding_completed BOOLEAN     NOT NULL DEFAULT FALSE,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -34,14 +35,22 @@ CREATE TABLE workspaces
 -- Cascade deletes keep project data consistent if a user is removed.
 CREATE TABLE projects
 (
-    id            UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
+    id           UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
     workspace_id UUID        NOT NULL REFERENCES workspaces (id) ON DELETE CASCADE,
-    name          TEXT        NOT NULL,
-    slug          TEXT        NOT NULL UNIQUE,
-    region        TEXT        NOT NULL,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    name         TEXT        NOT NULL,
+    slug         TEXT        NOT NULL UNIQUE,
+    region       TEXT        NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Supports listing projects by workspace.
+CREATE INDEX projects_workspace_id_idx
+    ON projects (workspace_id);
+
+
+CREATE INDEX workspaces_owner_user_id_idx
+    ON workspaces (owner_user_id);
 
 -- Slug/subdomain are unique per project for URL {app}.{project}.{base_domain}.
 CREATE TABLE apps
@@ -87,7 +96,7 @@ CREATE TABLE app_env_vars
     app_id          UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
     key             TEXT        NOT NULL,
     value_encrypted TEXT        NOT NULL,
-    is_secret       BOOLEAN     NOT NULL DEFAULT true,
+    is_secret       BOOLEAN     NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (app_id, key)

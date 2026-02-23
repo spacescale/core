@@ -19,12 +19,13 @@ import (
 )
 
 type projectResponse struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Slug      string `json:"slug"`
-	Region    string `json:"region"`
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspaceId"`
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	Region      string `json:"region"`
+	CreatedAt   string `json:"createdAt"`
+	UpdatedAt   string `json:"updatedAt"`
 }
 
 type errorResponse struct {
@@ -39,8 +40,9 @@ func TestCreateProjectDefaults(t *testing.T) {
 	defer ts.close()
 	identityKey := uniqueIdentityKey(t)
 	syncAuthUserForTest(t, ts, identityKey)
+	workspaceID := createWorkspaceForIdentity(t, ts, identityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", []byte(`{}`), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, fmt.Sprintf("/v0/workspaces/%s/projects", workspaceID), []byte(`{}`), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -50,6 +52,7 @@ func TestCreateProjectDefaults(t *testing.T) {
 	var out projectResponse
 	require.NoError(t, json.Unmarshal(data, &out))
 	require.NotEmpty(t, out.ID)
+	require.Equal(t, workspaceID, out.WorkspaceID)
 	require.NotEmpty(t, out.Name)
 	require.NotEmpty(t, out.Slug)
 	require.Equal(t, "global", out.Region)
@@ -70,10 +73,11 @@ func TestCreateProjectOverrides(t *testing.T) {
 	defer ts.close()
 	identityKey := uniqueIdentityKey(t)
 	syncAuthUserForTest(t, ts, identityKey)
+	workspaceID := createWorkspaceForIdentity(t, ts, identityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 
 	projectName := fmt.Sprintf("misty-harbor-%d", time.Now().UnixNano())
 	body := []byte(fmt.Sprintf(`{"name":"%s","region":"global"}`, projectName))
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", body, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, fmt.Sprintf("/v0/workspaces/%s/projects", workspaceID), body, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -82,6 +86,7 @@ func TestCreateProjectOverrides(t *testing.T) {
 
 	var out projectResponse
 	require.NoError(t, json.Unmarshal(data, &out))
+	require.Equal(t, workspaceID, out.WorkspaceID)
 	require.Equal(t, projectName, out.Name)
 	require.Equal(t, projectName, out.Slug)
 	require.Equal(t, "global", out.Region)
@@ -94,7 +99,7 @@ func TestCreateProjectMissingHeader(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", []byte(`{}`), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces/00000000-0000-0000-0000-000000000000/projects", []byte(`{}`), map[string]string{
 		"Content-Type": "application/json",
 	})
 
@@ -112,7 +117,7 @@ func TestCreateProjectRequiresSyncedUser(t *testing.T) {
 	defer ts.close()
 	unsyncedIdentityKey := uniqueIdentityKey(t)
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", []byte(`{}`), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces/00000000-0000-0000-0000-000000000000/projects", []byte(`{}`), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, unsyncedIdentityKey),
 		"Content-Type":  "application/json",
 	})
@@ -132,7 +137,7 @@ func TestCreateProjectInvalidJSON(t *testing.T) {
 	defer ts.close()
 	identityKey := uniqueIdentityKey(t)
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", []byte("{"), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces/00000000-0000-0000-0000-000000000000/projects", []byte("{"), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})

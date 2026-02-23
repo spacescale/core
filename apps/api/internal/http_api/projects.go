@@ -20,8 +20,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/t0gun/spacescale/internal/service"
 )
 
@@ -40,12 +42,13 @@ type createProjectRequest struct {
 // createProjectResponse is the API payload returned on successful creation.
 // Time fields are serialized as RFC3339 strings to keep JSON stable for clients.
 type createProjectResponse struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Slug      string `json:"slug"`
-	Region    string `json:"region"`
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspaceId"`
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	Region      string `json:"region"`
+	CreatedAt   string `json:"createdAt"`
+	UpdatedAt   string `json:"updatedAt"`
 }
 
 // handleCreateProject creates a new project for the currently authenticated user.
@@ -94,6 +97,11 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
+	if workspaceID == "" {
+		writeErr(w, http.StatusBadRequest, "invalid input")
+		return
+	}
 
 	user, err := s.services.Users.GetUserByIdentityKey(r.Context(), principal.IdentityKey)
 	if err != nil {
@@ -111,7 +119,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Delegate business behavior to service layer.
-	project, err := s.services.Projects.CreateProject(r.Context(), user.ID, service.CreateProjectParams{
+	project, err := s.services.Projects.CreateProject(r.Context(), user.ID, workspaceID, service.CreateProjectParams{
 		Name:   req.Name,
 		Region: req.Region,
 	})
@@ -142,13 +150,17 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return resource location and serialized payload.
-	w.Header().Set("Location", "/v0/projects/"+url.PathEscape(project.ID))
+	w.Header().Set(
+		"Location",
+		"/v0/workspaces/"+url.PathEscape(project.WorkspaceID)+"/projects/"+url.PathEscape(project.ID),
+	)
 	writeJSON(w, http.StatusCreated, createProjectResponse{
-		ID:        project.ID,
-		Name:      project.Name,
-		Slug:      project.Slug,
-		Region:    project.Region,
-		CreatedAt: project.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: project.UpdatedAt.Format(time.RFC3339),
+		ID:          project.ID,
+		WorkspaceID: project.WorkspaceID,
+		Name:        project.Name,
+		Slug:        project.Slug,
+		Region:      project.Region,
+		CreatedAt:   project.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   project.UpdatedAt.Format(time.RFC3339),
 	})
 }

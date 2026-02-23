@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/require"
 	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
 )
@@ -108,23 +107,18 @@ func TestSanitizeAvatarURL(t *testing.T) {
 	}
 }
 
-func TestTextToPG(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want pgtype.Text
-	}{
-		{name: "empty becomes null text", in: "", want: pgtype.Text{Valid: false}},
-		{name: "whitespace becomes null text", in: "   ", want: pgtype.Text{Valid: false}},
-		{name: "non-empty remains valid", in: "dev@example.com", want: pgtype.Text{String: "dev@example.com", Valid: true}},
-	}
+func TestStringPtrOrNil(t *testing.T) {
+	require.Nil(t, stringPtrOrNil(""))
+	require.Nil(t, stringPtrOrNil("   "))
 
-	for _, tc := range tests {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, textToPG(tc.in))
-		})
-	}
+	got := stringPtrOrNil("  dev@example.com  ")
+	require.NotNil(t, got)
+	require.Equal(t, "dev@example.com", *got)
+}
+
+func TestStringValue(t *testing.T) {
+	require.Equal(t, "", stringValue(nil))
+	require.Equal(t, "dev@example.com", stringValue(stringPtr("dev@example.com")))
 }
 
 func TestKeepExistingIfPresent(t *testing.T) {
@@ -155,11 +149,11 @@ func TestUserFromRow(t *testing.T) {
 	got := userFromRow(pgstore.User{
 		ID:          id,
 		IdentityKey: "12345",
-		Email:       pgtype.Text{String: "dev@example.com", Valid: true},
-		Name:        pgtype.Text{String: "Dev", Valid: true},
-		AvatarUrl:   pgtype.Text{String: "https://example.com/avatar.png", Valid: true},
-		CreatedAt:   pgtype.Timestamptz{Time: created, Valid: true},
-		UpdatedAt:   pgtype.Timestamptz{Time: updated, Valid: true},
+		Email:       stringPtr("dev@example.com"),
+		Name:        stringPtr("Dev"),
+		AvatarUrl:   stringPtr("https://example.com/avatar.png"),
+		CreatedAt:   created,
+		UpdatedAt:   updated,
 	})
 
 	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", got.ID)
@@ -170,4 +164,8 @@ func TestUserFromRow(t *testing.T) {
 	require.False(t, got.OnboardingCompleted)
 	require.True(t, got.CreatedAt.Equal(created))
 	require.True(t, got.UpdatedAt.Equal(updated))
+}
+
+func stringPtr(v string) *string {
+	return &v
 }

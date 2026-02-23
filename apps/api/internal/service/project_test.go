@@ -11,17 +11,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/require"
 	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
 )
 
 func TestBuildProject(t *testing.T) {
 	t.Run("applies defaults and normalization", func(t *testing.T) {
-		got, err := buildProject(" owner-1 ", "  My Project  ", " ")
+		got, err := buildProject(" workspace-1 ", "  My Project  ", " ")
 		require.NoError(t, err)
-		require.Equal(t, "owner-1", got.OwnerUserID)
+		require.Equal(t, "workspace-1", got.WorkspaceID)
 		require.Equal(t, "My Project", got.Name)
 		require.Equal(t, defaultRegion, got.Region)
 		require.Equal(t, "my-project", got.Slug)
@@ -32,7 +32,7 @@ func TestBuildProject(t *testing.T) {
 		require.Equal(t, time.UTC, got.CreatedAt.Location())
 	})
 
-	t.Run("rejects missing owner", func(t *testing.T) {
+	t.Run("rejects missing workspace", func(t *testing.T) {
 		_, err := buildProject(" ", "project", "")
 		require.Error(t, err)
 	})
@@ -83,45 +83,27 @@ func TestRandomSuffix(t *testing.T) {
 	}
 }
 
-func TestTextAndTimeHelpers(t *testing.T) {
-	require.Equal(t, "dev@example.com", textFromPG(pgtype.Text{String: "dev@example.com", Valid: true}))
-	require.Empty(t, textFromPG(pgtype.Text{Valid: false}))
-
-	ts := time.Date(2026, 2, 9, 10, 20, 30, 0, time.UTC)
-	require.True(t, timeFromTimestamptz(pgtype.Timestamptz{Time: ts, Valid: true}).Equal(ts))
-	require.True(t, timeFromTimestamptz(pgtype.Timestamptz{Valid: false}).IsZero())
-}
-
-func TestUUIDHelpers(t *testing.T) {
-	validID := "550e8400-e29b-41d4-a716-446655440000"
-	u := uuidFromString(validID)
-	require.True(t, u.Valid)
-	require.Equal(t, validID, uuidToString(u))
-
-	invalid := uuidFromString("not-a-uuid")
-	require.False(t, invalid.Valid)
-	require.Empty(t, uuidToString(invalid))
-}
-
 func TestProjectFromRow(t *testing.T) {
-	uid := mustUUID(t, "550e8400-e29b-41d4-a716-446655440000")
+	wid := mustUUID(t, "550e8400-e29b-41d4-a716-446655440000")
 	pid := mustUUID(t, "f47ac10b-58cc-4372-a567-0e02b2c3d479")
 	created := time.Date(2026, 2, 9, 1, 2, 3, 0, time.UTC)
 	updated := created.Add(5 * time.Minute)
 
 	gotProject := projectFromRow(pgstore.Project{
 		ID:          pid,
-		OwnerUserID: uid,
+		WorkspaceID: wid,
 		Name:        "misty-harbor",
 		Slug:        "misty-harbor",
 		Region:      "global",
-		CreatedAt:   pgtype.Timestamptz{Time: created, Valid: true},
-		UpdatedAt:   pgtype.Timestamptz{Time: updated, Valid: true},
+		CreatedAt:   created,
+		UpdatedAt:   updated,
 	})
 	require.Equal(t, "f47ac10b-58cc-4372-a567-0e02b2c3d479", gotProject.ID)
-	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", gotProject.OwnerUserID)
+	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", gotProject.WorkspaceID)
 	require.Equal(t, "misty-harbor", gotProject.Name)
 	require.Equal(t, "global", gotProject.Region)
+	require.True(t, gotProject.CreatedAt.Equal(created))
+	require.True(t, gotProject.UpdatedAt.Equal(updated))
 }
 
 func TestIsUniqueViolation(t *testing.T) {
@@ -135,9 +117,9 @@ func TestIsUniqueViolation(t *testing.T) {
 	require.False(t, isUniqueViolation(errors.New("plain error")))
 }
 
-func mustUUID(t *testing.T, raw string) pgtype.UUID {
+func mustUUID(t *testing.T, raw string) uuid.UUID {
 	t.Helper()
-	var u pgtype.UUID
-	require.NoError(t, u.Scan(raw))
+	u, err := uuid.Parse(raw)
+	require.NoError(t, err)
 	return u
 }
