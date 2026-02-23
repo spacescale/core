@@ -23,11 +23,12 @@ CREATE TABLE users
 -- Cascade deletes keep workspace data consistent if a user is removed.
 CREATE TABLE workspaces
 (
-    id UUID PRIMARY KEY DEFAULT  gen_random_uuid(),
-    owner_user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    name text NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL  DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id            UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
+    owner_user_id UUID        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    name          text        NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (owner_user_id, name)
 );
 
 -- Cascade deletes keep project data consistent if a user is removed.
