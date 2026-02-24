@@ -3,7 +3,6 @@ RUN go install github.com/pressly/goose/v3/cmd/goose@latest
 
 FROM postgres:18-alpine
 ENV POSTGRES_USER=spacescale
-ENV POSTGRES_PASSWORD=spacescale
 ENV POSTGRES_DB=postgres
 COPY --from=goose-builder /go/bin/goose /usr/local/bin/goose
 COPY init/ /docker-entrypoint-initdb.d/

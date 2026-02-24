@@ -5,7 +5,7 @@ db-build:
 
 db-start: db-build
 	@docker rm -f spacescale-db || true
-	docker run --name spacescale-db -p 5432:5432 -d spacescale-db:local
+	docker run --name spacescale-db -e POSTGRES_PASSWORD=spacescale -p 5432:5432 -d spacescale-db:local
 	@bash -euo pipefail -c 'until docker exec spacescale-db test -f /tmp/migrations.done; do sleep 1; done; '
 
 run: db-start
