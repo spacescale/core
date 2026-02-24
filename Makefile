@@ -1,75 +1,21 @@
-.PHONY: compose-up compose-down compose-reset compose-logs compose-psql \
-	migrate-up migrate-down migrate-reset \
-	goose-create \
-	migrate-up-test migrate-down-test coverage clean test mint
+.PHONY: db-build db-start run test stop mint
 
-DB_URL ?= postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable
-TEST_DB_URL ?= postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable
+db-build:
+	docker build -f apps/db/Dockerfile -t spacescale-db:local apps/db
 
+db-start: db-build
+	@docker rm -f spacescale-db || true
+	docker run --name spacescale-db -p 5432:5432 -d spacescale-db:local
+	@bash -euo pipefail -c 'until docker exec spacescale-db test -f /tmp/migrations.done; do sleep 1; done; '
 
-## Support positional usage: `make goose-create add_users_table`.
-## Make treats extra words as additional targets, so we:
-##  capture the 2nd word as migration name,
-##  fail fast when it's missing,
-##  register that word as a no-op target to avoid "No rule to make target".
-ifneq (,$(filter goose-create,$(MAKECMDGOALS)))
-MIGRATION_NAME := $(word 2,$(MAKECMDGOALS))
-ifeq ($(MIGRATION_NAME),)
-$(error Usage: make goose-create <name>)
-endif
-$(eval $(MIGRATION_NAME):;@:)
-endif
+run: db-start
+	cd apps/api && DATABASE_URL="postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable" BFF_JWT_SECRET="spacescale-dev-secret" INTERNAL_AUTH_SYNC_SECRET="spacescale-dev-internal-secret" API_LOG_USER_AGENT_MODE="off" go run .
 
-test:
-	make compose-reset ## removes volume so database tests wont crash
-	docker compose -f docker-compose.yaml up --build -d
-	make migrate-up-test
-	cd apps/api && TEST_DATABASE_URL="$(TEST_DB_URL)" go test ./internal/http_api ./internal/service -race -cover
+test: db-start
+	cd apps/api && TEST_DATABASE_URL="postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" go test ./internal/http_api ./internal/service -race -cover
 
-compose-up:
-	docker compose -f docker-compose.yaml up --build -d
-	make migrate-up-test
-	make migrate-up
-
-
-compose-down:
-	docker compose -f docker-compose.yaml down
-
-compose-reset:
-	docker compose -f docker-compose.yaml down -v
-
-compose-logs:
-	docker compose -f docker-compose.yaml logs -f --tail=200
-
-compose-psql:
-	docker compose -f docker-compose.yaml exec db psql -U spacescale -d spacescale
-
-migrate-up:
-	goose -dir apps/db/migrations postgres "$(DB_URL)" up
-
-migrate-down:
-	goose -dir apps/db/migrations postgres "$(DB_URL)" down
-
-migrate-reset:
-	goose -dir apps/db/migrations postgres "$(DB_URL)" reset
-
-goose-create:
-	goose -dir apps/db/migrations create $(MIGRATION_NAME) sql
-
-migrate-up-test:
-	goose -dir apps/db/migrations postgres "$(TEST_DB_URL)" up
-
-migrate-down-test:
-	goose -dir apps/db/migrations postgres "$(TEST_DB_URL)" down
-
-coverage:
-	cd apps/api && TEST_DATABASE_URL="$(TEST_DB_URL)" go test ./internal/http_api ./internal/service -coverprofile=../../coverage.out
-	go tool cover -html=coverage.out -o coverage.html
-	@if command -v open >/dev/null 2>&1; then open coverage.html; else echo "coverage report: coverage.html"; fi
-
-random-hash:
-	# generates 32 random bytes and prints them as hex
-	openssl rand -hex 32
+stop:
+	@docker rm -f spacescale-db || true
 
 ## Mint a BFF JWT for local API testing.
 ## Reads values from .env.local.
@@ -107,6 +53,3 @@ mint:
 	const input=b64(header)+"."+b64(payload); \
 	const sig=crypto.createHmac("sha256",secret).update(input).digest("base64url"); \
 	process.stdout.write(input+"."+sig+"\n");'
-
-clean:
-	rm -f coverage.out coverage.html

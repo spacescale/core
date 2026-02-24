@@ -26,8 +26,7 @@ packages/
 - **Go** 1.26+
 - **Node.js** 22+
 - **pnpm** 9+
-- **Docker** + Docker Compose
-- **goose** for database migrations
+- **Docker**
 - **sqlc** for query codegen
 
 ## Getting Started
@@ -38,13 +37,14 @@ packages/
 pnpm install
 ```
 
-### 2. Start the database
+### 2. Run API + DB quickly
 
 ```bash
-make compose-up
+make run
 ```
 
-This starts the Postgres container, then runs migrations for both the main and test databases.
+This builds the DB image from `apps/db/Dockerfile`, starts Postgres on `localhost:5432`, runs migrations inside the DB container, and then runs the API natively.
+`make test` reuses the same container and runs against the `spacescale_test` database.
 
 ### 3. Run all services
 
@@ -54,11 +54,11 @@ pnpm dev
 
 This starts every app in parallel:
 
-| App | URL | Description |
-|-----|-----|-------------|
-| `web` | http://localhost:3000 | Dashboard |
+| App         | URL                   | Description    |
+| ----------- | --------------------- | -------------- |
+| `web`       | http://localhost:3000 | Dashboard      |
 | `marketing` | http://localhost:3001 | Marketing site |
-| `api` | http://localhost:8080 | Go API server |
+| `api`       | http://localhost:8080 | Go API server  |
 
 ### Run a single app
 
@@ -78,32 +78,26 @@ pnpm storybook
 
 ## Common Commands
 
-| Command | Description |
-|---------|-------------|
-| `pnpm dev` | Start all apps in dev mode |
-| `pnpm build` | Build all apps |
+| Command          | Description                               |
+| ---------------- | ----------------------------------------- |
+| `pnpm dev`       | Start all apps in dev mode                |
+| `pnpm build`     | Build all apps                            |
 | `pnpm typecheck` | Run TypeScript checks across all packages |
-| `pnpm lint` | Lint all packages |
-| `pnpm test` | Run all tests |
-| `pnpm format` | Format code with Prettier |
-| `pnpm storybook` | Launch Storybook for `@spacescale/ui` |
-| `pnpm clean` | Remove build artifacts and `node_modules` |
+| `pnpm lint`      | Lint all packages                         |
+| `pnpm test`      | Run all tests                             |
+| `pnpm format`    | Format code with Prettier                 |
+| `pnpm storybook` | Launch Storybook for `@spacescale/ui`     |
+| `pnpm clean`     | Remove build artifacts and `node_modules` |
 
 ## Database (Makefile)
 
 Local infrastructure and migration workflows are handled from the root `Makefile`.
 
-| Target | Description |
-|--------|-------------|
-| `make compose-up` | Start Postgres + run migrations |
-| `make compose-down` | Stop containers |
-| `make compose-reset` | Stop containers and delete volumes |
-| `make compose-logs` | Tail container logs |
-| `make compose-psql` | Open a psql shell |
-| `make migrate-up` | Run pending migrations |
-| `make migrate-down` | Rollback last migration |
-| `make migrate-reset` | Reset all migrations |
-| `make goose-create <name>` | Create a new migration file |
-| `make test` | Reset DB, run migrations, and run Go tests with race detection |
-| `make coverage` | Generate and open HTML coverage report |
-| `make mint` | Mint a BFF JWT for local API testing (reads `.env.local`) |
+| Target           | Description                                                       |
+| ---------------- | ----------------------------------------------------------------- |
+| `make run`       | Build/start local DB and run API                                   |
+| `make test`      | Run API tests against `spacescale_test` on the same local DB       |
+| `make stop`      | Stop/remove the local DB container (`spacescale-db`)               |
+| `make mint`      | Mint a BFF JWT for local API testing (reads `.env.local`)          |
+| `make db-build`  | Build the local DB image (`spacescale-db:local`)                   |
+| `make db-start`  | Start local DB container and wait for container-side migrations     |
