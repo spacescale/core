@@ -1,6 +1,6 @@
-// This file implements the project-creation workflow in the service layer.
-// It coordinates project-shape validation, request normalization, defaulting,
-// slug generation, and conflict-retry behavior.
+// This file implements project CRUD workflows in the service layer.
+// It coordinates validation, defaulting, slug generation, ownership checks,
+// and persistence mapping for API handlers.
 // It also contains mapping helpers that translate SQLC rows into plain service
 // structs consumed by HTTP handlers.
 // Keep domain rules here so transport code stays thin and persistence details
@@ -52,6 +52,11 @@ type CreateProjectParams struct {
 	Region string
 }
 
+type UpdateProjectParams struct {
+	Name   string
+	Region string
+}
+
 // NewProjectService creates a ProjectService bound to the provided query set.
 // Construction stays explicit so handlers and tests can wire dependencies
 // through one place and keep storage details out of call sites.
@@ -67,28 +72,8 @@ func NewProjectService(queries *pgstore.Queries) *ProjectService {
 // Validation failures are normalized to ErrInvalidInput, and exhausted slug
 // retries are returned as ErrConflict.
 func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID, workspaceID string, p CreateProjectParams) (Project, error) {
-	ownerUserID = strings.TrimSpace(ownerUserID)
-	workspaceID = strings.TrimSpace(workspaceID)
-
-	if ownerUserID == "" || workspaceID == "" {
-		return Project{}, ErrInvalidInput
-	}
-
-	ownerUUID, err := uuid.Parse(ownerUserID)
+	_, workspaceUUID, err := s.authorizeWorkspace(ctx, ownerUserID, workspaceID)
 	if err != nil {
-		return Project{}, ErrInvalidInput
-	}
-
-	workspaceUUID, err := uuid.Parse(workspaceID)
-	if err != nil {
-		return Project{}, ErrInvalidInput
-	}
-
-	_, err = s.queries.GetWorkspaceByIDAndOwnerUserID(ctx, pgstore.GetWorkspaceByIDAndOwnerUserIDParams{ID: workspaceUUID, OwnerUserID: ownerUUID})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return Project{}, ErrUnauthorized
-		}
 		return Project{}, err
 	}
 
@@ -123,6 +108,151 @@ func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID, workspa
 	}
 
 	return Project{}, ErrConflict
+}
+
+func (s *ProjectService) ListProjects(ctx context.Context, ownerUserID, workspaceID string) ([]Project, error) {
+	ownerUUID, workspaceUUID, err := s.authorizeWorkspace(ctx, ownerUserID, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.queries.ListProjectsByWorkspaceIDAndOwnerUserID(ctx, pgstore.ListProjectsByWorkspaceIDAndOwnerUserIDParams{
+		WorkspaceID: workspaceUUID,
+		OwnerUserID: ownerUUID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Project, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, projectFromRow(row))
+	}
+	return out, nil
+}
+
+func (s *ProjectService) GetProject(ctx context.Context, ownerUserID, workspaceID, projectID string) (Project, error) {
+	ownerUUID, workspaceUUID, err := s.authorizeWorkspace(ctx, ownerUserID, workspaceID)
+	if err != nil {
+		return Project{}, err
+	}
+	projectUUID, err := uuid.Parse(strings.TrimSpace(projectID))
+	if err != nil {
+		return Project{}, ErrInvalidInput
+	}
+	row, err := s.getOwnedProjectInWorkspace(ctx, ownerUUID, workspaceUUID, projectUUID)
+	if err != nil {
+		return Project{}, err
+	}
+	return projectFromRow(row), nil
+}
+
+func (s *ProjectService) UpdateProject(
+	ctx context.Context,
+	ownerUserID, workspaceID, projectID string,
+	p UpdateProjectParams,
+) (Project, error) {
+	ownerUUID, workspaceUUID, err := s.authorizeWorkspace(ctx, ownerUserID, workspaceID)
+	if err != nil {
+		return Project{}, err
+	}
+	projectUUID, err := uuid.Parse(strings.TrimSpace(projectID))
+	if err != nil {
+		return Project{}, ErrInvalidInput
+	}
+	existing, err := s.getOwnedProjectInWorkspace(ctx, ownerUUID, workspaceUUID, projectUUID)
+	if err != nil {
+		return Project{}, err
+	}
+	nextName := strings.TrimSpace(p.Name)
+	nextRegion := strings.TrimSpace(p.Region)
+	if nextName == "" && nextRegion == "" {
+		return Project{}, ErrInvalidInput
+	}
+	if nextName == "" {
+		nextName = existing.Name
+	}
+	if nextRegion == "" {
+		nextRegion = existing.Region
+	}
+	row, err := s.queries.UpdateProjectByIDAndOwnerUserID(ctx, pgstore.UpdateProjectByIDAndOwnerUserIDParams{
+		ID:          projectUUID,
+		OwnerUserID: ownerUUID,
+		Name:        nextName,
+		Region:      nextRegion,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Project{}, ErrUnauthorized
+		}
+		return Project{}, err
+	}
+	return projectFromRow(row), nil
+}
+
+func (s *ProjectService) DeleteProject(ctx context.Context, ownerUserID, workspaceID, projectID string) error {
+	ownerUUID, workspaceUUID, err := s.authorizeWorkspace(ctx, ownerUserID, workspaceID)
+	if err != nil {
+		return err
+	}
+	projectUUID, err := uuid.Parse(strings.TrimSpace(projectID))
+	if err != nil {
+		return ErrInvalidInput
+	}
+	if _, err := s.getOwnedProjectInWorkspace(ctx, ownerUUID, workspaceUUID, projectUUID); err != nil {
+		return err
+	}
+	affected, err := s.queries.DeleteProjectByIDAndOwnerUserID(ctx, pgstore.DeleteProjectByIDAndOwnerUserIDParams{
+		ID:          projectUUID,
+		OwnerUserID: ownerUUID,
+	})
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrUnauthorized
+	}
+	return nil
+}
+
+func (s *ProjectService) authorizeWorkspace(ctx context.Context, ownerUserID, workspaceID string) (uuid.UUID, uuid.UUID, error) {
+	ownerUUID, err := uuid.Parse(strings.TrimSpace(ownerUserID))
+	if err != nil {
+		return uuid.Nil, uuid.Nil, ErrInvalidInput
+	}
+	workspaceUUID, err := uuid.Parse(strings.TrimSpace(workspaceID))
+	if err != nil {
+		return uuid.Nil, uuid.Nil, ErrInvalidInput
+	}
+	_, err = s.queries.GetWorkspaceByIDAndOwnerUserID(ctx, pgstore.GetWorkspaceByIDAndOwnerUserIDParams{
+		ID:          workspaceUUID,
+		OwnerUserID: ownerUUID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, uuid.Nil, ErrUnauthorized
+		}
+		return uuid.Nil, uuid.Nil, err
+	}
+	return ownerUUID, workspaceUUID, nil
+}
+
+func (s *ProjectService) getOwnedProjectInWorkspace(
+	ctx context.Context,
+	ownerUUID, workspaceUUID, projectUUID uuid.UUID,
+) (pgstore.Project, error) {
+	row, err := s.queries.GetProjectByIDAndOwnerUserID(ctx, pgstore.GetProjectByIDAndOwnerUserIDParams{
+		ID:          projectUUID,
+		OwnerUserID: ownerUUID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return pgstore.Project{}, ErrUnauthorized
+		}
+		return pgstore.Project{}, err
+	}
+	if row.WorkspaceID != workspaceUUID {
+		return pgstore.Project{}, ErrUnauthorized
+	}
+	return row, nil
 }
 
 // buildProject validates raw project fields and applies service defaults.

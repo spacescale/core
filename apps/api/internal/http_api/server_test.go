@@ -47,6 +47,19 @@ type testJWTClaims struct {
 	jwt.RegisteredClaims // embedded so claim fields are promoted to this type.
 }
 
+// newTestServer creates one integration server for the calling test.
+// It uses package-default rate limiting.
+// If TEST_DATABASE_URL is missing, the test is skipped.
+func newTestServer(t *testing.T) *testServer {
+	t.Helper()
+	return newTestServerWithRateLimitConfigs(
+		t,
+		config.DefaultRateLimitConfig(),
+		config.DefaultInternalGlobalRateLimitConfig(),
+		config.DefaultInternalIdentityRateLimitConfig(),
+	)
+}
+
 // TestDefaultRateLimitConfig verifies package-default limiter settings.
 // This guards against accidental default drift in server wiring.
 func TestDefaultRateLimitConfig(t *testing.T) {
@@ -185,19 +198,6 @@ func TestInternalRequestsAreGloballyRateLimited(t *testing.T) {
 	var out errorResponse
 	require.NoError(t, json.Unmarshal(data, &out))
 	require.Equal(t, "rate limit exceeded", out.Error)
-}
-
-// newTestServer creates one integration server for the calling test.
-// It uses package-default rate limiting.
-// If TEST_DATABASE_URL is missing, the test is skipped.
-func newTestServer(t *testing.T) *testServer {
-	t.Helper()
-	return newTestServerWithRateLimitConfigs(
-		t,
-		config.DefaultRateLimitConfig(),
-		config.DefaultInternalGlobalRateLimitConfig(),
-		config.DefaultInternalIdentityRateLimitConfig(),
-	)
 }
 
 // newTestServerWithRateLimitConfig creates one integration server using the
