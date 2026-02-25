@@ -67,7 +67,7 @@ description: |-
 headers:
   - enabled: true
     name: Authorization
-    value: ${[ secure(value=b64'WUVOQ19lVUUwYXpOdVF3SC9JZkJkMmppc1VaRE5kSk4xQ3Vzb2krRXFGTGlzSTd2WFVKNTFHVExYS21FdHRla3VHdFoybFBnd3NlUEZ3MjBJbUdQWk5OM3FxcndyWU5pTW1mdz0') ]}
+    value: Bearer ${[ BFF_TOKEN ]}
     id: htigSCPhis
   - enabled: true
     name: Content-Type

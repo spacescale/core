@@ -37,9 +37,18 @@ CREATE TABLE projects
 (
     id           UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
     workspace_id UUID        NOT NULL REFERENCES workspaces (id) ON DELETE CASCADE,
-    name         TEXT        NOT NULL,
-    slug         TEXT        NOT NULL UNIQUE,
-    region       TEXT        NOT NULL,
+    name         TEXT        NOT NULL CHECK (
+        char_length(btrim(name)) > 0
+            AND char_length(name) <= 120
+        ),
+    slug         TEXT        NOT NULL UNIQUE CHECK (
+        char_length(slug) BETWEEN 1 AND 63
+            AND slug ~ '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$'
+        ),
+    region       TEXT        NOT NULL CHECK (
+        char_length(region) BETWEEN 1 AND 32
+            AND region ~ '^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$'
+        ),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
