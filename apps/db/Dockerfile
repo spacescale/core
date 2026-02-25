@@ -1,5 +1,5 @@
 FROM golang:1.26-alpine AS goose-builder
-RUN go install github.com/pressly/goose/v3/cmd/goose@latest
+RUN go install github.com/pressly/goose/v3/cmd/goose@v3.27.0
 
 FROM postgres:18-alpine
 ENV POSTGRES_USER=spacescale
