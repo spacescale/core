@@ -160,6 +160,7 @@ func TestCreateProjectInvalidJSON(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 	identityKey := uniqueIdentityKey(t)
+	syncAuthUserForTest(t, ts, identityKey)
 
 	resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces/00000000-0000-0000-0000-000000000000/projects", []byte("{"), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),

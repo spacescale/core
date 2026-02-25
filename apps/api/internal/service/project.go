@@ -94,7 +94,11 @@ func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID, workspa
 		if !isUniqueViolation(err) {
 			return Project{}, err
 		}
-		project.Slug = baseSlug + "-" + randomSuffix(suffixLength)
+		suffix, suffixErr := randomSuffix(suffixLength)
+		if suffixErr != nil {
+			return Project{}, suffixErr
+		}
+		project.Slug = baseSlug + "-" + suffix
 	}
 
 	return Project{}, ErrConflict

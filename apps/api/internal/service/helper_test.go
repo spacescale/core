@@ -61,9 +61,12 @@ func TestSlugifyProjectName(t *testing.T) {
 func TestRandomSuffix(t *testing.T) {
 	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
-	require.Empty(t, randomSuffix(0))
+	empty, err := randomSuffix(0)
+	require.NoError(t, err)
+	require.Empty(t, empty)
 
-	got := randomSuffix(24)
+	got, err := randomSuffix(24)
+	require.NoError(t, err)
 	require.Len(t, got, 24)
 	for _, r := range got {
 		require.Truef(t, strings.ContainsRune(alphabet, r), "unexpected suffix rune %q in %q", r, got)

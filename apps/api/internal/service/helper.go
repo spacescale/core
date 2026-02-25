@@ -78,14 +78,25 @@ func slugifyProjectName(name string) string {
 // randomSuffix returns a random lowercase alphanumeric suffix of fixed length.
 // It is used only for slug collision retries so the user-visible base slug
 // remains stable while each persistence attempt gets a fresh candidate.
-func randomSuffix(n int) string {
+func randomSuffix(n int) (string, error) {
 	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+	if n <= 0 {
+		return "", nil
+	}
+
 	var b strings.Builder
+	b.Grow(n)
+	max := big.NewInt(int64(len(alphabet)))
+
 	for i := 0; i < n; i++ {
-		idx, _ := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))))
+		idx, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return "", err
+		}
 		b.WriteByte(alphabet[idx.Int64()])
 	}
-	return b.String()
+
+	return b.String(), nil
 }
 
 // isUniqueViolation reports whether an error is a PostgreSQL unique violation.

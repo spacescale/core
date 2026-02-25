@@ -71,7 +71,11 @@ func (s *BootstrapService) BootstrapDefaults(ctx context.Context, ownerUserID st
 		if !isUniqueViolation(err) {
 			return BootstrapDefaultsResult{}, err
 		}
-		candidateSlug = baseSlug + "-" + randomSuffix(suffixLength)
+		suffix, suffixErr := randomSuffix(suffixLength)
+		if suffixErr != nil {
+			return BootstrapDefaultsResult{}, suffixErr
+		}
+		candidateSlug = baseSlug + "-" + suffix
 	}
 	return BootstrapDefaultsResult{}, ErrConflict
 }

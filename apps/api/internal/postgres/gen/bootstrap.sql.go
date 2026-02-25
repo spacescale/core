@@ -43,17 +43,25 @@ inserted_project AS (
     RETURNING id
 ),
 selected_workspace AS (
-    SELECT id AS workspace_id
-    FROM inserted_workspace
-    UNION ALL
-    SELECT '00000000-0000-0000-0000-000000000000'::uuid AS workspace_id
+    SELECT workspace_id
+    FROM (
+             SELECT id AS workspace_id, 0 AS priority
+             FROM inserted_workspace
+             UNION ALL
+             SELECT '00000000-0000-0000-0000-000000000000'::uuid AS workspace_id, 1 AS priority
+         ) ws
+    ORDER BY ws.priority
     LIMIT 1
 ),
 selected_project AS (
-    SELECT id AS project_id
-    FROM inserted_project
-    UNION ALL
-    SELECT '00000000-0000-0000-0000-000000000000'::uuid AS project_id
+    SELECT project_id
+    FROM (
+             SELECT id AS project_id, 0 AS priority
+             FROM inserted_project
+             UNION ALL
+             SELECT '00000000-0000-0000-0000-000000000000'::uuid AS project_id, 1 AS priority
+         ) p
+    ORDER BY p.priority
     LIMIT 1
 )
 SELECT
