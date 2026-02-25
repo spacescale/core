@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_VDG8u2fKk1
 createdAt: 2026-02-18T21:10:00
-updatedAt: 2026-02-18T21:11:05.057225
+updatedAt: 2026-02-25T06:34:21.833135
 workspaceId: wk_KJF6oyHis3
 folderId: fl_Yy2sLBoCtW
 authentication: {}
@@ -10,8 +10,8 @@ authenticationType: null
 body:
   text: |-
     {
-      "identityKey": "demo-user-123",
-      "email": "dev@example.com",
+      "identityKey": "email:apprentice_py@icloud.com",
+      "email": "apprentice_py@icloud.com",
       "name": "Dev User",
       "avatarUrl": "https://example.com/avatar.png"
     }

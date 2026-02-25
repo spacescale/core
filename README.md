@@ -43,7 +43,7 @@ pnpm install
 make run
 ```
 
-This builds the DB image from `apps/db/Dockerfile`, starts Postgres on `localhost:5432`, runs migrations inside the DB container, and then runs the API natively.
+This builds the DB image from `apps/db/Dockerfile`, starts Postgres on `localhost:5432`, runs migrations inside the DB container, then sources repo-root `.env.local` and runs the API natively.
 `make test` reuses the same container and runs against the `spacescale_test` database.
 
 ### 3. Run all services
@@ -93,11 +93,11 @@ pnpm storybook
 
 Local infrastructure and migration workflows are handled from the root `Makefile`.
 
-| Target           | Description                                                       |
-| ---------------- | ----------------------------------------------------------------- |
-| `make run`       | Build/start local DB and run API                                   |
-| `make test`      | Run API tests against `spacescale_test` on the same local DB       |
-| `make stop`      | Stop/remove the local DB container (`spacescale-db`)               |
-| `make mint`      | Mint a BFF JWT for local API testing (reads `.env.local`)          |
-| `make db-build`  | Build the local DB image (`spacescale-db:local`)                   |
-| `make db-start`  | Start local DB container and wait for container-side migrations     |
+| Target          | Description                                                     |
+| --------------- | --------------------------------------------------------------- |
+| `make run`      | Build/start local DB and run API                                |
+| `make test`     | Run API tests against `spacescale_test` on the same local DB    |
+| `make stop`     | Stop/remove the local DB container (`spacescale-db`)            |
+| `make mint`     | Mint a BFF JWT for local API testing (reads `.env.local`)       |
+| `make db-build` | Build the local DB image (`spacescale-db:local`)                |
+| `make db-start` | Start local DB container and wait for container-side migrations |

@@ -1,15 +1,14 @@
 type: http_request
 model: http_request
 id: rq_F4cNp7uQm1
-createdAt: 2026-02-24T23:05:00.000000
-updatedAt: 2026-02-24T23:05:00.000000
+createdAt: 2026-02-24T23:05:00
+updatedAt: 2026-02-25T06:24:13.467035
 workspaceId: wk_KJF6oyHis3
-folderId: fl_zP4fK8sLm2
+folderId: null
 authentication: {}
 authenticationType: null
 body:
-  text: |-
-    {}
+  text: '{}'
 bodyType: application/json
 description: |-
   ## Bootstrap Defaults
@@ -68,16 +67,16 @@ description: |-
   - `429 Too Many Requests`: per-user API rate limit exceeded
   - `500 Internal Server Error`: unexpected runtime error
 headers:
-  - enabled: true
-    name: Authorization
-    value: Bearer ${[ BFF_TOKEN ]}
-    id: hBtDfAuth01
-  - enabled: true
-    name: Content-Type
-    value: application/json
-    id: hBtDfType01
+- enabled: true
+  name: Authorization
+  value: Bearer ${[ BFF_TOKEN ]}
+  id: hBtDfAuth01
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: hBtDfType01
 method: POST
 name: Bootstrap Defaults
-sortPriority: 0.5
+sortPriority: 0.9144947416552353
 url: http://${[ BASE_URL ]}/v0/bootstrap-defaults
 urlParameters: []

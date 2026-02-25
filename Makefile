@@ -9,10 +9,13 @@ db-start: db-build
 	@bash -euo pipefail -c 'until docker exec spacescale-db test -f /tmp/migrations.done; do sleep 1; done; '
 
 run: db-start
-	cd apps/api && DATABASE_URL="postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable" BFF_JWT_SECRET="spacescale-dev-secret" INTERNAL_AUTH_SYNC_SECRET="spacescale-dev-internal-secret" API_LOG_USER_AGENT_MODE="off" go run .
+	@[ -f .env.local ] || { echo ".env.local not found in repo root"; exit 1; };
+	pid=$$(lsof -tiTCP:8080 -sTCP:LISTEN || true); [ -z "$$pid" ] || kill -TERM $$pid;
+	set -a && . ./.env.local && set +a && : "$${DATABASE_URL:?DATABASE_URL missing in .env.local}" && cd apps/api && go run .
 
 test: db-start
-	cd apps/api && TEST_DATABASE_URL="postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" go test ./internal/http_api ./internal/service -race -cover
+	@[ -f .env.local ] || { echo ".env.local not found in repo root"; exit 1; };
+	set -a && . ./.env.local && set +a && cd apps/api && TEST_DATABASE_URL="$${TEST_DATABASE_URL:-postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable}" go test ./internal/http_api ./internal/service -race -cover
 
 stop:
 	@docker rm -f spacescale-db || true
