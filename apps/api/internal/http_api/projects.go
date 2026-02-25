@@ -88,10 +88,8 @@ type listProjectsResponse struct {
 // - service.ErrConflict => 409 "conflict"
 // - any other error => 500 "internal error"
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
-	// Ensure auth middleware provided a trusted principal.
-	principal, ok := principalFromContext(r.Context())
+	user, ok := s.requireCallerUser(w, r)
 	if !ok {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
@@ -114,21 +112,6 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	if workspaceID == "" {
 		writeErr(w, http.StatusBadRequest, "invalid input")
 		return
-	}
-
-	user, err := s.services.Users.GetUserByIdentityKey(r.Context(), principal.IdentityKey)
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
-			return
-		case errors.Is(err, service.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
-			return
-		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
-			return
-		}
 	}
 
 	// Delegate business behavior to service layer.
@@ -180,9 +163,8 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 
 // handleListProjects returns projects for one owned workspace.
 func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
-	principal, ok := principalFromContext(r.Context())
+	user, ok := s.requireCallerUser(w, r)
 	if !ok {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
@@ -190,21 +172,6 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	if workspaceID == "" {
 		writeErr(w, http.StatusBadRequest, "invalid input")
 		return
-	}
-
-	user, err := s.services.Users.GetUserByIdentityKey(r.Context(), principal.IdentityKey)
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
-			return
-		case errors.Is(err, service.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
-			return
-		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
-			return
-		}
 	}
 
 	projects, err := s.services.Projects.ListProjects(r.Context(), user.ID, workspaceID)
@@ -240,9 +207,8 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 
 // handleGetProject returns one project in an owned workspace.
 func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
-	principal, ok := principalFromContext(r.Context())
+	user, ok := s.requireCallerUser(w, r)
 	if !ok {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
@@ -251,21 +217,6 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 	if workspaceID == "" || projectID == "" {
 		writeErr(w, http.StatusBadRequest, "invalid input")
 		return
-	}
-
-	user, err := s.services.Users.GetUserByIdentityKey(r.Context(), principal.IdentityKey)
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
-			return
-		case errors.Is(err, service.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
-			return
-		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
-			return
-		}
 	}
 
 	project, err := s.services.Projects.GetProject(r.Context(), user.ID, workspaceID, projectID)
@@ -300,9 +251,8 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 
 // handleUpdateProject updates one project in an owned workspace.
 func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
-	principal, ok := principalFromContext(r.Context())
+	user, ok := s.requireCallerUser(w, r)
 	if !ok {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
@@ -321,21 +271,6 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 			return
 		default:
 			writeErr(w, http.StatusBadRequest, "invalid json")
-			return
-		}
-	}
-
-	user, err := s.services.Users.GetUserByIdentityKey(r.Context(), principal.IdentityKey)
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
-			return
-		case errors.Is(err, service.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
-			return
-		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 	}
@@ -378,9 +313,8 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 
 // handleDeleteProject deletes one project in an owned workspace.
 func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
-	principal, ok := principalFromContext(r.Context())
+	user, ok := s.requireCallerUser(w, r)
 	if !ok {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
@@ -391,22 +325,7 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.services.Users.GetUserByIdentityKey(r.Context(), principal.IdentityKey)
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
-			return
-		case errors.Is(err, service.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
-			return
-		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-	}
-
-	err = s.services.Projects.DeleteProject(r.Context(), user.ID, workspaceID, projectID)
+	err := s.services.Projects.DeleteProject(r.Context(), user.ID, workspaceID, projectID)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidInput):

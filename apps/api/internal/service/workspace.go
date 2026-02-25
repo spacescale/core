@@ -11,7 +11,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
 )
@@ -49,10 +48,11 @@ func NewWorkspaceService(queries *pgstore.Queries) *WorkspaceService {
 
 // CreateWorkspace creates a workspace for the given owner user.
 func (s *WorkspaceService) CreateWorkspace(ctx context.Context, ownerUserID string, p CreateWorkspaceParams) (Workspace, error) {
-	ownerID, err := uuid.Parse(strings.TrimSpace(ownerUserID))
-	if err != nil {
+	ownerID, ok := parseUUID(ownerUserID)
+	if !ok {
 		return Workspace{}, ErrInvalidInput
 	}
+
 	name, ok := normalizeWorkspaceName(p.Name)
 	if !ok {
 		return Workspace{}, ErrInvalidInput
@@ -69,10 +69,11 @@ func (s *WorkspaceService) CreateWorkspace(ctx context.Context, ownerUserID stri
 
 // ListWorkspaces returns all workspaces owned by the given user.
 func (s *WorkspaceService) ListWorkspaces(ctx context.Context, ownerUserID string) ([]Workspace, error) {
-	ownerID, err := uuid.Parse(strings.TrimSpace(ownerUserID))
-	if err != nil {
+	ownerID, ok := parseUUID(ownerUserID)
+	if !ok {
 		return []Workspace{}, ErrInvalidInput
 	}
+
 	rows, err := s.queries.ListWorkspacesByOwnerUserID(ctx, ownerID)
 	if err != nil {
 		return nil, err
@@ -86,14 +87,15 @@ func (s *WorkspaceService) ListWorkspaces(ctx context.Context, ownerUserID strin
 
 // GetWorkspace returns one workspace if it belongs to the given owner user.
 func (s *WorkspaceService) GetWorkspace(ctx context.Context, ownerUserID, workspaceID string) (Workspace, error) {
-	ownerID, err := uuid.Parse(strings.TrimSpace(ownerUserID))
-	if err != nil {
+	ownerID, ok := parseUUID(ownerUserID)
+	if !ok {
 		return Workspace{}, ErrInvalidInput
 	}
-	wsID, err := uuid.Parse(strings.TrimSpace(workspaceID))
-	if err != nil {
+	wsID, ok := parseUUID(workspaceID)
+	if !ok {
 		return Workspace{}, ErrInvalidInput
 	}
+
 	row, err := s.queries.GetWorkspaceByIDAndOwnerUserID(ctx, pgstore.GetWorkspaceByIDAndOwnerUserIDParams{
 		ID:          wsID,
 		OwnerUserID: ownerID,
@@ -109,14 +111,15 @@ func (s *WorkspaceService) GetWorkspace(ctx context.Context, ownerUserID, worksp
 
 // UpdateWorkspace updates one workspace if it belongs to the given owner user.
 func (s *WorkspaceService) UpdateWorkspace(ctx context.Context, ownerUserID, workspaceID string, p UpdateWorkspaceParams) (Workspace, error) {
-	ownerID, err := uuid.Parse(strings.TrimSpace(ownerUserID))
-	if err != nil {
+	ownerID, ok := parseUUID(ownerUserID)
+	if !ok {
 		return Workspace{}, ErrInvalidInput
 	}
-	wsID, err := uuid.Parse(strings.TrimSpace(workspaceID))
-	if err != nil {
+	wsID, ok := parseUUID(workspaceID)
+	if !ok {
 		return Workspace{}, ErrInvalidInput
 	}
+
 	name, ok := normalizeWorkspaceName(p.Name)
 	if !ok {
 		return Workspace{}, ErrInvalidInput
@@ -140,12 +143,12 @@ func (s *WorkspaceService) UpdateWorkspace(ctx context.Context, ownerUserID, wor
 
 // DeleteWorkspace deletes one workspace if it belongs to the given owner user.
 func (s *WorkspaceService) DeleteWorkspace(ctx context.Context, ownerUserID, workspaceID string) error {
-	ownerID, err := uuid.Parse(strings.TrimSpace(ownerUserID))
-	if err != nil {
+	ownerID, ok := parseUUID(ownerUserID)
+	if !ok {
 		return ErrInvalidInput
 	}
-	wsID, err := uuid.Parse(strings.TrimSpace(workspaceID))
-	if err != nil {
+	wsID, ok := parseUUID(workspaceID)
+	if !ok {
 		return ErrInvalidInput
 	}
 

@@ -33,9 +33,8 @@ type listWorkspacesResponse struct {
 }
 
 func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
-	principal, ok := principalFromContext(r.Context())
+	user, ok := s.requireCallerUser(w, r)
 	if !ok {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	var req createWorkspaceRequest
@@ -49,18 +48,6 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.services.Users.GetUserByIdentityKey(r.Context(), principal.IdentityKey)
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, service.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
-		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
-		}
-		return
-	}
 	out, err := s.services.Workspaces.CreateWorkspace(r.Context(), user.ID, service.CreateWorkspaceParams{Name: req.Name})
 	if err != nil {
 		switch {
@@ -85,21 +72,8 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
-	principal, ok := principalFromContext(r.Context())
+	user, ok := s.requireCallerUser(w, r)
 	if !ok {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	user, err := s.services.Users.GetUserByIdentityKey(r.Context(), principal.IdentityKey)
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, service.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
-		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
-		}
 		return
 	}
 	workspaces, err := s.services.Workspaces.ListWorkspaces(r.Context(), user.ID)
@@ -127,26 +101,13 @@ func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetWorkspace(w http.ResponseWriter, r *http.Request) {
-	principal, ok := principalFromContext(r.Context())
+	user, ok := s.requireCallerUser(w, r)
 	if !ok {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
 	if workspaceID == "" {
 		writeErr(w, http.StatusBadRequest, "invalid input")
-		return
-	}
-	user, err := s.services.Users.GetUserByIdentityKey(r.Context(), principal.IdentityKey)
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, service.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
-		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
-		}
 		return
 	}
 	ws, err := s.services.Workspaces.GetWorkspace(r.Context(), user.ID, workspaceID)
@@ -170,9 +131,8 @@ func (s *Server) handleGetWorkspace(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
-	principal, ok := principalFromContext(r.Context())
+	user, ok := s.requireCallerUser(w, r)
 	if !ok {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
@@ -187,18 +147,6 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusRequestEntityTooLarge, "request body too large")
 		default:
 			writeErr(w, http.StatusBadRequest, "invalid json")
-		}
-		return
-	}
-	user, err := s.services.Users.GetUserByIdentityKey(r.Context(), principal.IdentityKey)
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, service.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
-		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
 		}
 		return
 	}
@@ -226,26 +174,13 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 	})
 }
 func (s *Server) handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
-	principal, ok := principalFromContext(r.Context())
+	user, ok := s.requireCallerUser(w, r)
 	if !ok {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
 	if workspaceID == "" {
 		writeErr(w, http.StatusBadRequest, "invalid input")
-		return
-	}
-	user, err := s.services.Users.GetUserByIdentityKey(r.Context(), principal.IdentityKey)
-	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, service.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
-		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
-		}
 		return
 	}
 	if err := s.services.Workspaces.DeleteWorkspace(r.Context(), user.ID, workspaceID); err != nil {

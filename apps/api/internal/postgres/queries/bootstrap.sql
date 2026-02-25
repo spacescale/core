@@ -25,14 +25,32 @@ WITH input AS (
              ON CONFLICT (owner_user_id, name) DO NOTHING
              RETURNING id
      ),
-     inserted_project AS (
-         INSERT INTO projects (workspace_id, name, slug, region, created_at, updated_at)
-             SELECT iw.id, i.project_name, i.project_slug, i.project_region, now(), now()
-             FROM inserted_workspace iw
-                      CROSS JOIN input i
-             RETURNING id
-     )
+inserted_project AS (
+    INSERT INTO projects (workspace_id, name, slug, region, created_at, updated_at)
+    SELECT iw.id, i.project_name, i.project_slug, i.project_region, now(), now()
+    FROM inserted_workspace iw
+    CROSS JOIN input i
+    RETURNING id
+),
+selected_workspace AS (
+    SELECT id AS workspace_id
+    FROM inserted_workspace
+    UNION ALL
+    SELECT '00000000-0000-0000-0000-000000000000'::uuid AS workspace_id
+    LIMIT 1
+),
+selected_project AS (
+    SELECT id AS project_id
+    FROM inserted_project
+    UNION ALL
+    SELECT '00000000-0000-0000-0000-000000000000'::uuid AS project_id
+    LIMIT 1
+)
+-- On returning users, inserted CTEs are empty.
+-- selected_* CTEs guarantee non-null UUID rows so sqlc scans into uuid.UUID.
 SELECT
     EXISTS (SELECT 1 FROM inserted_workspace) AS created,
-    (SELECT id FROM inserted_workspace LIMIT 1) AS workspace_id,
-    (SELECT id FROM inserted_project LIMIT 1) AS project_id;
+    sw.workspace_id,
+    sp.project_id
+FROM selected_workspace sw
+CROSS JOIN selected_project sp;

@@ -13,6 +13,7 @@ type Services struct {
 	Users      *UserService
 	Projects   *ProjectService
 	Workspaces *WorkspaceService
+	Bootstrap  *BootstrapService
 }
 
 // NewServices builds all service dependencies from one shared query set.
@@ -21,5 +22,6 @@ func NewServices(queries *pgstore.Queries) *Services {
 		Users:      NewUserService(queries),
 		Projects:   NewProjectService(queries),
 		Workspaces: NewWorkspaceService(queries),
+		Bootstrap:  NewBootstrapService(queries),
 	}
 }

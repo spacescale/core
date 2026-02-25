@@ -107,8 +107,10 @@ func TestNewServerRequiresNonEmptyInternalSecret(t *testing.T) {
 	require.PanicsWithValue(t, "http_api.NewServer requires non-empty internal auth secret", func() {
 		http_api.NewServer(http_api.ServerDeps{
 			Services: &service.Services{
-				Projects: &service.ProjectService{},
-				Users:    &service.UserService{},
+				Projects:   &service.ProjectService{},
+				Users:      &service.UserService{},
+				Workspaces: &service.WorkspaceService{},
+				Bootstrap:  &service.BootstrapService{},
 			},
 			DBPool: &pgxpool.Pool{},
 			Config: config.APIConfig{

@@ -10,24 +10,14 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
-	"math/big"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
-)
-
-const (
-	defaultRegion  = "global"
-	maxSlugRetries = 8
-	suffixLength   = 6
 )
 
 // Project represents a user-owned project.
@@ -134,8 +124,8 @@ func (s *ProjectService) GetProject(ctx context.Context, ownerUserID, workspaceI
 	if err != nil {
 		return Project{}, err
 	}
-	projectUUID, err := uuid.Parse(strings.TrimSpace(projectID))
-	if err != nil {
+	projectUUID, ok := parseUUID(projectID)
+	if !ok {
 		return Project{}, ErrInvalidInput
 	}
 	row, err := s.getOwnedProjectInWorkspace(ctx, ownerUUID, workspaceUUID, projectUUID)
@@ -154,8 +144,8 @@ func (s *ProjectService) UpdateProject(
 	if err != nil {
 		return Project{}, err
 	}
-	projectUUID, err := uuid.Parse(strings.TrimSpace(projectID))
-	if err != nil {
+	projectUUID, ok := parseUUID(projectID)
+	if !ok {
 		return Project{}, ErrInvalidInput
 	}
 	existing, err := s.getOwnedProjectInWorkspace(ctx, ownerUUID, workspaceUUID, projectUUID)
@@ -193,8 +183,8 @@ func (s *ProjectService) DeleteProject(ctx context.Context, ownerUserID, workspa
 	if err != nil {
 		return err
 	}
-	projectUUID, err := uuid.Parse(strings.TrimSpace(projectID))
-	if err != nil {
+	projectUUID, ok := parseUUID(projectID)
+	if !ok {
 		return ErrInvalidInput
 	}
 	if _, err := s.getOwnedProjectInWorkspace(ctx, ownerUUID, workspaceUUID, projectUUID); err != nil {
@@ -214,15 +204,16 @@ func (s *ProjectService) DeleteProject(ctx context.Context, ownerUserID, workspa
 }
 
 func (s *ProjectService) authorizeWorkspace(ctx context.Context, ownerUserID, workspaceID string) (uuid.UUID, uuid.UUID, error) {
-	ownerUUID, err := uuid.Parse(strings.TrimSpace(ownerUserID))
-	if err != nil {
+	ownerUUID, ok := parseUUID(ownerUserID)
+	if !ok {
 		return uuid.Nil, uuid.Nil, ErrInvalidInput
 	}
-	workspaceUUID, err := uuid.Parse(strings.TrimSpace(workspaceID))
-	if err != nil {
+	workspaceUUID, ok := parseUUID(workspaceID)
+	if !ok {
 		return uuid.Nil, uuid.Nil, ErrInvalidInput
 	}
-	_, err = s.queries.GetWorkspaceByIDAndOwnerUserID(ctx, pgstore.GetWorkspaceByIDAndOwnerUserIDParams{
+
+	_, err := s.queries.GetWorkspaceByIDAndOwnerUserID(ctx, pgstore.GetWorkspaceByIDAndOwnerUserIDParams{
 		ID:          workspaceUUID,
 		OwnerUserID: ownerUUID,
 	})
@@ -308,56 +299,6 @@ func (s *ProjectService) generateName(ctx context.Context) (string, error) {
 	return fmt.Sprintf("%s-%s", adj, noun), nil
 }
 
-// slugifyProjectName converts a raw project name into a stable URL slug.
-// The transformation is intentionally strict and predictable:
-// 1) trim surrounding whitespace and lowercase the input,
-// 2) keep only letters and numbers while collapsing separator runs to one hyphen,
-// 3) trim edge hyphens so the returned value is path-safe.
-func slugifyProjectName(name string) string {
-	// Normalize first so casing and accidental outer spaces never affect slug
-	// uniqueness or readability.
-	normalized := strings.ToLower(strings.TrimSpace(name))
-
-	var b strings.Builder // build slug incrementally to avoid repeated string allocations.
-
-	var prevHyphen bool // tracks whether the most recently written byte was '-' for separator collapsing.
-
-	for _, r := range normalized {
-		switch {
-		case unicode.IsLetter(r) || unicode.IsNumber(r):
-			// Keep alphanumeric runes exactly as they are after normalization.
-			b.WriteRune(r)
-			prevHyphen = false
-		default:
-			// Treat every non-alphanumeric rune as a separator boundary.
-			// Add one hyphen only when:
-			// - the previous output character was not already a hyphen, and
-			// - output is not empty (prevents leading hyphens).
-			if !prevHyphen && b.Len() > 0 {
-				b.WriteByte('-')
-				prevHyphen = true
-			}
-		}
-	}
-
-	// Remove boundary hyphens that can appear when input begins or ends with
-	// separators.
-	return strings.Trim(b.String(), "-")
-}
-
-// randomSuffix returns a random lowercase alphanumeric suffix of fixed length.
-// It is used only for slug collision retries so the user-visible base slug
-// remains stable while each persistence attempt gets a fresh candidate.
-func randomSuffix(n int) string {
-	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
-	var b strings.Builder
-	for i := 0; i < n; i++ {
-		idx, _ := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))))
-		b.WriteByte(alphabet[idx.Int64()])
-	}
-	return b.String()
-}
-
 // projectFromRow maps a database project row into the service Project model.
 // It converts UUID values into plain string identifiers for API-facing models,
 // and copies user-facing fields and timestamps as-is.
@@ -373,15 +314,4 @@ func projectFromRow(r pgstore.Project) Project {
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,
 	}
-}
-
-// isUniqueViolation reports whether an error is a PostgreSQL unique violation.
-// The result is used to trigger slug retry logic and separate expected conflict
-// handling from unexpected database failures.
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23505"
-	}
-	return false
 }

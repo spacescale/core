@@ -1,0 +1,13 @@
+type: folder
+model: folder
+id: fl_zP4fK8sLm2
+createdAt: 2026-02-24T21:30:00
+updatedAt: 2026-02-24T21:30:00
+workspaceId: wk_KJF6oyHis3
+folderId: null
+authentication: {}
+authenticationType: null
+description: ''
+headers: []
+name: workspaces
+sortPriority: 7.5

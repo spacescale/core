@@ -1,0 +1,50 @@
+type: http_request
+model: http_request
+id: rq_E8uTi1oPm5
+createdAt: 2026-02-24T21:30:09
+updatedAt: 2026-02-24T22:10:08
+workspaceId: wk_KJF6oyHis3
+folderId: fl_mN33FWQe9B
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: |-
+  ## Delete Project
+
+  Delete one project inside one workspace.
+
+  ### Endpoint
+  - **Method**: `DELETE`
+  - **Path**: `/v0/workspaces/{workspaceId}/projects/{projectId}`
+
+  ### Path Parameters
+  - `workspaceId` (required): workspace UUID
+  - `projectId` (required): project UUID
+
+  ### Authentication
+  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+
+  ### Behavior
+  - operation is ownership-scoped to the caller
+  - project delete cascades to dependent rows via DB constraints
+
+  ### Success Response
+  - **Status**: `204 No Content`
+  - empty response body
+
+  ### Error Responses
+  - `400 Bad Request`: invalid UUID path params
+  - `401 Unauthorized`: token invalid or resource not owned by caller
+  - `429 Too Many Requests`: per-user API rate limit exceeded
+  - `500 Internal Server Error`: unexpected runtime error
+headers:
+- enabled: true
+  name: Authorization
+  value: Bearer ${[ BFF_TOKEN ]}
+  id: hPrDlAuth01
+method: DELETE
+name: Delete Project
+sortPriority: 4.0
+url: http://${[ BASE_URL ]}/v0/workspaces/${[ WORKSPACE_ID ]}/projects/${[ PROJECT_ID ]}
+urlParameters: []

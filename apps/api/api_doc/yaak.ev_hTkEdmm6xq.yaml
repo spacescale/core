@@ -3,7 +3,7 @@ model: environment
 id: ev_hTkEdmm6xq
 workspaceId: wk_KJF6oyHis3
 createdAt: 2026-01-25T03:25:42.430059
-updatedAt: 2026-02-18T21:10:00.000000
+updatedAt: 2026-02-24T21:30:00
 name: LOCAL
 public: true
 base: false
@@ -22,5 +22,13 @@ variables:
   name: INTERNAL_AUTH_SYNC_SECRET
   value: replace-with-internal-auth-sync-secret
   id: internalAuthSyncSecret
+- enabled: true
+  name: WORKSPACE_ID
+  value: replace-with-workspace-id
+  id: workspaceId
+- enabled: true
+  name: PROJECT_ID
+  value: replace-with-project-id
+  id: projectId
 color: var(--primary)
 sortPriority: 0.0

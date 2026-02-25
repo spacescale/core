@@ -68,6 +68,12 @@ func NewServer(deps ServerDeps) *Server {
 	if deps.Services.Projects == nil {
 		panic("http_api.NewServer requires non-nil project service")
 	}
+	if deps.Services.Workspaces == nil {
+		panic("http_api.NewServer requires non-nil workspace service")
+	}
+	if deps.Services.Bootstrap == nil {
+		panic("http_api.NewServer requires non-nil bootstrap service")
+	}
 	if deps.Services.Users == nil {
 		panic("http_api.NewServer requires non-nil user service")
 	}
@@ -138,6 +144,7 @@ func (s *Server) Router() http.Handler {
 	r.Route("/v0", func(r chi.Router) {
 		r.Use(authMiddleware(s.config.Auth, s.config.LogPrivacy))
 		r.Use(userLimiter)
+		r.Post("/bootstrap-defaults", s.handleBootstrapDefaults)
 
 		// Workspaces endpoints.
 		r.Post("/workspaces", s.handleCreateWorkspace)
