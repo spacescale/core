@@ -1,8 +1,8 @@
-// This file implements the project-creation workflow in the service layer.
-// It coordinates project-shape validation, request normalization, defaulting,
-// slug generation, and conflict-retry behavior.
-// It also contains mapping helpers that translate SQLC and pgtype values into
-// plain service structs consumed by HTTP handlers.
+// This file implements project CRUD workflows in the service layer.
+// It coordinates validation, defaulting, slug generation, ownership checks,
+// and persistence mapping for API handlers.
+// It also contains mapping helpers that translate SQLC rows into plain service
+// structs consumed by HTTP handlers.
 // Keep domain rules here so transport code stays thin and persistence details
 // remain isolated behind a single business workflow boundary.
 
@@ -10,29 +10,20 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
-	"math/big"
 	"strings"
 	"time"
-	"unicode"
 
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
-)
-
-const (
-	defaultRegion  = "global"
-	maxSlugRetries = 8
-	suffixLength   = 6
 )
 
 // Project represents a user-owned project.
 type Project struct {
 	ID          string
-	OwnerUserID string
+	WorkspaceID string
 	Name        string
 	Slug        string
 	Region      string
@@ -51,6 +42,11 @@ type CreateProjectParams struct {
 	Region string
 }
 
+type UpdateProjectParams struct {
+	Name   string
+	Region string
+}
+
 // NewProjectService creates a ProjectService bound to the provided query set.
 // Construction stays explicit so handlers and tests can wire dependencies
 // through one place and keep storage details out of call sites.
@@ -58,21 +54,20 @@ func NewProjectService(queries *pgstore.Queries) *ProjectService {
 	return &ProjectService{queries: queries}
 }
 
-// CreateProject creates a project for an existing owner user ID.
+// CreateProject creates a project inside a workspace owned by caller
 // It trims request values and generates a fallback name when none is supplied
 // by the caller.
 // After validation and defaulting, it retries inserts on slug conflicts and
 // maps the stored row into the service model returned to handlers.
 // Validation failures are normalized to ErrInvalidInput, and exhausted slug
 // retries are returned as ErrConflict.
-func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID string, p CreateProjectParams) (Project, error) {
-	ownerUserID = strings.TrimSpace(ownerUserID)
-	if ownerUserID == "" {
-		return Project{}, ErrInvalidInput
+func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID, workspaceID string, p CreateProjectParams) (Project, error) {
+	_, workspaceUUID, err := s.authorizeWorkspace(ctx, ownerUserID, workspaceID)
+	if err != nil {
+		return Project{}, err
 	}
 
 	name := strings.TrimSpace(p.Name)
-	var err error
 	if name == "" {
 		name, err = s.generateName(ctx)
 		if err != nil {
@@ -80,7 +75,7 @@ func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID string, 
 		}
 	}
 
-	project, err := buildProject(ownerUserID, name, p.Region)
+	project, err := buildProject(workspaceID, name, p.Region)
 	if err != nil {
 		return Project{}, ErrInvalidInput
 	}
@@ -88,7 +83,7 @@ func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID string, 
 	baseSlug := project.Slug
 	for i := 0; i < maxSlugRetries; i++ {
 		row, err := s.queries.CreateProject(ctx, pgstore.CreateProjectParams{
-			OwnerUserID: uuidFromString(project.OwnerUserID),
+			WorkspaceID: workspaceUUID,
 			Name:        project.Name,
 			Slug:        project.Slug,
 			Region:      project.Region,
@@ -99,34 +94,196 @@ func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID string, 
 		if !isUniqueViolation(err) {
 			return Project{}, err
 		}
-		project.Slug = baseSlug + "-" + randomSuffix(suffixLength)
+		suffix, suffixErr := randomSuffix(suffixLength)
+		if suffixErr != nil {
+			return Project{}, suffixErr
+		}
+		project.Slug = slugWithSuffix(baseSlug, suffix)
 	}
 
 	return Project{}, ErrConflict
 }
 
+func (s *ProjectService) ListProjects(ctx context.Context, ownerUserID, workspaceID string) ([]Project, error) {
+	ownerUUID, workspaceUUID, err := s.authorizeWorkspace(ctx, ownerUserID, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.queries.ListProjectsByWorkspaceIDAndOwnerUserID(ctx, pgstore.ListProjectsByWorkspaceIDAndOwnerUserIDParams{
+		WorkspaceID: workspaceUUID,
+		OwnerUserID: ownerUUID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Project, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, projectFromRow(row))
+	}
+	return out, nil
+}
+
+func (s *ProjectService) GetProject(ctx context.Context, ownerUserID, workspaceID, projectID string) (Project, error) {
+	ownerUUID, workspaceUUID, err := s.authorizeWorkspace(ctx, ownerUserID, workspaceID)
+	if err != nil {
+		return Project{}, err
+	}
+	projectUUID, ok := parseUUID(projectID)
+	if !ok {
+		return Project{}, ErrInvalidInput
+	}
+	row, err := s.getOwnedProjectInWorkspace(ctx, ownerUUID, workspaceUUID, projectUUID)
+	if err != nil {
+		return Project{}, err
+	}
+	return projectFromRow(row), nil
+}
+
+func (s *ProjectService) UpdateProject(
+	ctx context.Context,
+	ownerUserID, workspaceID, projectID string,
+	p UpdateProjectParams,
+) (Project, error) {
+	ownerUUID, workspaceUUID, err := s.authorizeWorkspace(ctx, ownerUserID, workspaceID)
+	if err != nil {
+		return Project{}, err
+	}
+	projectUUID, ok := parseUUID(projectID)
+	if !ok {
+		return Project{}, ErrInvalidInput
+	}
+	existing, err := s.getOwnedProjectInWorkspace(ctx, ownerUUID, workspaceUUID, projectUUID)
+	if err != nil {
+		return Project{}, err
+	}
+	nextName := strings.TrimSpace(p.Name)
+	nextRegion := strings.TrimSpace(p.Region)
+	if nextName == "" && nextRegion == "" {
+		return Project{}, ErrInvalidInput
+	}
+	if nextName == "" {
+		nextName = existing.Name
+	} else {
+		normalizedName, ok := normalizeProjectName(nextName)
+		if !ok {
+			return Project{}, ErrInvalidInput
+		}
+		nextName = normalizedName
+	}
+	if nextRegion == "" {
+		nextRegion = existing.Region
+	} else {
+		normalizedRegion, ok := normalizeProjectRegion(nextRegion)
+		if !ok {
+			return Project{}, ErrInvalidInput
+		}
+		nextRegion = normalizedRegion
+	}
+	row, err := s.queries.UpdateProjectByIDAndOwnerUserID(ctx, pgstore.UpdateProjectByIDAndOwnerUserIDParams{
+		ID:          projectUUID,
+		OwnerUserID: ownerUUID,
+		Name:        nextName,
+		Region:      nextRegion,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Project{}, ErrUnauthorized
+		}
+		return Project{}, err
+	}
+	return projectFromRow(row), nil
+}
+
+func (s *ProjectService) DeleteProject(ctx context.Context, ownerUserID, workspaceID, projectID string) error {
+	ownerUUID, workspaceUUID, err := s.authorizeWorkspace(ctx, ownerUserID, workspaceID)
+	if err != nil {
+		return err
+	}
+	projectUUID, ok := parseUUID(projectID)
+	if !ok {
+		return ErrInvalidInput
+	}
+	if _, err := s.getOwnedProjectInWorkspace(ctx, ownerUUID, workspaceUUID, projectUUID); err != nil {
+		return err
+	}
+	affected, err := s.queries.DeleteProjectByIDAndOwnerUserID(ctx, pgstore.DeleteProjectByIDAndOwnerUserIDParams{
+		ID:          projectUUID,
+		OwnerUserID: ownerUUID,
+	})
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrUnauthorized
+	}
+	return nil
+}
+
+func (s *ProjectService) authorizeWorkspace(ctx context.Context, ownerUserID, workspaceID string) (uuid.UUID, uuid.UUID, error) {
+	ownerUUID, ok := parseUUID(ownerUserID)
+	if !ok {
+		return uuid.Nil, uuid.Nil, ErrInvalidInput
+	}
+	workspaceUUID, ok := parseUUID(workspaceID)
+	if !ok {
+		return uuid.Nil, uuid.Nil, ErrInvalidInput
+	}
+
+	_, err := s.queries.GetWorkspaceByIDAndOwnerUserID(ctx, pgstore.GetWorkspaceByIDAndOwnerUserIDParams{
+		ID:          workspaceUUID,
+		OwnerUserID: ownerUUID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, uuid.Nil, ErrUnauthorized
+		}
+		return uuid.Nil, uuid.Nil, err
+	}
+	return ownerUUID, workspaceUUID, nil
+}
+
+func (s *ProjectService) getOwnedProjectInWorkspace(
+	ctx context.Context,
+	ownerUUID, workspaceUUID, projectUUID uuid.UUID,
+) (pgstore.Project, error) {
+	row, err := s.queries.GetProjectByIDAndOwnerUserID(ctx, pgstore.GetProjectByIDAndOwnerUserIDParams{
+		ID:          projectUUID,
+		OwnerUserID: ownerUUID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return pgstore.Project{}, ErrUnauthorized
+		}
+		return pgstore.Project{}, err
+	}
+	if row.WorkspaceID != workspaceUUID {
+		return pgstore.Project{}, ErrUnauthorized
+	}
+	return row, nil
+}
+
 // buildProject validates raw project fields and applies service defaults.
-// It requires non-empty owner and name fields, assigns the default region when
+// It requires non-empty workspace and name fields, assigns the default region when
 // omitted, and derives a normalized slug from the display name.
 // Names that cannot produce a usable slug are rejected as invalid input.
 // CreatedAt and UpdatedAt are set in UTC to keep serialization consistent.
-func buildProject(ownerUserID, name, region string) (Project, error) {
-	owner := strings.TrimSpace(ownerUserID)
-	if owner == "" {
-		return Project{}, errors.New("owner user id is required")
+func buildProject(workspaceID, name, region string) (Project, error) {
+	workspace := strings.TrimSpace(workspaceID)
+	if workspace == "" {
+		return Project{}, errors.New("workspace id is required")
 	}
 
-	name = strings.TrimSpace(name)
-	if name == "" {
+	normalizedName, ok := normalizeProjectName(name)
+	if !ok {
 		return Project{}, errors.New("project name is required")
 	}
 
-	region = strings.TrimSpace(region)
-	if region == "" {
-		region = defaultRegion
+	normalizedRegion, ok := normalizeProjectRegion(region)
+	if !ok {
+		return Project{}, errors.New("project region is invalid")
 	}
 
-	slug := slugifyProjectName(name)
+	slug := slugifyProjectName(normalizedName)
 	if slug == "" {
 		return Project{}, errors.New("project name is invalid")
 	}
@@ -134,10 +291,10 @@ func buildProject(ownerUserID, name, region string) (Project, error) {
 	now := time.Now().UTC()
 	return Project{
 		ID:          "",
-		OwnerUserID: owner,
-		Name:        name,
+		WorkspaceID: workspace,
+		Name:        normalizedName,
 		Slug:        slug,
-		Region:      region,
+		Region:      normalizedRegion,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}, nil
@@ -158,120 +315,19 @@ func (s *ProjectService) generateName(ctx context.Context) (string, error) {
 	return fmt.Sprintf("%s-%s", adj, noun), nil
 }
 
-// slugifyProjectName converts a raw project name into a stable URL slug.
-// The transformation is intentionally strict and predictable:
-// 1) trim surrounding whitespace and lowercase the input,
-// 2) keep only letters and numbers while collapsing separator runs to one hyphen,
-// 3) trim edge hyphens so the returned value is path-safe.
-func slugifyProjectName(name string) string {
-	// Normalize first so casing and accidental outer spaces never affect slug
-	// uniqueness or readability.
-	normalized := strings.ToLower(strings.TrimSpace(name))
-
-	var b strings.Builder // build slug incrementally to avoid repeated string allocations.
-
-	var prevHyphen bool // tracks whether the most recently written byte was '-' for separator collapsing.
-
-	for _, r := range normalized {
-		switch {
-		case unicode.IsLetter(r) || unicode.IsNumber(r):
-			// Keep alphanumeric runes exactly as they are after normalization.
-			b.WriteRune(r)
-			prevHyphen = false
-		default:
-			// Treat every non-alphanumeric rune as a separator boundary.
-			// Add one hyphen only when:
-			// - the previous output character was not already a hyphen, and
-			// - output is not empty (prevents leading hyphens).
-			if !prevHyphen && b.Len() > 0 {
-				b.WriteByte('-')
-				prevHyphen = true
-			}
-		}
-	}
-
-	// Remove boundary hyphens that can appear when input begins or ends with
-	// separators.
-	return strings.Trim(b.String(), "-")
-}
-
-// randomSuffix returns a random lowercase alphanumeric suffix of fixed length.
-// It is used only for slug collision retries so the user-visible base slug
-// remains stable while each persistence attempt gets a fresh candidate.
-func randomSuffix(n int) string {
-	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
-	var b strings.Builder
-	for i := 0; i < n; i++ {
-		idx, _ := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))))
-		b.WriteByte(alphabet[idx.Int64()])
-	}
-	return b.String()
-}
-
-// textFromPG converts pgtype text values into plain strings.
-// Invalid or null database values are normalized to an empty string so service
-// models stay consistent for optional profile fields.
-func textFromPG(v pgtype.Text) string {
-	if !v.Valid {
-		return ""
-	}
-	return v.String
-}
-
 // projectFromRow maps a database project row into the service Project model.
-// It converts UUID wrappers into plain string identifiers for ID and ownership,
-// copies user-facing fields like name, slug, and region as-is, and normalizes
-// database timestamps into Go time values used by API responses.
+// It converts UUID values into plain string identifiers for API-facing models,
+// and copies user-facing fields and timestamps as-is.
 // Keeping this translation at the service boundary prevents HTTP handlers from
 // depending on SQLC-generated types and keeps model conversion rules centralized.
 func projectFromRow(r pgstore.Project) Project {
 	return Project{
-		ID:          uuidToString(r.ID),
-		OwnerUserID: uuidToString(r.OwnerUserID),
+		ID:          r.ID.String(),
+		WorkspaceID: r.WorkspaceID.String(),
 		Name:        r.Name,
 		Slug:        r.Slug,
 		Region:      r.Region,
-		CreatedAt:   timeFromTimestamptz(r.CreatedAt),
-		UpdatedAt:   timeFromTimestamptz(r.UpdatedAt),
+		CreatedAt:   r.CreatedAt,
+		UpdatedAt:   r.UpdatedAt,
 	}
-}
-
-// uuidFromString converts a string identifier into pgtype UUID.
-// Invalid input leaves the zero-value UUID and relies on downstream validation
-// rules where strict enforcement is required.
-func uuidFromString(id string) pgtype.UUID {
-	var u pgtype.UUID
-	_ = u.Scan(id)
-	return u
-}
-
-// uuidToString converts pgtype UUID to string.
-// An invalid source UUID is converted to an empty string so callers do not
-// receive partially populated or misleading identifier values.
-func uuidToString(id pgtype.UUID) string {
-	if !id.Valid {
-		return ""
-	}
-	return id.String()
-}
-
-// timeFromTimestamptz converts pgtype timestamptz to time value.
-// Invalid timestamp values are mapped to zero time so optional fields behave
-// predictably when database values are absent.
-func timeFromTimestamptz(t pgtype.Timestamptz) time.Time {
-	if !t.Valid {
-		return time.Time{}
-	}
-	return t.Time
-}
-
-// isUniqueViolation reports whether an error is a PostgreSQL unique violation.
-// The result is used to trigger slug retry logic and separate expected conflict
-// handling from unexpected database failures.
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23505"
-	}
-	return false
 }

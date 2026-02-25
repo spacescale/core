@@ -5,23 +5,20 @@
 package service
 
 import (
-	"errors"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
 )
 
 func TestBuildProject(t *testing.T) {
 	t.Run("applies defaults and normalization", func(t *testing.T) {
-		got, err := buildProject(" owner-1 ", "  My Project  ", " ")
+		got, err := buildProject(" workspace-1 ", "  My Project  ", " ")
 		require.NoError(t, err)
-		require.Equal(t, "owner-1", got.OwnerUserID)
+		require.Equal(t, "workspace-1", got.WorkspaceID)
 		require.Equal(t, "My Project", got.Name)
 		require.Equal(t, defaultRegion, got.Region)
 		require.Equal(t, "my-project", got.Slug)
@@ -32,7 +29,7 @@ func TestBuildProject(t *testing.T) {
 		require.Equal(t, time.UTC, got.CreatedAt.Location())
 	})
 
-	t.Run("rejects missing owner", func(t *testing.T) {
+	t.Run("rejects missing workspace", func(t *testing.T) {
 		_, err := buildProject(" ", "project", "")
 		require.Error(t, err)
 	})
@@ -46,98 +43,62 @@ func TestBuildProject(t *testing.T) {
 		_, err := buildProject("owner-1", " !!! ", "")
 		require.Error(t, err)
 	})
-}
 
-func TestSlugifyProjectName(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{name: "simple words", in: "Hello World", want: "hello-world"},
-		{name: "collapses separators", in: "__Hello---WORLD__", want: "hello-world"},
-		{name: "trims boundaries", in: "  ###go### ", want: "go"},
-		{name: "keeps numbers", in: "Project 123", want: "project-123"},
-		{name: "unicode letters", in: "日本 語", want: "日本-語"},
-		{name: "all symbols", in: "!!!", want: ""},
-	}
+	t.Run("rejects unicode-only name because slug must be ascii", func(t *testing.T) {
+		_, err := buildProject("owner-1", "日本語", "")
+		require.Error(t, err)
+	})
 
-	for _, tc := range tests {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			got := slugifyProjectName(tc.in)
-			require.Equal(t, tc.want, got)
-		})
-	}
-}
+	t.Run("rejects name over max length", func(t *testing.T) {
+		_, err := buildProject("owner-1", strings.Repeat("a", projectNameMaxLength+1), "")
+		require.Error(t, err)
+	})
 
-func TestRandomSuffix(t *testing.T) {
-	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+	t.Run("normalizes region to lowercase", func(t *testing.T) {
+		got, err := buildProject("workspace-1", "my project", "US-EAST-1")
+		require.NoError(t, err)
+		require.Equal(t, "us-east-1", got.Region)
+	})
 
-	require.Empty(t, randomSuffix(0))
+	t.Run("rejects invalid region format", func(t *testing.T) {
+		_, err := buildProject("workspace-1", "my project", "global!")
+		require.Error(t, err)
+	})
 
-	got := randomSuffix(24)
-	require.Len(t, got, 24)
-	for _, r := range got {
-		require.Truef(t, strings.ContainsRune(alphabet, r), "unexpected suffix rune %q in %q", r, got)
-	}
-}
-
-func TestTextAndTimeHelpers(t *testing.T) {
-	require.Equal(t, "dev@example.com", textFromPG(pgtype.Text{String: "dev@example.com", Valid: true}))
-	require.Empty(t, textFromPG(pgtype.Text{Valid: false}))
-
-	ts := time.Date(2026, 2, 9, 10, 20, 30, 0, time.UTC)
-	require.True(t, timeFromTimestamptz(pgtype.Timestamptz{Time: ts, Valid: true}).Equal(ts))
-	require.True(t, timeFromTimestamptz(pgtype.Timestamptz{Valid: false}).IsZero())
-}
-
-func TestUUIDHelpers(t *testing.T) {
-	validID := "550e8400-e29b-41d4-a716-446655440000"
-	u := uuidFromString(validID)
-	require.True(t, u.Valid)
-	require.Equal(t, validID, uuidToString(u))
-
-	invalid := uuidFromString("not-a-uuid")
-	require.False(t, invalid.Valid)
-	require.Empty(t, uuidToString(invalid))
+	t.Run("caps generated slug to dns label length", func(t *testing.T) {
+		longName := strings.Repeat("a", projectNameMaxLength)
+		got, err := buildProject("workspace-1", longName, "global")
+		require.NoError(t, err)
+		require.LessOrEqual(t, len(got.Slug), projectSlugMaxLength)
+	})
 }
 
 func TestProjectFromRow(t *testing.T) {
-	uid := mustUUID(t, "550e8400-e29b-41d4-a716-446655440000")
+	wid := mustUUID(t, "550e8400-e29b-41d4-a716-446655440000")
 	pid := mustUUID(t, "f47ac10b-58cc-4372-a567-0e02b2c3d479")
 	created := time.Date(2026, 2, 9, 1, 2, 3, 0, time.UTC)
 	updated := created.Add(5 * time.Minute)
 
 	gotProject := projectFromRow(pgstore.Project{
 		ID:          pid,
-		OwnerUserID: uid,
+		WorkspaceID: wid,
 		Name:        "misty-harbor",
 		Slug:        "misty-harbor",
 		Region:      "global",
-		CreatedAt:   pgtype.Timestamptz{Time: created, Valid: true},
-		UpdatedAt:   pgtype.Timestamptz{Time: updated, Valid: true},
+		CreatedAt:   created,
+		UpdatedAt:   updated,
 	})
 	require.Equal(t, "f47ac10b-58cc-4372-a567-0e02b2c3d479", gotProject.ID)
-	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", gotProject.OwnerUserID)
+	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", gotProject.WorkspaceID)
 	require.Equal(t, "misty-harbor", gotProject.Name)
 	require.Equal(t, "global", gotProject.Region)
+	require.True(t, gotProject.CreatedAt.Equal(created))
+	require.True(t, gotProject.UpdatedAt.Equal(updated))
 }
 
-func TestIsUniqueViolation(t *testing.T) {
-	dupErr := &pgconn.PgError{Code: "23505"}
-	require.True(t, isUniqueViolation(dupErr))
-
-	wrapped := fmt.Errorf("wrapped: %w", dupErr)
-	require.True(t, isUniqueViolation(wrapped))
-
-	require.False(t, isUniqueViolation(&pgconn.PgError{Code: "22001"}))
-	require.False(t, isUniqueViolation(errors.New("plain error")))
-}
-
-func mustUUID(t *testing.T, raw string) pgtype.UUID {
+func mustUUID(t *testing.T, raw string) uuid.UUID {
 	t.Helper()
-	var u pgtype.UUID
-	require.NoError(t, u.Scan(raw))
+	u, err := uuid.Parse(raw)
+	require.NoError(t, err)
 	return u
 }

@@ -21,7 +21,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
 )
 
@@ -124,19 +123,19 @@ func (s *UserService) SyncAuthUser(ctx context.Context, p SyncAuthUserParams) (U
 		return User{}, err
 	}
 	if err == nil {
-		incomingEmail = keepExistingIfPresent(textFromPG(existingUser.Email), incomingEmail)
-		incomingName = keepExistingIfPresent(textFromPG(existingUser.Name), incomingName)
+		incomingEmail = keepExistingIfPresent(stringValue(existingUser.Email), incomingEmail)
+		incomingName = keepExistingIfPresent(stringValue(existingUser.Name), incomingName)
 		incomingAvatarURL = keepExistingIfPresent(
-			textFromPG(existingUser.AvatarUrl),
+			stringValue(existingUser.AvatarUrl),
 			incomingAvatarURL,
 		)
 	}
 
 	row, err := s.queries.UpsertUserByIdentityKey(ctx, pgstore.UpsertUserByIdentityKeyParams{
 		IdentityKey: identityKey,
-		Email:       textToPG(incomingEmail),
-		Name:        textToPG(incomingName),
-		AvatarUrl:   textToPG(incomingAvatarURL),
+		Email:       stringPtrOrNil(incomingEmail),
+		Name:        stringPtrOrNil(incomingName),
+		AvatarUrl:   stringPtrOrNil(incomingAvatarURL),
 	})
 	if err != nil {
 		return User{}, err
@@ -146,29 +145,36 @@ func (s *UserService) SyncAuthUser(ctx context.Context, p SyncAuthUserParams) (U
 }
 
 // userFromRow maps a storage user row into the service user shape.
-// This keeps database-specific wrapper types out of higher layers and normalizes
-// UUID and timestamp fields into plain service values.
+// This keeps storage types out of higher layers and normalizes optional profile
+// fields into plain service strings.
 func userFromRow(r pgstore.User) User {
 	return User{
-		ID:                  uuidToString(r.ID),
+		ID:                  r.ID.String(),
 		IdentityKey:         r.IdentityKey,
-		Email:               textFromPG(r.Email),
-		Name:                textFromPG(r.Name),
-		AvatarURL:           textFromPG(r.AvatarUrl),
+		Email:               stringValue(r.Email),
+		Name:                stringValue(r.Name),
+		AvatarURL:           stringValue(r.AvatarUrl),
 		OnboardingCompleted: r.OnboardingCompleted,
-		CreatedAt:           timeFromTimestamptz(r.CreatedAt),
-		UpdatedAt:           timeFromTimestamptz(r.UpdatedAt),
+		CreatedAt:           r.CreatedAt,
+		UpdatedAt:           r.UpdatedAt,
 	}
 }
 
-// textToPG converts plain string values into nullable pgtype.Text.
-// Empty strings are normalized to invalid values so storage keeps nullability
-// semantics for optional fields.
-func textToPG(v string) pgtype.Text {
-	if strings.TrimSpace(v) == "" {
-		return pgtype.Text{Valid: false}
+// stringPtrOrNil returns nil for blank values and a trimmed pointer otherwise.
+func stringPtrOrNil(v string) *string {
+	trimmed := strings.TrimSpace(v)
+	if trimmed == "" {
+		return nil
 	}
-	return pgtype.Text{String: v, Valid: true}
+	return &trimmed
+}
+
+// stringValue converts optional DB text fields into service-safe strings.
+func stringValue(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }
 
 // keepExistingIfPresent keeps the stored value once available, and only uses

@@ -8,16 +8,16 @@ package postgres
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 )
 
 const createProject = `-- name: CreateProject :one
-INSERT INTO projects (owner_user_id, name, slug, region, created_at, updated_at)
-VALUES ($1, $2, $3, $4, now(), now()) RETURNING id, owner_user_id, name, slug, region, created_at, updated_at
+INSERT INTO projects (workspace_id, name, slug, region, created_at, updated_at)
+VALUES ($1, $2, $3, $4, now(), now()) RETURNING id, workspace_id, name, slug, region, created_at, updated_at
 `
 
 type CreateProjectParams struct {
-	OwnerUserID pgtype.UUID
+	WorkspaceID uuid.UUID
 	Name        string
 	Slug        string
 	Region      string
@@ -25,7 +25,7 @@ type CreateProjectParams struct {
 
 func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error) {
 	row := q.db.QueryRow(ctx, createProject,
-		arg.OwnerUserID,
+		arg.WorkspaceID,
 		arg.Name,
 		arg.Slug,
 		arg.Region,
@@ -33,7 +33,193 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 	var i Project
 	err := row.Scan(
 		&i.ID,
-		&i.OwnerUserID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Slug,
+		&i.Region,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteProjectByIDAndOwnerUserID = `-- name: DeleteProjectByIDAndOwnerUserID :execrows
+DELETE
+FROM projects AS p USING workspaces AS w
+WHERE p.workspace_id = w.id
+  AND p.id = $1
+  AND w.owner_user_id = $2
+`
+
+type DeleteProjectByIDAndOwnerUserIDParams struct {
+	ID          uuid.UUID
+	OwnerUserID uuid.UUID
+}
+
+func (q *Queries) DeleteProjectByIDAndOwnerUserID(ctx context.Context, arg DeleteProjectByIDAndOwnerUserIDParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteProjectByIDAndOwnerUserID, arg.ID, arg.OwnerUserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getProjectByIDAndOwnerUserID = `-- name: GetProjectByIDAndOwnerUserID :one
+SELECT p.id, p.workspace_id, p.name, p.slug, p.region, p.created_at, p.updated_at
+FROM projects AS p
+         JOIN workspaces AS w ON w.id = p.workspace_id
+WHERE p.id = $1
+  AND w.owner_user_id = $2
+`
+
+type GetProjectByIDAndOwnerUserIDParams struct {
+	ID          uuid.UUID
+	OwnerUserID uuid.UUID
+}
+
+func (q *Queries) GetProjectByIDAndOwnerUserID(ctx context.Context, arg GetProjectByIDAndOwnerUserIDParams) (Project, error) {
+	row := q.db.QueryRow(ctx, getProjectByIDAndOwnerUserID, arg.ID, arg.OwnerUserID)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Slug,
+		&i.Region,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getProjectBySlug = `-- name: GetProjectBySlug :one
+SELECT id, workspace_id, name, slug, region, created_at, updated_at
+FROM projects
+WHERE slug = $1
+`
+
+func (q *Queries) GetProjectBySlug(ctx context.Context, slug string) (Project, error) {
+	row := q.db.QueryRow(ctx, getProjectBySlug, slug)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Slug,
+		&i.Region,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listProjectsByOwnerUserID = `-- name: ListProjectsByOwnerUserID :many
+SELECT p.id, p.workspace_id, p.name, p.slug, p.region, p.created_at, p.updated_at
+FROM projects AS p
+         JOIN workspaces AS w ON w.id = p.workspace_id
+WHERE w.owner_user_id = $1
+ORDER BY p.created_at ASC, p.id ASC
+`
+
+func (q *Queries) ListProjectsByOwnerUserID(ctx context.Context, ownerUserID uuid.UUID) ([]Project, error) {
+	rows, err := q.db.Query(ctx, listProjectsByOwnerUserID, ownerUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Project
+	for rows.Next() {
+		var i Project
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Name,
+			&i.Slug,
+			&i.Region,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProjectsByWorkspaceIDAndOwnerUserID = `-- name: ListProjectsByWorkspaceIDAndOwnerUserID :many
+SELECT p.id, p.workspace_id, p.name, p.slug, p.region, p.created_at, p.updated_at
+FROM projects AS p
+         JOIN workspaces AS w ON w.id = p.workspace_id
+WHERE p.workspace_id = $1
+  AND w.owner_user_id = $2
+ORDER BY p.created_at ASC, p.id ASC
+`
+
+type ListProjectsByWorkspaceIDAndOwnerUserIDParams struct {
+	WorkspaceID uuid.UUID
+	OwnerUserID uuid.UUID
+}
+
+func (q *Queries) ListProjectsByWorkspaceIDAndOwnerUserID(ctx context.Context, arg ListProjectsByWorkspaceIDAndOwnerUserIDParams) ([]Project, error) {
+	rows, err := q.db.Query(ctx, listProjectsByWorkspaceIDAndOwnerUserID, arg.WorkspaceID, arg.OwnerUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Project
+	for rows.Next() {
+		var i Project
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Name,
+			&i.Slug,
+			&i.Region,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateProjectByIDAndOwnerUserID = `-- name: UpdateProjectByIDAndOwnerUserID :one
+UPDATE projects AS p
+SET name       = $3,
+    region     = $4,
+    updated_at = now() FROM workspaces AS w
+WHERE p.workspace_id = w.id
+  AND p.id = $1
+  AND w.owner_user_id = $2
+    RETURNING p.id, p.workspace_id, p.name, p.slug, p.region, p.created_at, p.updated_at
+`
+
+type UpdateProjectByIDAndOwnerUserIDParams struct {
+	ID          uuid.UUID
+	OwnerUserID uuid.UUID
+	Name        string
+	Region      string
+}
+
+func (q *Queries) UpdateProjectByIDAndOwnerUserID(ctx context.Context, arg UpdateProjectByIDAndOwnerUserIDParams) (Project, error) {
+	row := q.db.QueryRow(ctx, updateProjectByIDAndOwnerUserID,
+		arg.ID,
+		arg.OwnerUserID,
+		arg.Name,
+		arg.Region,
+	)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
 		&i.Name,
 		&i.Slug,
 		&i.Region,

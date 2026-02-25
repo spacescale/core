@@ -8,7 +8,7 @@ package postgres
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 )
 
 const getUserByID = `-- name: GetUserByID :one
@@ -17,7 +17,7 @@ FROM users
 WHERE id = $1
 `
 
-func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error) {
+func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByID, id)
 	var i User
 	err := row.Scan(
@@ -68,9 +68,9 @@ UPDATE
 
 type UpsertUserByIdentityKeyParams struct {
 	IdentityKey string
-	Email       pgtype.Text
-	Name        pgtype.Text
-	AvatarUrl   pgtype.Text
+	Email       *string
+	Name        *string
+	AvatarUrl   *string
 }
 
 func (q *Queries) UpsertUserByIdentityKey(ctx context.Context, arg UpsertUserByIdentityKeyParams) (User, error) {

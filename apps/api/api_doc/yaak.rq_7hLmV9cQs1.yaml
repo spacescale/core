@@ -1,0 +1,58 @@
+type: http_request
+model: http_request
+id: rq_7hLmV9cQs1
+createdAt: 2026-02-24T21:30:02
+updatedAt: 2026-02-24T22:10:01
+workspaceId: wk_KJF6oyHis3
+folderId: fl_zP4fK8sLm2
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: |-
+  ## List Workspaces
+
+  Return all workspaces owned by the authenticated user.
+
+  ### Endpoint
+  - **Method**: `GET`
+  - **Path**: `/v0/workspaces`
+
+  ### Authentication
+  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+
+  ### Behavior
+  - response only includes caller-owned workspaces
+  - results are ordered by creation time (`created_at ASC`, then `id ASC`)
+
+  ### Success Response
+  - **Status**: `200 OK`
+  - **Body**:
+
+  ```json
+  {
+    "workspaces": [
+      {
+        "id": "uuid",
+        "name": "workspace-01",
+        "createdAt": "RFC3339",
+        "updatedAt": "RFC3339"
+      }
+    ]
+  }
+  ```
+
+  ### Error Responses
+  - `401 Unauthorized`: missing/invalid bearer token
+  - `429 Too Many Requests`: per-user API rate limit exceeded
+  - `500 Internal Server Error`: unexpected runtime error
+headers:
+- enabled: true
+  name: Authorization
+  value: Bearer ${[ BFF_TOKEN ]}
+  id: hWkLsAuth01
+method: GET
+name: List Workspaces
+sortPriority: 1.0
+url: http://${[ BASE_URL ]}/v0/workspaces
+urlParameters: []
