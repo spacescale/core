@@ -1,0 +1,77 @@
+type: http_request
+model: http_request
+id: rq_D2eRf6yJk3
+createdAt: 2026-02-24T21:30:08
+updatedAt: 2026-02-24T22:10:07
+workspaceId: wk_KJF6oyHis3
+folderId: fl_mN33FWQe9B
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {
+      "name": "renamed-project",
+      "region": "global"
+    }
+bodyType: application/json
+description: |-
+  ## Update Project
+
+  Update mutable project fields inside one workspace.
+
+  ### Endpoint
+  - **Method**: `PATCH`
+  - **Path**: `/v0/workspaces/{workspaceId}/projects/{projectId}`
+
+  ### Path Parameters
+  - `workspaceId` (required): workspace UUID
+  - `projectId` (required): project UUID
+
+  ### Authentication
+  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+
+  ### Body Contract
+  - at least one field is required:
+    - `name` (optional)
+    - `region` (optional)
+  - project slug is immutable in this endpoint
+
+  Example:
+
+  ```json
+  {
+    "name": "renamed-project",
+    "region": "global"
+  }
+  ```
+
+  ### Success Response
+  - **Status**: `200 OK`
+  - **Body**:
+    - `id`
+    - `workspaceId`
+    - `name`
+    - `slug`
+    - `region`
+    - `createdAt`
+    - `updatedAt`
+
+  ### Error Responses
+  - `400 Bad Request`: invalid JSON, empty patch body, or invalid UUID path params
+  - `401 Unauthorized`: token invalid or resource not owned by caller
+  - `429 Too Many Requests`: per-user API rate limit exceeded
+  - `500 Internal Server Error`: unexpected runtime error
+headers:
+- enabled: true
+  name: Authorization
+  value: Bearer ${[ BFF_TOKEN ]}
+  id: hPrUpAuth01
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: hPrUpType01
+method: PATCH
+name: Update Project
+sortPriority: 3.0
+url: http://${[ BASE_URL ]}/v0/workspaces/${[ WORKSPACE_ID ]}/projects/${[ PROJECT_ID ]}
+urlParameters: []

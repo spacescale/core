@@ -1,0 +1,82 @@
+type: http_request
+model: http_request
+id: rq_F4cNp7uQm1
+createdAt: 2026-02-24T23:05:00
+updatedAt: 2026-02-25T06:24:13.467035
+workspaceId: wk_KJF6oyHis3
+folderId: null
+authentication: {}
+authenticationType: null
+body:
+  text: '{}'
+bodyType: application/json
+description: |-
+  ## Bootstrap Defaults
+
+  Bootstrap default resources for an authenticated user.
+
+  This endpoint is idempotent and intended for first-login onboarding flows.
+
+  ### Endpoint
+  - **Method**: `POST`
+  - **Path**: `/v0/bootstrap-defaults`
+
+  ### Authentication
+  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+  - token must be signed with trusted BFF secret (`BFF_JWT_SECRET`)
+  - user must already exist in API users table (seed via `POST /v0/internal/auth-sync`)
+
+  ### Request Body
+  - empty body is allowed
+  - `{}` is also valid
+  - malformed JSON returns `400 invalid json`
+
+  ### Behavior
+  - if caller has **no workspace**:
+    - creates workspace `workspace-01`
+    - creates one default project in that workspace
+  - default project name is generated adjective-noun style
+  - default project slug uses generated name and retries on slug conflicts
+  - if caller already has any workspace:
+    - no-op response with `created=false`
+
+  ### Success Response
+  - **Status**: `200 OK`
+  - **Body**:
+
+  ```json
+  {
+    "created": true,
+    "workspaceId": "uuid",
+    "projectId": "uuid"
+  }
+  ```
+
+  idempotent no-op response:
+
+  ```json
+  {
+    "created": false
+  }
+  ```
+
+  ### Error Responses
+  - `400 Bad Request`: invalid JSON or invalid input
+  - `401 Unauthorized`: missing/invalid bearer token or unsynced identity
+  - `409 Conflict`: project slug collision after retry budget is exhausted
+  - `429 Too Many Requests`: per-user API rate limit exceeded
+  - `500 Internal Server Error`: unexpected runtime error
+headers:
+- enabled: true
+  name: Authorization
+  value: Bearer ${[ BFF_TOKEN ]}
+  id: hBtDfAuth01
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: hBtDfType01
+method: POST
+name: Bootstrap Defaults
+sortPriority: 0.9144947416552353
+url: http://${[ BASE_URL ]}/v0/bootstrap-defaults
+urlParameters: []

@@ -1,0 +1,70 @@
+type: http_request
+model: http_request
+id: rq_9yKuR5wEz2
+createdAt: 2026-02-24T21:30:04
+updatedAt: 2026-02-24T22:10:03
+workspaceId: wk_KJF6oyHis3
+folderId: fl_zP4fK8sLm2
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {
+      "name": "workspace-02"
+    }
+bodyType: application/json
+description: |-
+  ## Update Workspace
+
+  Update one workspace display name.
+
+  ### Endpoint
+  - **Method**: `PATCH`
+  - **Path**: `/v0/workspaces/{workspaceId}`
+
+  ### Path Parameters
+  - `workspaceId` (required): UUID of the workspace to update
+
+  ### Authentication
+  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+
+  ### Body Contract
+  - `name` (required): new workspace name
+  - value is trimmed and must be non-empty
+
+  Example:
+
+  ```json
+  {
+    "name": "workspace-02"
+  }
+  ```
+
+  ### Success Response
+  - **Status**: `200 OK`
+  - **Body**:
+    - `id`
+    - `name`
+    - `createdAt`
+    - `updatedAt`
+
+  ### Error Responses
+  - `400 Bad Request`: invalid JSON, invalid input, or invalid `workspaceId`
+  - `401 Unauthorized`: token invalid or workspace not owned by caller
+  - `409 Conflict`: name conflicts with another caller-owned workspace
+  - `429 Too Many Requests`: per-user API rate limit exceeded
+  - `500 Internal Server Error`: unexpected runtime error
+headers:
+- enabled: true
+  name: Authorization
+  value: Bearer ${[ BFF_TOKEN ]}
+  id: hWkUpAuth01
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: hWkUpType01
+method: PATCH
+name: Update Workspace
+sortPriority: 3.0
+url: http://${[ BASE_URL ]}/v0/workspaces/${[ WORKSPACE_ID ]}
+urlParameters: []

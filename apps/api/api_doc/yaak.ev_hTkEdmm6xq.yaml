@@ -3,24 +3,32 @@ model: environment
 id: ev_hTkEdmm6xq
 workspaceId: wk_KJF6oyHis3
 createdAt: 2026-01-25T03:25:42.430059
-updatedAt: 2026-02-18T21:10:00.000000
+updatedAt: 2026-02-25T07:24:23.063069
 name: LOCAL
 public: true
 base: false
 parentModel: environment
 parentId: null
 variables:
-- enabled: true
-  name: BASE_URL
-  value: ${[ secure(value=b64'WUVOQ19lVUUwYXpOdVF3R2taU0ZrT0xrRWRkVlJhY0toVi9TdUlvRHJNKzZPTUdjRkhyMU5WSUVWcG1adkwvODNBNGxNSFA5R2lSbDJ5ekNzSUREeEh2az0') ]}
-  id: n9Au9fRs4f
-- enabled: true
-  name: BFF_TOKEN
-  value: ${[ secure(value=b64'WUVOQ19lVUUwYXpOdVF3RUNzZEEvdDVjY3UvM1ZIZm1ZODl4VTBSMWVodno0OHRHbFg2SUJFck9hU0oySWJRLzR2UjZOWFVSWTBIM0FBMm1kalhzOTlYTnEvbHFQTW9ST0QrSXZvditoaXRkalZYUTlLMW9qYmtrYXZDRUdvb0ZtUlJQT0pTWm05Q3dMMmVpMm1qUkFCQk9vMFltS2NlZ3ZTcXlsWGltWGRJeXYwWFdXM2dsZ3pnc1BUR2d6S2VRdnVNQyt5eEY4NXRETHJBTVpYOTgxZmY2NWRoTE14dXhCQW1xNUlpcFB0Y3AxYktQNnUrNFY3YzQzREh1UU1Eem9kaVU5ZDBUVXZpSkNvc1FMcG8vR0ZXUG1CRWs1Y3JGa3o5a1JnQ0dTb0dNSHRHMW02WTNTcVJ1ek8wb3dMUnhKUG51Vi9CTXdOTENieXZjUVM1TkpHa1RHNEhhb0FBSllMMTRiMm9ULzkvanQveWxDVEVCTXo0UVpyVFNWakhsbmw1QXFTdDJyL0hKOXpLMDJWdHhKUEZDS1RqTzg4T2FRcFJ5ZFkxd3dsUmM0eXErTjJlbFN3a2JBVW5CcWF0amp2dm9JTGZvbStzOHZuY2w5Z25QQ0F0NkpFS2pObXhoL1BWRFR2dVRZRExhYW5XeDZDa1V5SklHUXR5UnZoUW93RlhMbjZZT0kwQ0g1UjRRTzBucHpqeWdhb3g2ZWpZbzJ2QWpPQklydE1Jc0M3UFFLQ3JFSmlTWWgrU29QOGdZPQ') ]}
-  id: authToken
-- enabled: true
-  name: INTERNAL_AUTH_SYNC_SECRET
-  value: replace-with-internal-auth-sync-secret
-  id: internalAuthSyncSecret
+  - enabled: true
+    name: BASE_URL
+    value: localhost:8080
+    id: n9Au9fRs4f
+  - enabled: true
+    name: BFF_TOKEN
+    value: replace-with-bff-token
+    id: authToken
+  - enabled: true
+    name: INTERNAL_AUTH_SYNC_SECRET
+    value: replace-with-internal-auth-sync-secret
+    id: internalAuthSyncSecret
+  - enabled: true
+    name: WORKSPACE_ID
+    value: 2c6090ff-1b39-483b-beb3-29afc7bba0ae
+    id: workspaceId
+  - enabled: true
+    name: PROJECT_ID
+    value: replace-with-project-id
+    id: projectId
 color: var(--primary)
 sortPriority: 0.0

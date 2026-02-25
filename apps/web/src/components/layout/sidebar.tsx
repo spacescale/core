@@ -1,143 +1,240 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  Rocket,
-  Settings,
-  LogOut,
-  Menu,
-  X,
   ChevronLeft,
   ChevronRight,
+  Cpu,
+  Database,
+  LayoutGrid,
+  LogOut,
+  Settings,
+  Zap,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui";
 import { useAuth } from "@/lib/hooks";
-import { useUIStore } from "@/stores/ui";
+import { cn } from "@/lib/utils";
 
-const navItems = [
-  { href: "/app", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/app/new", label: "Deploy New", icon: Rocket },
-];
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  disabled?: boolean;
+}
 
-export function Sidebar() {
+interface SidebarProps {
+  mobileOpen?: boolean;
+  onClose?: () => void;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
+}
+
+export function Sidebar({ mobileOpen = false, onClose, collapsed: controlledCollapsed, onToggleCollapsed }: SidebarProps) {
   const pathname = usePathname();
   const { logout, user } = useAuth();
-  const { sidebarOpen, toggleSidebar, mobileMenuOpen, setMobileMenuOpen } = useUIStore();
+  const [internalOpen, setInternalOpen] = useState(true);
+
+  const open = controlledCollapsed !== undefined ? !controlledCollapsed : internalOpen;
+  const setOpen = onToggleCollapsed ?? (() => setInternalOpen((prev) => !prev));
+
+  const RESERVED_SEGMENTS = new Set(["new"]);
+  const rawProjectId = pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? null;
+  const projectId = rawProjectId && !RESERVED_SEGMENTS.has(rawProjectId) ? rawProjectId : null;
+
+  const resourceItems: NavItem[] = [
+    { href: projectId ? `/projects/${projectId}` : "/projects", label: "Applications", icon: LayoutGrid },
+    { href: projectId ? `/projects/${projectId}/workers`   : "#", label: "Workers",   icon: Cpu,      disabled: !projectId },
+    { href: projectId ? `/projects/${projectId}/functions` : "#", label: "Functions", icon: Zap,      disabled: !projectId },
+    { href: projectId ? `/projects/${projectId}/databases` : "#", label: "Databases", icon: Database, disabled: !projectId },
+  ];
+
+  const settingsHref = projectId ? `/projects/${projectId}/settings` : null;
+
+  const workspaceName =
+    user?.name?.toLowerCase().replace(/\s+/g, "-") ??
+    user?.email?.split("@")[0]?.replace(/[^a-z0-9-]/g, "-") ??
+    "my-workspace";
+
+  const workspaceId = `${workspaceName.slice(0, 2)}-${Math.abs(
+    workspaceName.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % 9999
+  ).toString().padStart(4, "0")}-x`;
+
+  const sidebarContent = (
+    <aside
+      className={cn(
+        "fixed left-0 top-[92px] z-40 h-[calc(100vh-92px)]",
+        "border-r border-black/[0.06] dark:border-white/[0.05]",
+        "bg-white/90 dark:bg-[rgba(11,13,20,0.95)]",
+        "backdrop-blur-md",
+        "flex flex-col justify-between",
+        "transition-transform duration-300 ease-in-out",
+        open ? "w-64" : "w-14",
+        // Desktop: always visible. Mobile: slide in/out.
+        "md:translate-x-0",
+        mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+      )}
+    >
+      {/* Top: workspace + nav */}
+      <div className="flex flex-col flex-1 py-6 overflow-y-auto sidebar-scroll">
+        {open && (
+          <div className="px-5 mb-8">
+            <div className="flex items-center gap-3 text-foreground mb-1">
+              <div
+                className="w-2 h-2 rounded-full bg-primary flex-shrink-0"
+                style={{ boxShadow: "0 0 10px var(--glow-primary)" }}
+              />
+              <span className="font-[500] text-sm tracking-wide truncate">
+                {workspaceName}
+              </span>
+            </div>
+            <div className="pl-5 text-[10px] text-muted-foreground font-mono">
+              ID: {workspaceId}
+            </div>
+          </div>
+        )}
+
+        {open && (
+          <div className="px-6 mb-3">
+            <h3 className="text-[10px] uppercase tracking-widest text-muted-foreground/80 font-semibold">
+              Resources
+            </h3>
+          </div>
+        )}
+
+        <nav className="space-y-0.5 px-3">
+          {resourceItems.map((item) => {
+            const isActive = item.disabled ? false
+              : item.label === "Applications"
+                ? pathname === "/projects" || (projectId ? pathname === `/projects/${projectId}` : false)
+                : item.href !== "#" && pathname.startsWith(item.href);
+
+            return (
+              <Link
+                key={item.label}
+                href={item.disabled ? "#" : item.href}
+                aria-disabled={item.disabled}
+                tabIndex={item.disabled ? -1 : undefined}
+                onClick={(e) => {
+                  if (item.disabled) { e.preventDefault(); return; }
+                  onClose?.();
+                }}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 group",
+                  open ? "" : "justify-center",
+                  isActive
+                    ? [
+                        "bg-white border border-gray-200/80 shadow-sm text-foreground",
+                        "dark:bg-white/[0.04] dark:border-white/[0.05] dark:text-foreground dark:shadow-none",
+                      ]
+                    : item.disabled
+                      ? "opacity-40 cursor-not-allowed text-muted-foreground"
+                      : [
+                          "text-muted-foreground hover:text-foreground",
+                          "hover:bg-gray-100/50 dark:hover:bg-white/[0.02]",
+                        ]
+                )}
+              >
+                <item.icon
+                  className={cn(
+                    "flex-shrink-0 transition-colors",
+                    open ? "h-[18px] w-[18px]" : "h-5 w-5",
+                    isActive ? "text-primary" : "group-hover:text-primary transition-colors"
+                  )}
+                  strokeWidth={1.5}
+                />
+                {open && (
+                  <span className={cn("text-sm truncate", isActive ? "font-[450]" : "font-[300]")}>
+                    {item.label}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* Bottom: Settings + Collapse + Sign out */}
+      <div
+        className={cn(
+          "p-3 border-t border-black/[0.06] dark:border-white/[0.05]",
+          "bg-white/30 dark:bg-[rgba(11,13,20,0.3)]"
+        )}
+      >
+        <nav className="space-y-1">
+          <Link
+            href={settingsHref ?? "#"}
+            aria-disabled={!settingsHref}
+            onClick={(e) => {
+              if (!settingsHref) { e.preventDefault(); return; }
+              onClose?.();
+            }}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 rounded-md transition-all group",
+              open ? "" : "justify-center",
+              settingsHref
+                ? "text-muted-foreground hover:text-foreground hover:bg-gray-100/50 dark:hover:bg-white/[0.02]"
+                : "opacity-40 cursor-not-allowed text-muted-foreground"
+            )}
+          >
+            <Settings
+              className="h-[18px] w-[18px] flex-shrink-0 group-hover:text-foreground transition-colors"
+              strokeWidth={1.5}
+            />
+            {open && <span className="text-sm font-[300]">Settings</span>}
+          </Link>
+
+          {/* Collapse — desktop only */}
+          <button
+            type="button"
+            onClick={() => setOpen()}
+            className={cn(
+              "hidden md:flex w-full items-center px-3 py-2 rounded-md transition-all group",
+              "text-muted-foreground hover:text-foreground hover:bg-gray-100/50 dark:hover:bg-white/[0.02]",
+              open ? "justify-between" : "justify-center"
+            )}
+            aria-label={open ? "Collapse sidebar" : "Expand sidebar"}
+          >
+            {open && (
+              <span className="text-[11px] font-[400] text-muted-foreground/70 group-hover:text-muted-foreground transition-colors">
+                Collapse
+              </span>
+            )}
+            {open ? (
+              <ChevronLeft className="h-[18px] w-[18px] group-hover:-translate-x-0.5 transition-transform" strokeWidth={1.5} />
+            ) : (
+              <ChevronRight className="h-[18px] w-[18px] group-hover:translate-x-0.5 transition-transform" strokeWidth={1.5} />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={logout}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-2 rounded-md transition-all group",
+              open ? "" : "justify-center",
+              "text-muted-foreground/60 hover:text-destructive hover:bg-destructive/5"
+            )}
+          >
+            <LogOut className="h-[18px] w-[18px] flex-shrink-0" strokeWidth={1.5} />
+            {open && <span className="text-sm font-[300]">Sign out</span>}
+          </button>
+        </nav>
+      </div>
+    </aside>
+  );
 
   return (
     <>
-      {/* Mobile menu button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="fixed left-4 top-4 z-50 md:hidden"
-        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-        aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-      >
-        {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-      </Button>
-
-      {/* Mobile overlay */}
-      {mobileMenuOpen && (
+      {sidebarContent}
+      {/* Mobile backdrop */}
+      {mobileOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
-          onClick={() => setMobileMenuOpen(false)}
+          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm md:hidden"
           aria-hidden="true"
+          onClick={onClose}
         />
       )}
-
-      {/* Sidebar */}
-      <aside
-        className={cn(
-          "fixed left-0 top-0 z-40 h-screen border-r bg-background transition-all duration-300",
-          sidebarOpen ? "w-64" : "w-16",
-          mobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-        )}
-      >
-        <div className="flex h-full flex-col">
-          {/* Logo */}
-          <div className="flex h-16 items-center justify-between border-b px-4">
-            {sidebarOpen && (
-              <Link href="/app" className="flex items-center space-x-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                  <Rocket className="h-5 w-5 text-primary-foreground" />
-                </div>
-                <span className="text-xl font-bold">PaaS</span>
-              </Link>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="hidden md:flex"
-              onClick={toggleSidebar}
-              aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-            >
-              {sidebarOpen ? (
-                <ChevronLeft className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-
-          {/* Navigation */}
-          <nav className="flex-1 space-y-1 p-2">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={cn(
-                    "flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                  )}
-                >
-                  <item.icon className="h-5 w-5" />
-                  {sidebarOpen && <span className="ml-3">{item.label}</span>}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* User section */}
-          <div className="border-t p-2">
-            {user && sidebarOpen && (
-              <div className="mb-2 flex items-center space-x-3 px-3 py-2">
-                {user.image ? (
-                  <img
-                    src={user.image}
-                    alt={user.name || "User"}
-                    className="h-8 w-8 rounded-full"
-                  />
-                ) : (
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-                    {user.name?.[0] || user.email?.[0] || "U"}
-                  </div>
-                )}
-                <div className="flex-1 truncate">
-                  <p className="truncate text-sm font-medium">{user.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-                </div>
-              </div>
-            )}
-            <Button
-              variant="ghost"
-              className={cn("w-full", sidebarOpen ? "justify-start" : "justify-center")}
-              onClick={logout}
-            >
-              <LogOut className="h-5 w-5" />
-              {sidebarOpen && <span className="ml-3">Sign out</span>}
-            </Button>
-          </div>
-        </div>
-      </aside>
     </>
   );
 }

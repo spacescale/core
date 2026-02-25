@@ -10,14 +10,18 @@ import pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
 // This container is for dependency injection only; business behavior remains in
 // dedicated service types.
 type Services struct {
-	Users    *UserService
-	Projects *ProjectService
+	Users      *UserService
+	Projects   *ProjectService
+	Workspaces *WorkspaceService
+	Bootstrap  *BootstrapService
 }
 
 // NewServices builds all service dependencies from one shared query set.
 func NewServices(queries *pgstore.Queries) *Services {
 	return &Services{
-		Users:    NewUserService(queries),
-		Projects: NewProjectService(queries),
+		Users:      NewUserService(queries),
+		Projects:   NewProjectService(queries),
+		Workspaces: NewWorkspaceService(queries),
+		Bootstrap:  NewBootstrapService(queries),
 	}
 }

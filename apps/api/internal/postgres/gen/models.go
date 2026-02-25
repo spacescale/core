@@ -5,89 +5,99 @@
 package postgres
 
 import (
-	"github.com/jackc/pgx/v5/pgtype"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 type App struct {
-	ID          pgtype.UUID
-	ProjectID   pgtype.UUID
-	Name        pgtype.Text
+	ID          uuid.UUID
+	ProjectID   uuid.UUID
+	Name        *string
 	Slug        string
 	Subdomain   string
 	ImageRef    string
-	RuntimePort pgtype.Int4
+	RuntimePort *int32
 	Status      string
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type AppEnvVar struct {
-	ID             pgtype.UUID
-	AppID          pgtype.UUID
+	ID             uuid.UUID
+	AppID          uuid.UUID
 	Key            string
 	ValueEncrypted string
 	IsSecret       bool
-	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type AppRegistryCredential struct {
-	AppID                pgtype.UUID
-	RegistryCredentialID pgtype.UUID
-	CreatedAt            pgtype.Timestamptz
-	LastUsed             pgtype.Timestamptz
+	AppID                uuid.UUID
+	RegistryCredentialID uuid.UUID
+	CreatedAt            time.Time
+	LastUsed             *time.Time
 }
 
 type Deployment struct {
-	ID           pgtype.UUID
-	AppID        pgtype.UUID
+	ID           uuid.UUID
+	AppID        uuid.UUID
 	Status       string
 	ImageRef     string
 	RuntimePort  int32
 	PublicUrl    string
-	ErrorMessage pgtype.Text
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
+	ErrorMessage *string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type NameWord struct {
-	ID        pgtype.UUID
+	ID        uuid.UUID
 	Word      string
 	Kind      string
 	Enabled   bool
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type Project struct {
-	ID          pgtype.UUID
-	OwnerUserID pgtype.UUID
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
 	Name        string
 	Slug        string
 	Region      string
-	CreatedAt   pgtype.Timestamptz
-	UpdatedAt   pgtype.Timestamptz
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type RegistryCredential struct {
-	ID             pgtype.UUID
-	ProjectID      pgtype.UUID
+	ID             uuid.UUID
+	ProjectID      uuid.UUID
 	Name           string
 	RegistryUrl    string
 	Username       string
 	TokenEncrypted string
-	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
-	LastUsed       pgtype.Timestamptz
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	LastUsed       *time.Time
 }
 
 type User struct {
-	ID                  pgtype.UUID
+	ID                  uuid.UUID
 	IdentityKey         string
-	Email               pgtype.Text
-	Name                pgtype.Text
-	AvatarUrl           pgtype.Text
+	Email               *string
+	Name                *string
+	AvatarUrl           *string
 	OnboardingCompleted bool
-	CreatedAt           pgtype.Timestamptz
-	UpdatedAt           pgtype.Timestamptz
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+type Workspace struct {
+	ID          uuid.UUID
+	OwnerUserID uuid.UUID
+	Name        string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }

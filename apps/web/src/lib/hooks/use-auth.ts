@@ -13,11 +13,11 @@ export function useAuth() {
   const isUnauthenticated = status === "unauthenticated";
 
   const loginWithGithub = useCallback(async () => {
-    await signIn("github", { callbackUrl: "/app" });
+    await signIn("github", { callbackUrl: "/projects" });
   }, []);
 
   const loginWithGoogle = useCallback(async () => {
-    await signIn("google", { callbackUrl: "/app" });
+    await signIn("google", { callbackUrl: "/projects" });
   }, []);
 
   const logout = useCallback(async () => {

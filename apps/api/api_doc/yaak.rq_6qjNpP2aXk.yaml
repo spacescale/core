@@ -1,0 +1,71 @@
+type: http_request
+model: http_request
+id: rq_6qjNpP2aXk
+createdAt: 2026-02-24T21:30:01
+updatedAt: 2026-02-25T07:23:40.112328
+workspaceId: wk_KJF6oyHis3
+folderId: fl_zP4fK8sLm2
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {
+      "name": "workspace-02"
+    }
+bodyType: application/json
+description: |-
+  ## Create Workspace
+
+  Create a new workspace for the authenticated user.
+
+  ### Endpoint
+  - **Method**: `POST`
+  - **Path**: `/v0/workspaces`
+
+  ### Authentication
+  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+  - token must be signed with trusted BFF secret (`BFF_JWT_SECRET`)
+  - user must already exist in API users table (seed via `POST /v0/internal/auth-sync`)
+
+  ### Body Contract
+  - `name` (required): workspace display name
+  - value is trimmed and must be non-empty
+  - duplicate names are blocked per user
+
+  Example:
+
+  ```json
+  {
+    "name": "workspace-01"
+  }
+  ```
+
+  ### Success Response
+  - **Status**: `201 Created`
+  - **Headers**: includes `Location: /v0/workspaces/{id}`
+  - **Body**:
+    - `id`
+    - `name`
+    - `createdAt`
+    - `updatedAt`
+
+  ### Error Responses
+  - `400 Bad Request`: invalid JSON or invalid input
+  - `401 Unauthorized`: missing/invalid bearer token
+  - `409 Conflict`: workspace name conflict for caller
+  - `429 Too Many Requests`: per-user API rate limit exceeded
+  - `500 Internal Server Error`: unexpected runtime error
+headers:
+- enabled: true
+  name: Authorization
+  value: Bearer ${[ BFF_TOKEN ]}
+  id: hWkCrAuth01
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: hWkCrType01
+method: POST
+name: Create Workspace
+sortPriority: 0.0
+url: http://${[ BASE_URL ]}/v0/workspaces
+urlParameters: []

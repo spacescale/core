@@ -25,7 +25,7 @@ const stepComponents: Record<WizardStep, React.ComponentType> = {
   review: StepReview,
 };
 
-export default function DeployWizardPage() {
+export default function NewProjectPage() {
   const router = useRouter();
   const {
     currentStep,
@@ -65,7 +65,6 @@ export default function DeployWizardPage() {
 
   const handleStepClick = (step: WizardStep) => {
     const targetIndex = stepOrder.indexOf(step);
-    // Can only navigate to completed or current steps
     if (targetIndex <= currentIndex) {
       setCurrentStep(step);
     }
@@ -86,7 +85,7 @@ export default function DeployWizardPage() {
         subdomain,
         source,
         plan: selectedPlan,
-        envVars: envVars.filter((env) => env.key && env.value),
+        envVars: envVars.filter((env) => env.key),
         buildCommand: buildCommand || undefined,
         startCommand: startCommand || undefined,
         port,
@@ -94,12 +93,7 @@ export default function DeployWizardPage() {
       {
         onSuccess: (data) => {
           reset();
-          // Navigate to the new deployment
-          if (data.deployment?.id) {
-            router.push(`/app/deployments/${data.deployment.id}`);
-          } else {
-            router.push("/app");
-          }
+          router.push(`/projects/${data.deployment.appId}`);
         },
       }
     );
@@ -110,7 +104,7 @@ export default function DeployWizardPage() {
   return (
     <>
       <PageHeader
-        title="Deploy New App"
+        title="New Project"
         description="Configure and deploy your application"
       />
 
@@ -126,7 +120,6 @@ export default function DeployWizardPage() {
             <StepComponent />
           </div>
 
-          {/* Navigation buttons */}
           <div className="mt-8 flex items-center justify-between border-t pt-6">
             <Button
               variant="outline"

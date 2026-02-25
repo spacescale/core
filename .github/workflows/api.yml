@@ -3,8 +3,20 @@ name: api
 on:
   push:
     branches: [main]
+    paths:
+      - "apps/api/**"
+      - "apps/db/migrations/**"
+      - "Makefile"
+      - "sqlc.yaml"
+      - ".github/workflows/api.yml"
   pull_request:
     branches: [main, dev]
+    paths:
+      - "apps/api/**"
+      - "apps/db/migrations/**"
+      - "Makefile"
+      - "sqlc.yaml"
+      - ".github/workflows/api.yml"
 
 jobs:
   backend-test:

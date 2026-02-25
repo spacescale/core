@@ -47,6 +47,19 @@ type testJWTClaims struct {
 	jwt.RegisteredClaims // embedded so claim fields are promoted to this type.
 }
 
+// newTestServer creates one integration server for the calling test.
+// It uses package-default rate limiting.
+// If TEST_DATABASE_URL is missing, the test is skipped.
+func newTestServer(t *testing.T) *testServer {
+	t.Helper()
+	return newTestServerWithRateLimitConfigs(
+		t,
+		config.DefaultRateLimitConfig(),
+		config.DefaultInternalGlobalRateLimitConfig(),
+		config.DefaultInternalIdentityRateLimitConfig(),
+	)
+}
+
 // TestDefaultRateLimitConfig verifies package-default limiter settings.
 // This guards against accidental default drift in server wiring.
 func TestDefaultRateLimitConfig(t *testing.T) {
@@ -75,9 +88,11 @@ func TestNewServerNormalizesInvalidRateLimitConfig(t *testing.T) {
 	syncAuthUserForTest(t, ts, "12345")
 
 	name := fmt.Sprintf("normalize-rate-limit-%d", time.Now().UnixNano())
+	workspaceName := fmt.Sprintf("workspace-%d", time.Now().UnixNano())
+	workspaceID := createWorkspaceForIdentity(t, ts, "12345", workspaceName)
 	body := []byte(fmt.Sprintf(`{"name":"%s","region":"global"}`, name))
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", body, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces/"+workspaceID+"/projects", body, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, "12345"),
 		"Content-Type":  "application/json",
 	})
@@ -92,8 +107,10 @@ func TestNewServerRequiresNonEmptyInternalSecret(t *testing.T) {
 	require.PanicsWithValue(t, "http_api.NewServer requires non-empty internal auth secret", func() {
 		http_api.NewServer(http_api.ServerDeps{
 			Services: &service.Services{
-				Projects: &service.ProjectService{},
-				Users:    &service.UserService{},
+				Projects:   &service.ProjectService{},
+				Users:      &service.UserService{},
+				Workspaces: &service.WorkspaceService{},
+				Bootstrap:  &service.BootstrapService{},
 			},
 			DBPool: &pgxpool.Pool{},
 			Config: config.APIConfig{
@@ -147,7 +164,7 @@ func TestUnauthorizedRequestsAreNotRateLimited(t *testing.T) {
 	defer ts.close()
 
 	for i := 0; i < 3; i++ {
-		resp, data := doRequest(t, ts, http.MethodPost, "/v0/projects", []byte(`{}`), map[string]string{
+		resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces/00000000-0000-0000-0000-000000000000/projects", []byte(`{}`), map[string]string{
 			"Content-Type": "application/json",
 		})
 
@@ -183,19 +200,6 @@ func TestInternalRequestsAreGloballyRateLimited(t *testing.T) {
 	var out errorResponse
 	require.NoError(t, json.Unmarshal(data, &out))
 	require.Equal(t, "rate limit exceeded", out.Error)
-}
-
-// newTestServer creates one integration server for the calling test.
-// It uses package-default rate limiting.
-// If TEST_DATABASE_URL is missing, the test is skipped.
-func newTestServer(t *testing.T) *testServer {
-	t.Helper()
-	return newTestServerWithRateLimitConfigs(
-		t,
-		config.DefaultRateLimitConfig(),
-		config.DefaultInternalGlobalRateLimitConfig(),
-		config.DefaultInternalIdentityRateLimitConfig(),
-	)
 }
 
 // newTestServerWithRateLimitConfig creates one integration server using the
@@ -319,6 +323,24 @@ func syncAuthUserForTest(t *testing.T, ts *testServer, identityKey string) {
 	})
 
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
+}
+
+// createWorkspaceForIdentity inserts one workspace for an already synced user.
+// It is used by project endpoint tests that require a workspace path parameter.
+func createWorkspaceForIdentity(t *testing.T, ts *testServer, identityKey, name string) string {
+	t.Helper()
+
+	queries := pgstore.New(ts.pool)
+	user, err := queries.GetUserByIdentityKey(context.Background(), identityKey)
+	require.NoError(t, err)
+
+	workspace, err := queries.CreateWorkspace(context.Background(), pgstore.CreateWorkspaceParams{
+		OwnerUserID: user.ID,
+		Name:        name,
+	})
+	require.NoError(t, err)
+
+	return workspace.ID.String()
 }
 
 // close releases network and database resources used by the test server.
