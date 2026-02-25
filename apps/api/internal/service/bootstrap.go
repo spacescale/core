@@ -75,7 +75,7 @@ func (s *BootstrapService) BootstrapDefaults(ctx context.Context, ownerUserID st
 		if suffixErr != nil {
 			return BootstrapDefaultsResult{}, suffixErr
 		}
-		candidateSlug = baseSlug + "-" + suffix
+		candidateSlug = slugWithSuffix(baseSlug, suffix)
 	}
 	return BootstrapDefaultsResult{}, ErrConflict
 }

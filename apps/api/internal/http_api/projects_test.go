@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -172,6 +173,47 @@ func TestCreateProjectInvalidJSON(t *testing.T) {
 	var out errorResponse
 	require.NoError(t, json.Unmarshal(data, &out))
 	require.NotEmpty(t, out.Error)
+}
+
+func TestCreateProjectInvalidRegion(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.close()
+	identityKey := uniqueIdentityKey(t)
+	syncAuthUserForTest(t, ts, identityKey)
+	workspaceID := createWorkspaceForIdentity(t, ts, identityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
+
+	body := []byte(`{"name":"misty-harbor","region":"global!"}`)
+	resp, data := doRequest(t, ts, http.MethodPost, fmt.Sprintf("/v0/workspaces/%s/projects", workspaceID), body, map[string]string{
+		"Authorization": authHeaderForIdentityKey(t, identityKey),
+		"Content-Type":  "application/json",
+	})
+
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, string(data))
+
+	var out errorResponse
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Equal(t, "invalid input", out.Error)
+}
+
+func TestCreateProjectNameTooLong(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.close()
+	identityKey := uniqueIdentityKey(t)
+	syncAuthUserForTest(t, ts, identityKey)
+	workspaceID := createWorkspaceForIdentity(t, ts, identityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
+
+	longName := strings.Repeat("a", 121)
+	body := []byte(fmt.Sprintf(`{"name":"%s","region":"global"}`, longName))
+	resp, data := doRequest(t, ts, http.MethodPost, fmt.Sprintf("/v0/workspaces/%s/projects", workspaceID), body, map[string]string{
+		"Authorization": authHeaderForIdentityKey(t, identityKey),
+		"Content-Type":  "application/json",
+	})
+
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, string(data))
+
+	var out errorResponse
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Equal(t, "invalid input", out.Error)
 }
 
 func TestListProjectsByWorkspace(t *testing.T) {

@@ -45,7 +45,9 @@ func TestSlugifyProjectName(t *testing.T) {
 		{name: "collapses separators", in: "__Hello---WORLD__", want: "hello-world"},
 		{name: "trims boundaries", in: "  ###go### ", want: "go"},
 		{name: "keeps numbers", in: "Project 123", want: "project-123"},
-		{name: "unicode letters", in: "日本 語", want: "日本-語"},
+		{name: "drops non ascii letters", in: "日本 語", want: ""},
+		{name: "mixed unicode and ascii", in: "Project 日本 123", want: "project-123"},
+		{name: "caps slug length", in: strings.Repeat("abc", 30), want: strings.Repeat("abc", 21)},
 		{name: "all symbols", in: "!!!", want: ""},
 	}
 
@@ -71,6 +73,68 @@ func TestRandomSuffix(t *testing.T) {
 	for _, r := range got {
 		require.Truef(t, strings.ContainsRune(alphabet, r), "unexpected suffix rune %q in %q", r, got)
 	}
+}
+
+func TestNormalizeProjectName(t *testing.T) {
+	t.Run("accepts trimmed name", func(t *testing.T) {
+		got, ok := normalizeProjectName("  blue harbor  ")
+		require.True(t, ok)
+		require.Equal(t, "blue harbor", got)
+	})
+
+	t.Run("rejects empty", func(t *testing.T) {
+		_, ok := normalizeProjectName("   ")
+		require.False(t, ok)
+	})
+
+	t.Run("rejects over max length", func(t *testing.T) {
+		_, ok := normalizeProjectName(strings.Repeat("a", projectNameMaxLength+1))
+		require.False(t, ok)
+	})
+}
+
+func TestNormalizeProjectRegion(t *testing.T) {
+	t.Run("defaults to global", func(t *testing.T) {
+		got, ok := normalizeProjectRegion(" ")
+		require.True(t, ok)
+		require.Equal(t, defaultRegion, got)
+	})
+
+	t.Run("normalizes to lowercase", func(t *testing.T) {
+		got, ok := normalizeProjectRegion("US-EAST-1")
+		require.True(t, ok)
+		require.Equal(t, "us-east-1", got)
+	})
+
+	t.Run("rejects invalid chars", func(t *testing.T) {
+		_, ok := normalizeProjectRegion("global!")
+		require.False(t, ok)
+	})
+
+	t.Run("rejects edge hyphen", func(t *testing.T) {
+		_, ok := normalizeProjectRegion("-global")
+		require.False(t, ok)
+	})
+
+	t.Run("rejects over max length", func(t *testing.T) {
+		_, ok := normalizeProjectRegion(strings.Repeat("a", projectRegionMaxLen+1))
+		require.False(t, ok)
+	})
+}
+
+func TestSlugWithSuffix(t *testing.T) {
+	t.Run("appends suffix when base fits", func(t *testing.T) {
+		got := slugWithSuffix("misty-harbor", "abc123")
+		require.Equal(t, "misty-harbor-abc123", got)
+		require.LessOrEqual(t, len(got), projectSlugMaxLength)
+	})
+
+	t.Run("truncates base to keep dns label length", func(t *testing.T) {
+		base := strings.Repeat("a", projectSlugMaxLength)
+		got := slugWithSuffix(base, "abc123")
+		require.Equal(t, projectSlugMaxLength, len(got))
+		require.Equal(t, strings.Repeat("a", projectSlugMaxLength-suffixLength-1)+"-abc123", got)
+	})
 }
 
 func TestIsUniqueViolation(t *testing.T) {

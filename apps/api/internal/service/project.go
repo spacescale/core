@@ -98,7 +98,7 @@ func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID, workspa
 		if suffixErr != nil {
 			return Project{}, suffixErr
 		}
-		project.Slug = baseSlug + "-" + suffix
+		project.Slug = slugWithSuffix(baseSlug, suffix)
 	}
 
 	return Project{}, ErrConflict
@@ -163,9 +163,21 @@ func (s *ProjectService) UpdateProject(
 	}
 	if nextName == "" {
 		nextName = existing.Name
+	} else {
+		normalizedName, ok := normalizeProjectName(nextName)
+		if !ok {
+			return Project{}, ErrInvalidInput
+		}
+		nextName = normalizedName
 	}
 	if nextRegion == "" {
 		nextRegion = existing.Region
+	} else {
+		normalizedRegion, ok := normalizeProjectRegion(nextRegion)
+		if !ok {
+			return Project{}, ErrInvalidInput
+		}
+		nextRegion = normalizedRegion
 	}
 	row, err := s.queries.UpdateProjectByIDAndOwnerUserID(ctx, pgstore.UpdateProjectByIDAndOwnerUserIDParams{
 		ID:          projectUUID,
@@ -261,17 +273,17 @@ func buildProject(workspaceID, name, region string) (Project, error) {
 		return Project{}, errors.New("workspace id is required")
 	}
 
-	name = strings.TrimSpace(name)
-	if name == "" {
+	normalizedName, ok := normalizeProjectName(name)
+	if !ok {
 		return Project{}, errors.New("project name is required")
 	}
 
-	region = strings.TrimSpace(region)
-	if region == "" {
-		region = defaultRegion
+	normalizedRegion, ok := normalizeProjectRegion(region)
+	if !ok {
+		return Project{}, errors.New("project region is invalid")
 	}
 
-	slug := slugifyProjectName(name)
+	slug := slugifyProjectName(normalizedName)
 	if slug == "" {
 		return Project{}, errors.New("project name is invalid")
 	}
@@ -280,9 +292,9 @@ func buildProject(workspaceID, name, region string) (Project, error) {
 	return Project{
 		ID:          "",
 		WorkspaceID: workspace,
-		Name:        name,
+		Name:        normalizedName,
 		Slug:        slug,
-		Region:      region,
+		Region:      normalizedRegion,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}, nil

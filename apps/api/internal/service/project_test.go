@@ -5,6 +5,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -41,6 +42,34 @@ func TestBuildProject(t *testing.T) {
 	t.Run("rejects name that cannot produce slug", func(t *testing.T) {
 		_, err := buildProject("owner-1", " !!! ", "")
 		require.Error(t, err)
+	})
+
+	t.Run("rejects unicode-only name because slug must be ascii", func(t *testing.T) {
+		_, err := buildProject("owner-1", "日本語", "")
+		require.Error(t, err)
+	})
+
+	t.Run("rejects name over max length", func(t *testing.T) {
+		_, err := buildProject("owner-1", strings.Repeat("a", projectNameMaxLength+1), "")
+		require.Error(t, err)
+	})
+
+	t.Run("normalizes region to lowercase", func(t *testing.T) {
+		got, err := buildProject("workspace-1", "my project", "US-EAST-1")
+		require.NoError(t, err)
+		require.Equal(t, "us-east-1", got.Region)
+	})
+
+	t.Run("rejects invalid region format", func(t *testing.T) {
+		_, err := buildProject("workspace-1", "my project", "global!")
+		require.Error(t, err)
+	})
+
+	t.Run("caps generated slug to dns label length", func(t *testing.T) {
+		longName := strings.Repeat("a", projectNameMaxLength)
+		got, err := buildProject("workspace-1", longName, "global")
+		require.NoError(t, err)
+		require.LessOrEqual(t, len(got.Slug), projectSlugMaxLength)
 	})
 }
 

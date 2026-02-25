@@ -9,16 +9,19 @@ import (
 	"errors"
 	"math/big"
 	"strings"
-	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const (
-	defaultRegion  = "global"
-	maxSlugRetries = 8
-	suffixLength   = 6
+	defaultRegion        = "global"
+	maxSlugRetries       = 8
+	suffixLength         = 6
+	projectNameMaxLength = 120
+	projectRegionMaxLen  = 32
+	projectSlugMaxLength = 63
 )
 
 // parseUUID trims and parses UUID strings used by service workflows.
@@ -39,40 +42,103 @@ func uuidOrEmpty(id uuid.UUID) string {
 }
 
 // slugifyProjectName converts a raw project name into a stable URL slug.
-// The transformation is intentionally strict and predictable:
-// 1) trim surrounding whitespace and lowercase the input,
-// 2) keep only letters and numbers while collapsing separator runs to one hyphen,
-// 3) trim edge hyphens so the returned value is path-safe.
+// The resulting slug is constrained to lowercase ASCII DNS-label-safe bytes:
+// [a-z0-9-], with collapsed separators, no edge hyphens, and max length 63.
 func slugifyProjectName(name string) string {
-	// Normalize first so casing and accidental outer spaces never affect slug
-	// uniqueness or readability.
 	normalized := strings.ToLower(strings.TrimSpace(name))
 
-	var b strings.Builder // build slug incrementally to avoid repeated string allocations.
+	var b strings.Builder
+	b.Grow(len(normalized))
+	var prevHyphen bool
 
-	var prevHyphen bool // tracks whether the most recently written byte was '-' for separator collapsing.
-
-	for _, r := range normalized {
-		switch {
-		case unicode.IsLetter(r) || unicode.IsNumber(r):
-			// Keep alphanumeric runes exactly as they are after normalization.
-			b.WriteRune(r)
+	for i := 0; i < len(normalized); i++ {
+		ch := normalized[i]
+		if isASCIIAlphaNum(ch) {
+			b.WriteByte(ch)
 			prevHyphen = false
-		default:
-			// Treat every non-alphanumeric rune as a separator boundary.
-			// Add one hyphen only when:
-			// - the previous output character was not already a hyphen, and
-			// - output is not empty (prevents leading hyphens).
-			if !prevHyphen && b.Len() > 0 {
-				b.WriteByte('-')
-				prevHyphen = true
-			}
+			continue
+		}
+		if !prevHyphen && b.Len() > 0 {
+			b.WriteByte('-')
+			prevHyphen = true
 		}
 	}
 
-	// Remove boundary hyphens that can appear when input begins or ends with
-	// separators.
-	return strings.Trim(b.String(), "-")
+	slug := strings.Trim(b.String(), "-")
+	if len(slug) <= projectSlugMaxLength {
+		return slug
+	}
+
+	return strings.Trim(slug[:projectSlugMaxLength], "-")
+}
+
+// normalizeProjectName trims and validates the display name length.
+func normalizeProjectName(raw string) (string, bool) {
+	name := strings.TrimSpace(raw)
+	if name == "" {
+		return "", false
+	}
+	if utf8.RuneCountInString(name) > projectNameMaxLength {
+		return "", false
+	}
+	return name, true
+}
+
+// normalizeProjectRegion trims, lowercases, and validates region format.
+// Regions are restricted to lowercase ASCII DNS-label-safe bytes for stability.
+func normalizeProjectRegion(raw string) (string, bool) {
+	region := strings.ToLower(strings.TrimSpace(raw))
+	if region == "" {
+		region = defaultRegion
+	}
+	if len(region) == 0 || len(region) > projectRegionMaxLen {
+		return "", false
+	}
+	if region[0] == '-' || region[len(region)-1] == '-' {
+		return "", false
+	}
+	for i := 0; i < len(region); i++ {
+		ch := region[i]
+		if ch == '-' {
+			continue
+		}
+		if !isASCIIAlphaNum(ch) {
+			return "", false
+		}
+	}
+	return region, true
+}
+
+// slugWithSuffix appends a random suffix while keeping total slug length bounded.
+func slugWithSuffix(baseSlug, suffix string) string {
+	trimmedBase := strings.Trim(baseSlug, "-")
+	trimmedSuffix := strings.Trim(suffix, "-")
+	if trimmedSuffix == "" {
+		if len(trimmedBase) <= projectSlugMaxLength {
+			return trimmedBase
+		}
+		return strings.Trim(trimmedBase[:projectSlugMaxLength], "-")
+	}
+
+	maxBaseLen := projectSlugMaxLength - len(trimmedSuffix) - 1
+	if maxBaseLen <= 0 {
+		if len(trimmedSuffix) <= projectSlugMaxLength {
+			return trimmedSuffix
+		}
+		return trimmedSuffix[:projectSlugMaxLength]
+	}
+
+	if len(trimmedBase) > maxBaseLen {
+		trimmedBase = strings.Trim(trimmedBase[:maxBaseLen], "-")
+	}
+	if trimmedBase == "" {
+		return trimmedSuffix
+	}
+	return trimmedBase + "-" + trimmedSuffix
+}
+
+func isASCIIAlphaNum(ch byte) bool {
+	return (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')
 }
 
 // randomSuffix returns a random lowercase alphanumeric suffix of fixed length.
