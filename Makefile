@@ -17,6 +17,9 @@ test: db-start
 	@[ -f .env.local ] || { echo ".env.local not found in repo root"; exit 1; };
 	set -a && . ./.env.local && set +a && cd apps/api && TEST_DATABASE_URL="$${TEST_DATABASE_URL:-postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable}" go test ./internal/http_api ./internal/service -race -cover
 
+proto-go:
+	protoc --proto_path=. --go_out=apps/api --go_opt=module=github.com/t0gun/spacescale --go-grpc_out=apps/api --go-grpc_opt=module=github.com/t0gun/spacescale $$(find contracts/proto -type f -name '*.proto' | sort)
+
 stop:
 	@docker rm -f spacescale-db || true
 
