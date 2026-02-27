@@ -1,4 +1,4 @@
-.PHONY: db-build db-start run test stop mint
+.PHONY: db-build db-start run test stop mint proto-go
 
 db-build:
 	docker build -f apps/db/Dockerfile -t spacescale-db:local apps/db
