@@ -18,6 +18,10 @@ profile.cov
 go.work
 go.work.sum
 
+# Rust
+target/
+**/target/
+
 # Environment
 .env
 .env.local
