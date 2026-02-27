@@ -1,4 +1,7 @@
 syntax = "proto3";
+package control.v1;
+option go_package = "github.com/t0gun/spacescale/packages/proto-go/control/v1;controlv1";
+
 
 // AgentControl defines minimal control-plane handshake operations.
 // This is intentionally small and stable for early production rollout.

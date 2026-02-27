@@ -135,13 +135,13 @@ func (s *Server) Router() http.Handler {
 
 	// Internal routes are intended for private-network service-to-service traffic.
 	// They apply both a global circuit breaker and per-identity guardrails.
-	r.Route("/v0/internal", func(r chi.Router) {
+	r.Route("/v1/internal", func(r chi.Router) {
 		r.Use(internalAuthMiddleware(s.config.InternalAuthSecret))
 		r.Use(internalGlobalLimiter.Handler)
 		r.Post("/auth-sync", s.handleSyncAuthUser)
 	})
 
-	r.Route("/v0", func(r chi.Router) {
+	r.Route("/v1", func(r chi.Router) {
 		r.Use(authMiddleware(s.config.Auth, s.config.LogPrivacy))
 		r.Use(userLimiter)
 		r.Post("/bootstrap-defaults", s.handleBootstrapDefaults)
