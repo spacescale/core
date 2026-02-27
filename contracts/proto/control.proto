@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+// AgentControl defines minimal control-plane handshake operations.
+// This is intentionally small and stable for early production rollout.
+service AgentControl {
+  // Health is a lightweight readiness/liveness check.
+  // Control plane calls this to validate connectivity and agent runtime status.
+  rpc Health(HealthRequest) returns (HealthResponse);
+  // Register is a startup handshake used to identify agent instance metadata.
+  // This is not long-term scheduling yet; it only establishes a trusted baseline.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+}
+
+// HealthRequest carries caller metadata for tracing/correlation.
+message HealthRequest {
+  string caller = 1;
+  string request_id = 2;
+}
+
+// HealthResponse reports current runtime status.
+message HealthResponse {
+  bool ok = 1;
+  string status = 2;
+  string agent_version = 3;
+  int64 started_unix = 4;
+  string message = 5;
+}
+
+// RegisterRequest carries one-time startup identity hints.
+message RegisterRequest {
+  string caller = 1;
+  string request_id = 2;
+  string desired_agent_name = 3;
+}
+
+// RegisterResponse returns accepted identity and capability metadata.
+message RegisterResponse {
+  bool accepted = 1;
+  string agent_id = 2;
+  string agent_version = 3;
+  repeated string capabilities = 4;
+  string message = 5;
+}
