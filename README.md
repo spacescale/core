@@ -17,8 +17,11 @@ apps/
   web/          Dashboard (Next.js 15 + React 19)
   marketing/    Marketing site (Next.js 15)
   db/           Postgres migrations & sqlc queries
+contracts/
+  proto/        Protobuf contracts for control plane and agents
 packages/
   ui/           Shared component library (@spacescale/ui) with Storybook
+  proto-go/     Generated Go protobuf + gRPC stubs
 ```
 
 ## Prerequisites
@@ -28,6 +31,7 @@ packages/
 - **pnpm** 9+
 - **Docker**
 - **sqlc** for query codegen
+- **protoc** (Protocol Buffers compiler)
 
 ## Getting Started
 
@@ -59,6 +63,14 @@ This starts every app in parallel:
 | `web`       | http://localhost:3000 | Dashboard      |
 | `marketing` | http://localhost:3001 | Marketing site |
 | `api`       | http://localhost:8080 | Go API server  |
+
+### 4. Regenerate protobuf stubs
+
+```bash
+make proto
+```
+
+This regenerates Go protobuf and gRPC stubs in `packages/proto-go` from files in `contracts/proto`.
 
 ### Run a single app
 
@@ -101,3 +113,4 @@ Local infrastructure and migration workflows are handled from the root `Makefile
 | `make mint`     | Mint a BFF JWT for local API testing (reads `.env.local`)       |
 | `make db-build` | Build the local DB image (`spacescale-db:local`)                |
 | `make db-start` | Start local DB container and wait for container-side migrations |
+| `make proto`    | Regenerate Go protobuf + gRPC stubs from `contracts/proto`      |
