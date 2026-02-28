@@ -24,7 +24,7 @@ func TestSyncAuthUserInvalidJSON(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", []byte("{"), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", []byte("{"), map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",
 	})
@@ -41,7 +41,7 @@ func TestSyncAuthUserRejectsEmptyIdentity(t *testing.T) {
 	defer ts.close()
 
 	body := []byte(`{"identityKey":"   "}`)
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", body, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", body, map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",
 	})
@@ -61,7 +61,7 @@ func TestSyncAuthUserSuccess(t *testing.T) {
 	body := []byte(fmt.Sprintf(`{"identityKey":"%s","email":"dev@example.com","name":"Dev","avatarUrl":"https://example.com/avatar.png"}`,
 		identityKey,
 	))
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", body, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", body, map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",
 	})
@@ -82,7 +82,7 @@ func TestSyncAuthUserReturnsSameUserOnResync(t *testing.T) {
 	firstBody := []byte(fmt.Sprintf(`{"identityKey":"%s","email":"first@example.com","name":"First","avatarUrl":"https://example.com/first.png"}`,
 		identityKey,
 	))
-	firstResp, firstData := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", firstBody, map[string]string{
+	firstResp, firstData := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", firstBody, map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",
 	})
@@ -95,7 +95,7 @@ func TestSyncAuthUserReturnsSameUserOnResync(t *testing.T) {
 	secondBody := []byte(fmt.Sprintf(`{"identityKey":"%s","email":"second@example.com","name":"Second","avatarUrl":"https://example.com/second.png"}`,
 		identityKey,
 	))
-	secondResp, secondData := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", secondBody, map[string]string{
+	secondResp, secondData := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", secondBody, map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",
 	})
@@ -112,7 +112,7 @@ func TestSyncAuthUserRejectsTooLongIdentity(t *testing.T) {
 	defer ts.close()
 
 	body := []byte(fmt.Sprintf(`{"identityKey":"%s"}`, strings.Repeat("a", 513)))
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", body, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", body, map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",
 	})
@@ -134,7 +134,7 @@ func TestSyncAuthUserSanitizesOptionalFieldsAndContinues(t *testing.T) {
 		identityKey,
 		strings.Repeat("n", 400),
 	))
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", body, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", body, map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",
 	})
@@ -156,13 +156,13 @@ func TestSyncAuthUserRateLimitIsPerIdentity(t *testing.T) {
 	identityA := uniqueIdentityKey(t)
 	bodyA := []byte(fmt.Sprintf(`{"identityKey":"%s"}`, identityA))
 
-	firstResp, firstData := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", bodyA, map[string]string{
+	firstResp, firstData := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", bodyA, map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",
 	})
 	require.Equal(t, http.StatusOK, firstResp.StatusCode, string(firstData))
 
-	secondResp, secondData := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", bodyA, map[string]string{
+	secondResp, secondData := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", bodyA, map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",
 	})
@@ -174,7 +174,7 @@ func TestSyncAuthUserRateLimitIsPerIdentity(t *testing.T) {
 
 	identityB := uniqueIdentityKey(t)
 	bodyB := []byte(fmt.Sprintf(`{"identityKey":"%s"}`, identityB))
-	thirdResp, thirdData := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", bodyB, map[string]string{
+	thirdResp, thirdData := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", bodyB, map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",
 	})

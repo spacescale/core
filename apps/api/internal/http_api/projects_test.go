@@ -46,7 +46,7 @@ func createProjectViaAPI(t *testing.T, ts *testServer, identityKey, workspaceID,
 		}
 	}
 
-	resp, data := doRequest(t, ts, http.MethodPost, fmt.Sprintf("/v0/workspaces/%s/projects", workspaceID), body, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, fmt.Sprintf("/v1/workspaces/%s/projects", workspaceID), body, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -67,7 +67,7 @@ func TestCreateProjectDefaults(t *testing.T) {
 	syncAuthUserForTest(t, ts, identityKey)
 	workspaceID := createWorkspaceForIdentity(t, ts, identityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 
-	resp, data := doRequest(t, ts, http.MethodPost, fmt.Sprintf("/v0/workspaces/%s/projects", workspaceID), []byte(`{}`), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, fmt.Sprintf("/v1/workspaces/%s/projects", workspaceID), []byte(`{}`), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -102,7 +102,7 @@ func TestCreateProjectOverrides(t *testing.T) {
 
 	projectName := fmt.Sprintf("misty-harbor-%d", time.Now().UnixNano())
 	body := []byte(fmt.Sprintf(`{"name":"%s","region":"global"}`, projectName))
-	resp, data := doRequest(t, ts, http.MethodPost, fmt.Sprintf("/v0/workspaces/%s/projects", workspaceID), body, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, fmt.Sprintf("/v1/workspaces/%s/projects", workspaceID), body, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -124,7 +124,7 @@ func TestCreateProjectMissingHeader(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces/00000000-0000-0000-0000-000000000000/projects", []byte(`{}`), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces/00000000-0000-0000-0000-000000000000/projects", []byte(`{}`), map[string]string{
 		"Content-Type": "application/json",
 	})
 
@@ -142,7 +142,7 @@ func TestCreateProjectRequiresSyncedUser(t *testing.T) {
 	defer ts.close()
 	unsyncedIdentityKey := uniqueIdentityKey(t)
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces/00000000-0000-0000-0000-000000000000/projects", []byte(`{}`), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces/00000000-0000-0000-0000-000000000000/projects", []byte(`{}`), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, unsyncedIdentityKey),
 		"Content-Type":  "application/json",
 	})
@@ -163,7 +163,7 @@ func TestCreateProjectInvalidJSON(t *testing.T) {
 	identityKey := uniqueIdentityKey(t)
 	syncAuthUserForTest(t, ts, identityKey)
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces/00000000-0000-0000-0000-000000000000/projects", []byte("{"), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces/00000000-0000-0000-0000-000000000000/projects", []byte("{"), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -183,7 +183,7 @@ func TestCreateProjectInvalidRegion(t *testing.T) {
 	workspaceID := createWorkspaceForIdentity(t, ts, identityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 
 	body := []byte(`{"name":"misty-harbor","region":"global!"}`)
-	resp, data := doRequest(t, ts, http.MethodPost, fmt.Sprintf("/v0/workspaces/%s/projects", workspaceID), body, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, fmt.Sprintf("/v1/workspaces/%s/projects", workspaceID), body, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -204,7 +204,7 @@ func TestCreateProjectNameTooLong(t *testing.T) {
 
 	longName := strings.Repeat("a", 121)
 	body := []byte(fmt.Sprintf(`{"name":"%s","region":"global"}`, longName))
-	resp, data := doRequest(t, ts, http.MethodPost, fmt.Sprintf("/v0/workspaces/%s/projects", workspaceID), body, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, fmt.Sprintf("/v1/workspaces/%s/projects", workspaceID), body, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -228,7 +228,7 @@ func TestListProjectsByWorkspace(t *testing.T) {
 	projectA := createProjectViaAPI(t, ts, identityKey, workspaceA, fmt.Sprintf("alpine-%d", time.Now().UnixNano()), "global")
 	_ = createProjectViaAPI(t, ts, identityKey, workspaceB, fmt.Sprintf("delta-%d", time.Now().UnixNano()), "global")
 
-	resp, data := doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v0/workspaces/%s/projects", workspaceA), nil, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v1/workspaces/%s/projects", workspaceA), nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
@@ -250,7 +250,7 @@ func TestListProjectsWorkspaceOwnership(t *testing.T) {
 
 	ownerWorkspaceID := createWorkspaceForIdentity(t, ts, ownerIdentityKey, fmt.Sprintf("workspace-owner-%d", time.Now().UnixNano()))
 
-	resp, data := doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v0/workspaces/%s/projects", ownerWorkspaceID), nil, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v1/workspaces/%s/projects", ownerWorkspaceID), nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, otherIdentityKey),
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
@@ -269,7 +269,7 @@ func TestGetProject(t *testing.T) {
 
 	created := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("echo-%d", time.Now().UnixNano()), "global")
 
-	resp, data := doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v0/workspaces/%s/projects/%s", workspaceID, created.ID), nil, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v1/workspaces/%s/projects/%s", workspaceID, created.ID), nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
@@ -290,7 +290,7 @@ func TestGetProjectWorkspaceMismatch(t *testing.T) {
 
 	created := createProjectViaAPI(t, ts, identityKey, workspaceA, fmt.Sprintf("foxtrot-%d", time.Now().UnixNano()), "global")
 
-	resp, data := doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v0/workspaces/%s/projects/%s", workspaceB, created.ID), nil, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v1/workspaces/%s/projects/%s", workspaceB, created.ID), nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
@@ -307,7 +307,7 @@ func TestUpdateProject(t *testing.T) {
 	newName := fmt.Sprintf("harbor-%d", time.Now().UnixNano())
 
 	body := []byte(fmt.Sprintf(`{"name":"%s","region":"global"}`, newName))
-	resp, data := doRequest(t, ts, http.MethodPatch, fmt.Sprintf("/v0/workspaces/%s/projects/%s", workspaceID, created.ID), body, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPatch, fmt.Sprintf("/v1/workspaces/%s/projects/%s", workspaceID, created.ID), body, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -329,7 +329,7 @@ func TestUpdateProjectInvalidInput(t *testing.T) {
 
 	created := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("india-%d", time.Now().UnixNano()), "global")
 
-	resp, data := doRequest(t, ts, http.MethodPatch, fmt.Sprintf("/v0/workspaces/%s/projects/%s", workspaceID, created.ID), []byte(`{}`), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPatch, fmt.Sprintf("/v1/workspaces/%s/projects/%s", workspaceID, created.ID), []byte(`{}`), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -349,12 +349,12 @@ func TestDeleteProject(t *testing.T) {
 
 	created := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("juliet-%d", time.Now().UnixNano()), "global")
 
-	resp, data := doRequest(t, ts, http.MethodDelete, fmt.Sprintf("/v0/workspaces/%s/projects/%s", workspaceID, created.ID), nil, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodDelete, fmt.Sprintf("/v1/workspaces/%s/projects/%s", workspaceID, created.ID), nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode, string(data))
 
-	resp, data = doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v0/workspaces/%s/projects/%s", workspaceID, created.ID), nil, map[string]string{
+	resp, data = doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v1/workspaces/%s/projects/%s", workspaceID, created.ID), nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
@@ -371,19 +371,19 @@ func TestProjectCrudOwnership(t *testing.T) {
 	ownerWorkspaceID := createWorkspaceForIdentity(t, ts, ownerIdentityKey, fmt.Sprintf("workspace-owner-%d", time.Now().UnixNano()))
 	created := createProjectViaAPI(t, ts, ownerIdentityKey, ownerWorkspaceID, fmt.Sprintf("kilo-%d", time.Now().UnixNano()), "global")
 
-	resp, data := doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v0/workspaces/%s/projects/%s", ownerWorkspaceID, created.ID), nil, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v1/workspaces/%s/projects/%s", ownerWorkspaceID, created.ID), nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, otherIdentityKey),
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
 
 	body := []byte(fmt.Sprintf(`{"name":"%s"}`, fmt.Sprintf("lima-%d", time.Now().UnixNano())))
-	resp, data = doRequest(t, ts, http.MethodPatch, fmt.Sprintf("/v0/workspaces/%s/projects/%s", ownerWorkspaceID, created.ID), body, map[string]string{
+	resp, data = doRequest(t, ts, http.MethodPatch, fmt.Sprintf("/v1/workspaces/%s/projects/%s", ownerWorkspaceID, created.ID), body, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, otherIdentityKey),
 		"Content-Type":  "application/json",
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
 
-	resp, data = doRequest(t, ts, http.MethodDelete, fmt.Sprintf("/v0/workspaces/%s/projects/%s", ownerWorkspaceID, created.ID), nil, map[string]string{
+	resp, data = doRequest(t, ts, http.MethodDelete, fmt.Sprintf("/v1/workspaces/%s/projects/%s", ownerWorkspaceID, created.ID), nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, otherIdentityKey),
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))

@@ -92,7 +92,7 @@ func TestNewServerNormalizesInvalidRateLimitConfig(t *testing.T) {
 	workspaceID := createWorkspaceForIdentity(t, ts, "12345", workspaceName)
 	body := []byte(fmt.Sprintf(`{"name":"%s","region":"global"}`, name))
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces/"+workspaceID+"/projects", body, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces/"+workspaceID+"/projects", body, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, "12345"),
 		"Content-Type":  "application/json",
 	})
@@ -146,7 +146,7 @@ func TestInternalAuthSyncHeaderValidation(t *testing.T) {
 				headers["X-Internal-Auth"] = tc.header
 			}
 
-			resp, data := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", []byte("{"), headers)
+			resp, data := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", []byte("{"), headers)
 			require.Equal(t, tc.wantStatus, resp.StatusCode, string(data))
 
 			var out errorResponse
@@ -156,7 +156,7 @@ func TestInternalAuthSyncHeaderValidation(t *testing.T) {
 	}
 }
 
-// TestUnauthorizedRequestsAreNotRateLimited verifies middleware order for /v0
+// TestUnauthorizedRequestsAreNotRateLimited verifies middleware order for /v1
 // routes: auth runs before user limiter, so unauthenticated requests are always
 // rejected as unauthorized rather than sharing a limiter fallback bucket.
 func TestUnauthorizedRequestsAreNotRateLimited(t *testing.T) {
@@ -164,7 +164,7 @@ func TestUnauthorizedRequestsAreNotRateLimited(t *testing.T) {
 	defer ts.close()
 
 	for i := 0; i < 3; i++ {
-		resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces/00000000-0000-0000-0000-000000000000/projects", []byte(`{}`), map[string]string{
+		resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces/00000000-0000-0000-0000-000000000000/projects", []byte(`{}`), map[string]string{
 			"Content-Type": "application/json",
 		})
 
@@ -190,7 +190,7 @@ func TestInternalRequestsAreGloballyRateLimited(t *testing.T) {
 	syncAuthUserForTest(t, ts, firstIdentity)
 
 	secondBody := []byte(fmt.Sprintf(`{"identityKey":"%s"}`, uniqueIdentityKey(t)))
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", secondBody, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", secondBody, map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",
 	})
@@ -216,7 +216,7 @@ func newTestServerWithRateLimitConfig(t *testing.T, rateLimitCfg config.RateLimi
 }
 
 // newTestServerWithInternalRateLimitConfig creates one integration server with
-// internal per-identity limiter override and default /v0 per-user limiting.
+// internal per-identity limiter override and default /v1 per-user limiting.
 func newTestServerWithInternalRateLimitConfig(
 	t *testing.T,
 	internalIdentityCfg config.RateLimitConfig,
@@ -231,7 +231,7 @@ func newTestServerWithInternalRateLimitConfig(
 }
 
 // newTestServerWithInternalRateLimitConfigs creates one integration server with
-// internal global and per-identity limiter overrides and default /v0 per-user
+// internal global and per-identity limiter overrides and default /v1 per-user
 // limiting.
 func newTestServerWithInternalRateLimitConfigs(
 	t *testing.T,
@@ -317,7 +317,7 @@ func syncAuthUserForTest(t *testing.T, ts *testServer, identityKey string) {
 		identityKey,
 	))
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/internal/auth-sync", body, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", body, map[string]string{
 		"X-Internal-Auth": testInternalAuthSecret,
 		"Content-Type":    "application/json",
 	})

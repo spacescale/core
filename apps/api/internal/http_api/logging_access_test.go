@@ -127,7 +127,7 @@ func TestAccessLogMiddlewareEmitsStructuredFields(t *testing.T) {
 			r.Use(middleware.RequestID)
 			r.Use(accessLogMiddleware(testLogPrivacyConfig()))
 
-			r.Get("/v0/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
+			r.Get("/v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 				if tc.enrichIDs {
 					if lc, ok := logContextFromContext(r.Context()); ok {
 						lc.UserID = "github:t0gun"
@@ -143,7 +143,7 @@ func TestAccessLogMiddlewareEmitsStructuredFields(t *testing.T) {
 			})
 
 			rr := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/v0/projects/123", nil)
+			req := httptest.NewRequest(http.MethodGet, "/v1/projects/123", nil)
 			req.RemoteAddr = "192.168.97.1:54321"
 			req.Header.Set("User-Agent", "yaak")
 
@@ -157,8 +157,8 @@ func TestAccessLogMiddlewareEmitsStructuredFields(t *testing.T) {
 			require.Equal(t, float64(tc.status), entry["status_code"])
 			require.Equal(t, tc.wantRateLimited, entry["rate_limited"])
 			require.Equal(t, "GET", entry["method"])
-			require.Equal(t, "/v0/projects/{id}", entry["route"])
-			require.Equal(t, "/v0/projects/123", entry["path"])
+			require.Equal(t, "/v1/projects/{id}", entry["route"])
+			require.Equal(t, "/v1/projects/123", entry["path"])
 			require.Equal(t, "192.168.97.1", entry["client_ip"])
 			require.Equal(t, "yaak", entry["user_agent"])
 			require.NotEmpty(t, entry["request_id"])
@@ -196,7 +196,7 @@ func TestRecovererMiddlewareRecoversPanicAndWritesInternalError(t *testing.T) {
 	r.Use(accessLogMiddleware(testLogPrivacyConfig()))
 	r.Use(recovererMiddleware(testLogPrivacyConfig()))
 
-	r.Get("/v0/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if lc, ok := logContextFromContext(r.Context()); ok {
 			lc.UserID = "github:t0gun"
 			lc.ProjectID = "proj_123"
@@ -205,7 +205,7 @@ func TestRecovererMiddlewareRecoversPanicAndWritesInternalError(t *testing.T) {
 	})
 
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v0/projects/123", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/projects/123", nil)
 	req.RemoteAddr = "192.168.97.1:54321"
 	req.Header.Set("User-Agent", "yaak")
 
@@ -222,8 +222,8 @@ func TestRecovererMiddlewareRecoversPanicAndWritesInternalError(t *testing.T) {
 	require.Equal(t, float64(http.StatusInternalServerError), panicEntry["status_code"])
 	require.Equal(t, "string", panicEntry["panic_type"])
 	require.Equal(t, "boom", panicEntry["panic_value"])
-	require.Equal(t, "/v0/projects/{id}", panicEntry["route"])
-	require.Equal(t, "/v0/projects/123", panicEntry["path"])
+	require.Equal(t, "/v1/projects/{id}", panicEntry["route"])
+	require.Equal(t, "/v1/projects/123", panicEntry["path"])
 	require.Equal(t, "192.168.97.1", panicEntry["client_ip"])
 	require.Equal(t, "yaak", panicEntry["user_agent"])
 	require.Equal(t, "github:t0gun", panicEntry["user_id"])
@@ -250,13 +250,13 @@ func TestRecovererMiddlewareDoesNotRewriteStartedResponse(t *testing.T) {
 	r.Use(accessLogMiddleware(testLogPrivacyConfig()))
 	r.Use(recovererMiddleware(testLogPrivacyConfig()))
 
-	r.Get("/v0/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		panic("after write")
 	})
 
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v0/projects/123", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/projects/123", nil)
 
 	r.ServeHTTP(rr, req)
 
@@ -291,12 +291,12 @@ func TestRecovererMiddlewareAppliesPanicPrivacyConfig(t *testing.T) {
 	r.Use(accessLogMiddleware(privacyCfg))
 	r.Use(recovererMiddleware(privacyCfg))
 
-	r.Get("/v0/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 		panic("abcdefghijklmnopqrstuvwxyz")
 	})
 
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v0/projects/123", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/projects/123", nil)
 	req.Header.Set("User-Agent", "yaak")
 
 	r.ServeHTTP(rr, req)

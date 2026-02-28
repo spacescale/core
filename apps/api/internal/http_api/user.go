@@ -18,7 +18,7 @@ import (
 	"github.com/t0gun/spacescale/internal/service"
 )
 
-// syncAuthUserRequest is the request payload accepted by POST /v0/internal/auth-sync.
+// syncAuthUserRequest is the request payload accepted by POST /v1/internal/auth-sync.
 // IdentityKey is required; profile fields are optional.
 type syncAuthUserRequest struct {
 	IdentityKey string `json:"identityKey"`
