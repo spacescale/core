@@ -2,45 +2,274 @@ syntax = "proto3";
 package control.v1;
 option go_package = "github.com/t0gun/spacescale/packages/proto-go/control/v1;controlv1";
 
-
-// AgentControl defines minimal control-plane handshake operations.
-// This is intentionally small and stable for early production rollout.
-service AgentControl {
-  // Health is a lightweight readiness/liveness check.
-  // Control plane calls this to validate connectivity and agent runtime status.
+// ControlPlane is the server-side control API that agents dial.
+//
+// Architecture note:
+// - Agents initiate outbound connections to the control plane.
+// - OpenSession is intentionally long-lived.
+// - Registration, liveness, telemetry, and directives share one stream.
+service ControlPlane {
+  // Health reports control-plane readiness to an agent.
+  //
+  // This unary method is a fast startup gate before opening OpenSession.
   rpc Health(HealthRequest) returns (HealthResponse);
-  // Register is a startup handshake used to identify agent instance metadata.
-  // This is not long-term scheduling yet; it only establishes a trusted baseline.
-  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // OpenSession establishes a long-lived bidirectional control stream.
+  //
+  // Protocol invariants:
+  // - Agent MUST send RegisterRequest first.
+  // - Control plane MUST answer with RegisterResponse before directives.
+  // - Agent MUST continue HeartbeatRequest on the negotiated interval.
+  // - Agent SHOULD report directive ack/progress/result on the same stream.
+  rpc OpenSession(stream AgentSessionRequest) returns (stream AgentSessionResponse);
 }
 
-// HealthRequest carries caller metadata for tracing/correlation.
+// HealthRequest carries caller metadata for tracing and correlation.
 message HealthRequest {
-  string caller = 1;
-  string request_id = 2;
+  string caller = 1; // caller identifies who is probing health (for example: "scaled/bootstrap").
+  string request_id = 2; // request_id is an optional correlation id for distributed tracing.
 }
 
-// HealthResponse reports current runtime status.
+// HealthResponse reports current control-plane status.
 message HealthResponse {
-  bool ok = 1;
-  string status = 2;
-  string agent_version = 3;
-  int64 started_unix = 4;
-  string message = 5;
+  bool ok = 1; // ok indicates whether the control plane is currently ready.
+  string status = 2; // status is a compact readiness label (for example: "ready", "degraded").
+  string control_plane_version = 3; // control_plane_version identifies the serving build/version.
+  int64 started_unix = 4; // started_unix is the control-plane process start time in unix seconds.
+  string message = 5; // message provides human-readable details for logs and diagnostics.
 }
 
-// RegisterRequest carries one-time startup identity hints.
+// AgentSessionRequest is an envelope for agent-to-control stream events.
+// Exactly one event payload should be set per message.
+message AgentSessionRequest {
+  string request_id = 1; // request_id is optional, may be echoed by responses, and helps stream log correlation.
+
+  oneof event {
+    RegisterRequest register = 2; // register starts a new logical control session.
+    HeartbeatRequest heartbeat = 3; // heartbeat updates liveness and runtime load signals.
+    CapabilityUpdate capability_update = 4; // capability_update reports runtime changes to supported features.
+    DirectiveAck directive_ack = 5; // directive_ack reports immediate accept/reject for a directive.
+    DirectiveProgress directive_progress = 6; // directive_progress reports in-flight execution state.
+    DirectiveResult directive_result = 7; // directive_result reports final directive completion status.
+    NodeHealthReport node_health = 8; // node_health reports machine-level resource and health telemetry.
+    WorkloadsReport workloads_report = 9; // workloads_report reports per-workload runtime telemetry for scheduling and operations.
+  }
+}
+
+// AgentSessionResponse is an envelope for control-to-agent stream events.
+// Exactly one event payload should be set per message.
+message AgentSessionResponse {
+  string request_id = 1; // request_id echoes the originating AgentSessionRequest.request_id when present.
+
+  oneof event {
+    RegisterResponse register = 2; // register returns accepted identity and heartbeat lease settings.
+    HeartbeatResponse heartbeat = 3; // heartbeat acknowledges liveness updates from the agent.
+    ControlDirective directive = 4; // directive requests a control-plane initiated action on the agent.
+  }
+}
+
+// RegisterRequest announces agent identity at session start.
+//
+// Security and stability notes:
+// - agent_key must be stable across reconnects and unique per agent identity.
+// - caller should reflect execution context (for example: "scaled/startup").
+// - capabilities should contain machine-parseable identifiers.
 message RegisterRequest {
-  string caller = 1;
-  string request_id = 2;
-  string desired_agent_name = 3;
+  string caller = 1; // caller identifies source code path or subsystem emitting registration.
+  string agent_key = 2; // agent_key is a stable identity key used for idempotent registration.
+  string desired_agent_name = 3; // desired_agent_name is an optional human-readable display name hint.
+  string agent_version = 4; // agent_version identifies the running agent build/version.
+  repeated string capabilities = 5; // capabilities lists runtime features the agent can serve.
+  map<string, string> labels = 6; // labels is optional routing/filtering metadata; keep values low-cardinality and free of secrets.
+  int64 started_unix = 7; // started_unix is the agent process start time in unix seconds.
 }
 
-// RegisterResponse returns accepted identity and capability metadata.
+// RegisterResponse communicates registration acceptance and lease policy.
 message RegisterResponse {
-  bool accepted = 1;
-  string agent_id = 2;
-  string agent_version = 3;
-  repeated string capabilities = 4;
-  string message = 5;
+  bool accepted = 1; // accepted indicates whether registration is admitted.
+  string agent_id = 2; // agent_id is the canonical control-plane identity for this agent.
+  string session_id = 3; // session_id identifies this stream session for heartbeat correlation.
+  int64 heartbeat_interval_seconds = 4; // heartbeat_interval_seconds is the expected heartbeat cadence.
+  int64 lease_ttl_seconds = 5; // lease_ttl_seconds is the offline cutoff if heartbeats are missed.
+  string message = 6; // message provides human-readable acceptance or rejection details.
+}
+
+// HeartbeatRequest updates liveness and runtime pressure for an active session.
+message HeartbeatRequest {
+  string session_id = 1; // session_id must match the RegisterResponse session id.
+  int64 sent_unix = 2; // sent_unix is when heartbeat was emitted by the agent in unix seconds.
+  string status = 3; // status is a compact runtime label (for example: "ready", "draining").
+  uint32 running_workloads = 4; // running_workloads is the count of active workloads.
+  uint32 queued_workloads = 5; // queued_workloads is the count of pending workloads.
+}
+
+// HeartbeatResponse acknowledges a heartbeat and conveys server time.
+message HeartbeatResponse {
+  bool ok = 1; // ok indicates whether heartbeat processing was accepted.
+  int64 server_unix = 2; // server_unix is control-plane unix time when heartbeat was handled.
+  string message = 3; // message provides optional diagnostics for operators.
+}
+
+// CapabilityUpdate reports runtime capability changes on the same session.
+message CapabilityUpdate {
+  string session_id = 1; // session_id identifies the active control session.
+  repeated string capabilities = 2; // capabilities replaces the currently advertised capability set.
+}
+
+// ControlDirective communicates asynchronous control-plane instructions.
+//
+// Domain payloads are split so node, agent, and workload controls evolve independently.
+message ControlDirective {
+  string directive_id = 1; // directive_id is a unique id for idempotent processing and audit.
+  string reason = 2; // reason provides operator-readable context for the directive.
+  int64 effective_unix = 3; // effective_unix is when the directive should be considered active.
+  uint32 timeout_seconds = 4; // timeout_seconds bounds directive execution before timeout failure is reported.
+
+  oneof target {
+    NodeDirective node = 10; // node targets host lifecycle controls such as drain and reboot.
+    AgentDirective agent = 11; // agent targets runtime lifecycle controls such as reload and upgrade.
+    WorkloadDirective workload = 12; // workload targets workload lifecycle controls such as deploy and scale.
+  }
+}
+
+// NodeDirective configures host-level operations.
+//
+// Safety note:
+// - NODE_POWEROFF is intentionally excluded in this revision.
+message NodeDirective {
+  NodeDirectiveType type = 1; // type selects the node operation.
+  uint32 grace_seconds = 2; // grace_seconds is drain/termination grace for operations that require quiescing.
+  bool force = 3; // force allows emergency execution when graceful constraints cannot be met.
+}
+
+// NodeDirectiveType enumerates host-level operations.
+enum NodeDirectiveType {
+  NODE_DIRECTIVE_TYPE_UNSPECIFIED = 0;
+  NODE_DIRECTIVE_TYPE_DRAIN = 1; // NODE_DIRECTIVE_TYPE_DRAIN stops new workloads and drains running workloads.
+  NODE_DIRECTIVE_TYPE_RESUME = 2; // NODE_DIRECTIVE_TYPE_RESUME clears draining state and accepts new workloads.
+  NODE_DIRECTIVE_TYPE_REBOOT = 3; // NODE_DIRECTIVE_TYPE_REBOOT requests a controlled node reboot.
+}
+
+// AgentDirective configures agent process operations.
+message AgentDirective {
+  AgentDirectiveType type = 1; // type selects the agent operation.
+  string target_version = 2; // target_version is the desired agent version for upgrade.
+  string artifact_url = 3; // artifact_url points to the signed upgrade artifact.
+  string artifact_sha256 = 4; // artifact_sha256 verifies artifact integrity before install.
+  bool require_drain = 5; // require_drain forces node drain before disruptive agent operations.
+  bool reboot_after_upgrade = 6; // reboot_after_upgrade requests explicit reboot after a successful upgrade.
+}
+
+// AgentDirectiveType enumerates agent process operations.
+enum AgentDirectiveType {
+  AGENT_DIRECTIVE_TYPE_UNSPECIFIED = 0;
+  AGENT_DIRECTIVE_TYPE_RELOAD = 1; // AGENT_DIRECTIVE_TYPE_RELOAD requests in-place config/runtime reload.
+  AGENT_DIRECTIVE_TYPE_UPGRADE = 2; // AGENT_DIRECTIVE_TYPE_UPGRADE requests binary upgrade with verification.
+  AGENT_DIRECTIVE_TYPE_RESTART = 3; // AGENT_DIRECTIVE_TYPE_RESTART requests controlled process restart.
+}
+
+// WorkloadDirective configures workload lifecycle operations.
+message WorkloadDirective {
+  WorkloadDirectiveType type = 1; // type selects the workload operation.
+  string workload_id = 2; // workload_id is the stable control-plane workload identity.
+  string workload_name = 3; // workload_name is an optional human-readable workload name.
+  string image_ref = 4; // image_ref identifies the image/artifact for deploy or restart-from-image.
+  uint32 desired_replicas = 5; // desired_replicas applies to scale operations.
+  map<string, string> labels = 6; // labels carry optional workload metadata hints for scheduling/routing.
+  string project_id = 7; // project_id scopes the workload to its owning project and must be paired with workload_id.
+}
+
+// WorkloadDirectiveType enumerates workload lifecycle operations.
+enum WorkloadDirectiveType {
+  WORKLOAD_DIRECTIVE_TYPE_UNSPECIFIED = 0;
+  WORKLOAD_DIRECTIVE_TYPE_DEPLOY = 1; // WORKLOAD_DIRECTIVE_TYPE_DEPLOY creates or updates a workload revision.
+  WORKLOAD_DIRECTIVE_TYPE_STOP = 2; // WORKLOAD_DIRECTIVE_TYPE_STOP gracefully stops a workload.
+  WORKLOAD_DIRECTIVE_TYPE_RESTART = 3; // WORKLOAD_DIRECTIVE_TYPE_RESTART restarts workload processes.
+  WORKLOAD_DIRECTIVE_TYPE_SCALE = 4; // WORKLOAD_DIRECTIVE_TYPE_SCALE changes desired workload replicas.
+}
+
+// DirectiveAck reports immediate acceptance/rejection of a directive.
+message DirectiveAck {
+  string directive_id = 1; // directive_id identifies which control-plane directive this ack references.
+  bool accepted = 2; // accepted indicates whether directive validation/admission succeeded.
+  string message = 3; // message provides a concise accept/reject reason.
+  int64 acknowledged_unix = 4; // acknowledged_unix is when the directive was acknowledged by the agent.
+}
+
+// DirectiveProgress reports in-flight execution status for a directive.
+message DirectiveProgress {
+  string directive_id = 1; // directive_id identifies which control-plane directive this progress references.
+  string phase = 2; // phase is an implementation-defined state label (for example: "draining", "downloading").
+  uint32 percent = 3; // percent is optional coarse completion percentage in [0, 100].
+  string message = 4; // message provides operator-readable progress details.
+  int64 updated_unix = 5; // updated_unix is when this progress snapshot was emitted.
+}
+
+// DirectiveResult reports final completion state for a directive.
+message DirectiveResult {
+  string directive_id = 1; // directive_id identifies which control-plane directive this result references.
+  DirectiveResultStatus status = 2; // status reports final completion outcome.
+  string message = 3; // message provides terminal details, including failure context.
+  int64 completed_unix = 4; // completed_unix is when final completion was reached.
+  bool rollback_applied = 5; // rollback_applied indicates whether rollback logic executed.
+}
+
+// DirectiveResultStatus enumerates final directive execution outcomes.
+enum DirectiveResultStatus {
+  DIRECTIVE_RESULT_STATUS_UNSPECIFIED = 0;
+  DIRECTIVE_RESULT_STATUS_SUCCEEDED = 1;
+  DIRECTIVE_RESULT_STATUS_FAILED = 2;
+  DIRECTIVE_RESULT_STATUS_CANCELLED = 3;
+}
+
+// WorkloadsReport carries per-workload runtime telemetry for one sample window.
+message WorkloadsReport {
+  string session_id = 1; // session_id identifies the active control session emitting this report.
+  int64 sent_unix = 2; // sent_unix is when this report snapshot was sampled by the agent.
+  uint64 sequence = 3; // sequence is monotonic per session and helps detect dropped report frames.
+  repeated WorkloadRuntime workloads = 4; // workloads is the current set of workload runtime records observed on the node.
+}
+
+// WorkloadRuntime captures runtime state and resource usage for one workload instance.
+message WorkloadRuntime {
+  string project_id = 1; // project_id scopes the workload to its owning project.
+  string workload_id = 2; // workload_id is the stable control-plane workload identity.
+  string vm_id = 3; // vm_id identifies the firecracker microVM instance running this workload.
+  WorkloadRuntimeState state = 4; // state is the current lifecycle state for this workload instance.
+  double cpu_usage_percent = 5; // cpu_usage_percent is current workload CPU usage percentage.
+  uint64 memory_used_bytes = 6; // memory_used_bytes is current workload memory usage.
+  uint64 disk_used_bytes = 7; // disk_used_bytes is current writable disk usage for this workload.
+  uint64 network_rx_bytes = 8; // network_rx_bytes is cumulative inbound network traffic for this workload.
+  uint64 network_tx_bytes = 9; // network_tx_bytes is cumulative outbound network traffic for this workload.
+  uint32 restart_count = 10; // restart_count is the number of restarts observed for this workload instance.
+  int64 started_unix = 11; // started_unix is the workload instance start time in unix seconds.
+  string message = 12; // message provides optional operator-readable runtime context.
+}
+
+// WorkloadRuntimeState enumerates per-workload lifecycle states reported by the agent.
+enum WorkloadRuntimeState {
+  WORKLOAD_RUNTIME_STATE_UNSPECIFIED = 0;
+  WORKLOAD_RUNTIME_STATE_PENDING = 1; // WORKLOAD_RUNTIME_STATE_PENDING means workload resources are not ready yet.
+  WORKLOAD_RUNTIME_STATE_STARTING = 2; // WORKLOAD_RUNTIME_STATE_STARTING means workload startup is in progress.
+  WORKLOAD_RUNTIME_STATE_RUNNING = 3; // WORKLOAD_RUNTIME_STATE_RUNNING means workload is healthy and serving.
+  WORKLOAD_RUNTIME_STATE_DRAINING = 4; // WORKLOAD_RUNTIME_STATE_DRAINING means workload is finishing in-flight work.
+  WORKLOAD_RUNTIME_STATE_STOPPED = 5; // WORKLOAD_RUNTIME_STATE_STOPPED means workload is intentionally not running.
+  WORKLOAD_RUNTIME_STATE_FAILED = 6; // WORKLOAD_RUNTIME_STATE_FAILED means workload reached terminal failure.
+}
+
+// NodeHealthReport carries machine-level telemetry for scheduling and operations.
+message NodeHealthReport {
+  string session_id = 1; // session_id identifies the active control session emitting telemetry.
+  int64 sent_unix = 2; // sent_unix is when this telemetry snapshot was sampled by the agent.
+  string node_status = 3; // node_status is a compact label (for example: "ready", "draining", "degraded").
+  double cpu_usage_percent = 4; // cpu_usage_percent is total CPU usage percentage across all cores.
+  uint32 cpu_cores = 5; // cpu_cores is the number of logical CPU cores visible to the agent.
+  uint64 memory_total_bytes = 6; // memory_total_bytes is total node memory capacity.
+  uint64 memory_available_bytes = 7; // memory_available_bytes is currently available memory.
+  uint64 disk_total_bytes = 8; // disk_total_bytes is total disk capacity for the primary data volume.
+  uint64 disk_available_bytes = 9; // disk_available_bytes is currently available space on the primary data volume.
+  uint32 running_workloads = 10; // running_workloads is the number of active workloads currently running.
+  uint32 queued_workloads = 11; // queued_workloads is the number of pending workloads waiting to start.
+  uint64 uptime_seconds = 12; // uptime_seconds is host uptime since the last reboot.
+  string boot_id_hash = 13; // boot_id_hash is a privacy-safe hash used to detect host reboot cycles.
 }

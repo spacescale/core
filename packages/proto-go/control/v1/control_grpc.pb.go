@@ -19,155 +19,170 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AgentControl_Health_FullMethodName   = "/control.v1.AgentControl/Health"
-	AgentControl_Register_FullMethodName = "/control.v1.AgentControl/Register"
+	ControlPlane_Health_FullMethodName      = "/control.v1.ControlPlane/Health"
+	ControlPlane_OpenSession_FullMethodName = "/control.v1.ControlPlane/OpenSession"
 )
 
-// AgentControlClient is the client API for AgentControl service.
+// ControlPlaneClient is the client API for ControlPlane service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// AgentControl defines minimal control-plane handshake operations.
-// This is intentionally small and stable for early production rollout.
-type AgentControlClient interface {
-	// Health is a lightweight readiness/liveness check.
-	// Control plane calls this to validate connectivity and agent runtime status.
+// ControlPlane is the server-side control API that agents dial.
+//
+// Architecture note:
+// - Agents initiate outbound connections to the control plane.
+// - OpenSession is intentionally long-lived.
+// - Registration, liveness, telemetry, and directives share one stream.
+type ControlPlaneClient interface {
+	// Health reports control-plane readiness to an agent.
+	//
+	// This unary method is a fast startup gate before opening OpenSession.
 	Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
-	// Register is a startup handshake used to identify agent instance metadata.
-	// This is not long-term scheduling yet; it only establishes a trusted baseline.
-	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
+	// OpenSession establishes a long-lived bidirectional control stream.
+	//
+	// Protocol invariants:
+	// - Agent MUST send RegisterRequest first.
+	// - Control plane MUST answer with RegisterResponse before directives.
+	// - Agent MUST continue HeartbeatRequest on the negotiated interval.
+	// - Agent SHOULD report directive ack/progress/result on the same stream.
+	OpenSession(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AgentSessionRequest, AgentSessionResponse], error)
 }
 
-type agentControlClient struct {
+type controlPlaneClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewAgentControlClient(cc grpc.ClientConnInterface) AgentControlClient {
-	return &agentControlClient{cc}
+func NewControlPlaneClient(cc grpc.ClientConnInterface) ControlPlaneClient {
+	return &controlPlaneClient{cc}
 }
 
-func (c *agentControlClient) Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error) {
+func (c *controlPlaneClient) Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HealthResponse)
-	err := c.cc.Invoke(ctx, AgentControl_Health_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, ControlPlane_Health_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *agentControlClient) Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error) {
+func (c *controlPlaneClient) OpenSession(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AgentSessionRequest, AgentSessionResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RegisterResponse)
-	err := c.cc.Invoke(ctx, AgentControl_Register_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ControlPlane_ServiceDesc.Streams[0], ControlPlane_OpenSession_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[AgentSessionRequest, AgentSessionResponse]{ClientStream: stream}
+	return x, nil
 }
 
-// AgentControlServer is the server API for AgentControl service.
-// All implementations must embed UnimplementedAgentControlServer
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ControlPlane_OpenSessionClient = grpc.BidiStreamingClient[AgentSessionRequest, AgentSessionResponse]
+
+// ControlPlaneServer is the server API for ControlPlane service.
+// All implementations must embed UnimplementedControlPlaneServer
 // for forward compatibility.
 //
-// AgentControl defines minimal control-plane handshake operations.
-// This is intentionally small and stable for early production rollout.
-type AgentControlServer interface {
-	// Health is a lightweight readiness/liveness check.
-	// Control plane calls this to validate connectivity and agent runtime status.
+// ControlPlane is the server-side control API that agents dial.
+//
+// Architecture note:
+// - Agents initiate outbound connections to the control plane.
+// - OpenSession is intentionally long-lived.
+// - Registration, liveness, telemetry, and directives share one stream.
+type ControlPlaneServer interface {
+	// Health reports control-plane readiness to an agent.
+	//
+	// This unary method is a fast startup gate before opening OpenSession.
 	Health(context.Context, *HealthRequest) (*HealthResponse, error)
-	// Register is a startup handshake used to identify agent instance metadata.
-	// This is not long-term scheduling yet; it only establishes a trusted baseline.
-	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
-	mustEmbedUnimplementedAgentControlServer()
+	// OpenSession establishes a long-lived bidirectional control stream.
+	//
+	// Protocol invariants:
+	// - Agent MUST send RegisterRequest first.
+	// - Control plane MUST answer with RegisterResponse before directives.
+	// - Agent MUST continue HeartbeatRequest on the negotiated interval.
+	// - Agent SHOULD report directive ack/progress/result on the same stream.
+	OpenSession(grpc.BidiStreamingServer[AgentSessionRequest, AgentSessionResponse]) error
+	mustEmbedUnimplementedControlPlaneServer()
 }
 
-// UnimplementedAgentControlServer must be embedded to have
+// UnimplementedControlPlaneServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedAgentControlServer struct{}
+type UnimplementedControlPlaneServer struct{}
 
-func (UnimplementedAgentControlServer) Health(context.Context, *HealthRequest) (*HealthResponse, error) {
+func (UnimplementedControlPlaneServer) Health(context.Context, *HealthRequest) (*HealthResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Health not implemented")
 }
-func (UnimplementedAgentControlServer) Register(context.Context, *RegisterRequest) (*RegisterResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method Register not implemented")
+func (UnimplementedControlPlaneServer) OpenSession(grpc.BidiStreamingServer[AgentSessionRequest, AgentSessionResponse]) error {
+	return status.Error(codes.Unimplemented, "method OpenSession not implemented")
 }
-func (UnimplementedAgentControlServer) mustEmbedUnimplementedAgentControlServer() {}
-func (UnimplementedAgentControlServer) testEmbeddedByValue()                      {}
+func (UnimplementedControlPlaneServer) mustEmbedUnimplementedControlPlaneServer() {}
+func (UnimplementedControlPlaneServer) testEmbeddedByValue()                      {}
 
-// UnsafeAgentControlServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to AgentControlServer will
+// UnsafeControlPlaneServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ControlPlaneServer will
 // result in compilation errors.
-type UnsafeAgentControlServer interface {
-	mustEmbedUnimplementedAgentControlServer()
+type UnsafeControlPlaneServer interface {
+	mustEmbedUnimplementedControlPlaneServer()
 }
 
-func RegisterAgentControlServer(s grpc.ServiceRegistrar, srv AgentControlServer) {
-	// If the following call panics, it indicates UnimplementedAgentControlServer was
+func RegisterControlPlaneServer(s grpc.ServiceRegistrar, srv ControlPlaneServer) {
+	// If the following call panics, it indicates UnimplementedControlPlaneServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&AgentControl_ServiceDesc, srv)
+	s.RegisterService(&ControlPlane_ServiceDesc, srv)
 }
 
-func _AgentControl_Health_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _ControlPlane_Health_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HealthRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(AgentControlServer).Health(ctx, in)
+		return srv.(ControlPlaneServer).Health(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: AgentControl_Health_FullMethodName,
+		FullMethod: ControlPlane_Health_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AgentControlServer).Health(ctx, req.(*HealthRequest))
+		return srv.(ControlPlaneServer).Health(ctx, req.(*HealthRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _AgentControl_Register_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RegisterRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AgentControlServer).Register(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AgentControl_Register_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AgentControlServer).Register(ctx, req.(*RegisterRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+func _ControlPlane_OpenSession_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ControlPlaneServer).OpenSession(&grpc.GenericServerStream[AgentSessionRequest, AgentSessionResponse]{ServerStream: stream})
 }
 
-// AgentControl_ServiceDesc is the grpc.ServiceDesc for AgentControl service.
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ControlPlane_OpenSessionServer = grpc.BidiStreamingServer[AgentSessionRequest, AgentSessionResponse]
+
+// ControlPlane_ServiceDesc is the grpc.ServiceDesc for ControlPlane service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var AgentControl_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "control.v1.AgentControl",
-	HandlerType: (*AgentControlServer)(nil),
+var ControlPlane_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "control.v1.ControlPlane",
+	HandlerType: (*ControlPlaneServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "Health",
-			Handler:    _AgentControl_Health_Handler,
-		},
-		{
-			MethodName: "Register",
-			Handler:    _AgentControl_Register_Handler,
+			Handler:    _ControlPlane_Health_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "OpenSession",
+			Handler:       _ControlPlane_OpenSession_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
 	Metadata: "contracts/proto/control.proto",
 }
