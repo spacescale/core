@@ -62,7 +62,7 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	w.Header().Set("Location", "/v0/workspaces/"+url.PathEscape(out.ID))
+	w.Header().Set("Location", "/v1/workspaces/"+url.PathEscape(out.ID))
 	writeJSON(w, http.StatusCreated, workspaceResponse{
 		ID:        out.ID,
 		Name:      out.Name,

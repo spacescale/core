@@ -38,7 +38,7 @@ func TestBootstrapDefaultsCreatesDefaults(t *testing.T) {
 	identityKey := uniqueIdentityKey(t)
 	syncAuthUserForTest(t, ts, identityKey)
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/bootstrap-defaults", []byte(`{}`), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/bootstrap-defaults", []byte(`{}`), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -50,7 +50,7 @@ func TestBootstrapDefaultsCreatesDefaults(t *testing.T) {
 	require.NotEmpty(t, out.WorkspaceID)
 	require.NotEmpty(t, out.ProjectID)
 
-	resp, data = doRequest(t, ts, http.MethodGet, "/v0/workspaces", nil, map[string]string{
+	resp, data = doRequest(t, ts, http.MethodGet, "/v1/workspaces", nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
@@ -61,7 +61,7 @@ func TestBootstrapDefaultsCreatesDefaults(t *testing.T) {
 	require.Equal(t, out.WorkspaceID, wsOut.Workspaces[0].ID)
 	require.Equal(t, "workspace-01", wsOut.Workspaces[0].Name)
 
-	resp, data = doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v0/workspaces/%s/projects", out.WorkspaceID), nil, map[string]string{
+	resp, data = doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v1/workspaces/%s/projects", out.WorkspaceID), nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
@@ -81,7 +81,7 @@ func TestBootstrapDefaultsIsIdempotent(t *testing.T) {
 	identityKey := uniqueIdentityKey(t)
 	syncAuthUserForTest(t, ts, identityKey)
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/bootstrap-defaults", []byte(`{}`), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/bootstrap-defaults", []byte(`{}`), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -93,7 +93,7 @@ func TestBootstrapDefaultsIsIdempotent(t *testing.T) {
 	require.NotEmpty(t, first.WorkspaceID)
 	require.NotEmpty(t, first.ProjectID)
 
-	resp, data = doRequest(t, ts, http.MethodPost, "/v0/bootstrap-defaults", nil, map[string]string{
+	resp, data = doRequest(t, ts, http.MethodPost, "/v1/bootstrap-defaults", nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
@@ -104,7 +104,7 @@ func TestBootstrapDefaultsIsIdempotent(t *testing.T) {
 	require.Empty(t, second.WorkspaceID)
 	require.Empty(t, second.ProjectID)
 
-	resp, data = doRequest(t, ts, http.MethodGet, "/v0/workspaces", nil, map[string]string{
+	resp, data = doRequest(t, ts, http.MethodGet, "/v1/workspaces", nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
@@ -113,7 +113,7 @@ func TestBootstrapDefaultsIsIdempotent(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &wsOut))
 	require.Len(t, wsOut.Workspaces, 1)
 
-	resp, data = doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v0/workspaces/%s/projects", wsOut.Workspaces[0].ID), nil, map[string]string{
+	resp, data = doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v1/workspaces/%s/projects", wsOut.Workspaces[0].ID), nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
@@ -127,7 +127,7 @@ func TestBootstrapDefaultsMissingAuth(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/bootstrap-defaults", []byte(`{}`), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/bootstrap-defaults", []byte(`{}`), map[string]string{
 		"Content-Type": "application/json",
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
@@ -142,7 +142,7 @@ func TestBootstrapDefaultsRequiresSyncedUser(t *testing.T) {
 	defer ts.close()
 
 	identityKey := uniqueIdentityKey(t)
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/bootstrap-defaults", []byte(`{}`), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/bootstrap-defaults", []byte(`{}`), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -160,7 +160,7 @@ func TestBootstrapDefaultsInvalidJSON(t *testing.T) {
 	identityKey := uniqueIdentityKey(t)
 	syncAuthUserForTest(t, ts, identityKey)
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/bootstrap-defaults", []byte("{"), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/bootstrap-defaults", []byte("{"), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})

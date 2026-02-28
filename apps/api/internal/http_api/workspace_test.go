@@ -28,7 +28,7 @@ func createWorkspaceViaAPI(t *testing.T, ts *testServer, identityKey, name strin
 	t.Helper()
 
 	body := []byte(fmt.Sprintf(`{"name":"%s"}`, name))
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces", body, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces", body, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -50,7 +50,7 @@ func TestCreateWorkspace(t *testing.T) {
 	syncAuthUserForTest(t, ts, identityKey)
 
 	workspaceName := fmt.Sprintf("workspace-%d", time.Now().UnixNano())
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces", []byte(fmt.Sprintf(`{"name":"%s"}`, workspaceName)), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces", []byte(fmt.Sprintf(`{"name":"%s"}`, workspaceName)), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -60,7 +60,7 @@ func TestCreateWorkspace(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &out))
 	require.NotEmpty(t, out.ID)
 	require.Equal(t, workspaceName, out.Name)
-	require.Equal(t, "/v0/workspaces/"+out.ID, resp.Header.Get("Location"))
+	require.Equal(t, "/v1/workspaces/"+out.ID, resp.Header.Get("Location"))
 
 	_, err := time.Parse(time.RFC3339, out.CreatedAt)
 	require.NoError(t, err)
@@ -78,7 +78,7 @@ func TestCreateWorkspaceConflict(t *testing.T) {
 	workspaceName := fmt.Sprintf("workspace-%d", time.Now().UnixNano())
 	_ = createWorkspaceViaAPI(t, ts, identityKey, workspaceName)
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces", []byte(fmt.Sprintf(`{"name":"%s"}`, workspaceName)), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces", []byte(fmt.Sprintf(`{"name":"%s"}`, workspaceName)), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -112,7 +112,7 @@ func TestCreateWorkspaceInvalidInput(t *testing.T) {
 	identityKey := uniqueIdentityKey(t)
 	syncAuthUserForTest(t, ts, identityKey)
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces", []byte(`{"name":"   "}`), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces", []byte(`{"name":"   "}`), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -127,7 +127,7 @@ func TestCreateWorkspaceMissingAuth(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v0/workspaces", []byte(`{"name":"workspace-01"}`), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces", []byte(`{"name":"workspace-01"}`), map[string]string{
 		"Content-Type": "application/json",
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
@@ -150,7 +150,7 @@ func TestListWorkspacesScopesToCaller(t *testing.T) {
 	_ = createWorkspaceViaAPI(t, ts, userA, a2)
 	_ = createWorkspaceViaAPI(t, ts, userB, b1)
 
-	resp, data := doRequest(t, ts, http.MethodGet, "/v0/workspaces", nil, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodGet, "/v1/workspaces", nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, userA),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
@@ -179,12 +179,12 @@ func TestGetWorkspaceOwnership(t *testing.T) {
 
 	workspace := createWorkspaceViaAPI(t, ts, owner, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 
-	resp, data := doRequest(t, ts, http.MethodGet, "/v0/workspaces/"+workspace.ID, nil, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodGet, "/v1/workspaces/"+workspace.ID, nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, owner),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
 
-	resp, data = doRequest(t, ts, http.MethodGet, "/v0/workspaces/"+workspace.ID, nil, map[string]string{
+	resp, data = doRequest(t, ts, http.MethodGet, "/v1/workspaces/"+workspace.ID, nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, other),
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
@@ -202,7 +202,7 @@ func TestUpdateWorkspace(t *testing.T) {
 	workspace := createWorkspaceViaAPI(t, ts, owner, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 	newName := fmt.Sprintf("workspace-renamed-%d", time.Now().UnixNano())
 
-	resp, data := doRequest(t, ts, http.MethodPatch, "/v0/workspaces/"+workspace.ID, []byte(fmt.Sprintf(`{"name":"%s"}`, newName)), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPatch, "/v1/workspaces/"+workspace.ID, []byte(fmt.Sprintf(`{"name":"%s"}`, newName)), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, owner),
 		"Content-Type":  "application/json",
 	})
@@ -213,7 +213,7 @@ func TestUpdateWorkspace(t *testing.T) {
 	require.Equal(t, workspace.ID, out.ID)
 	require.Equal(t, newName, out.Name)
 
-	resp, data = doRequest(t, ts, http.MethodPatch, "/v0/workspaces/"+workspace.ID, []byte(`{"name":"nope"}`), map[string]string{
+	resp, data = doRequest(t, ts, http.MethodPatch, "/v1/workspaces/"+workspace.ID, []byte(`{"name":"nope"}`), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, other),
 		"Content-Type":  "application/json",
 	})
@@ -230,7 +230,7 @@ func TestUpdateWorkspaceConflict(t *testing.T) {
 	w1 := createWorkspaceViaAPI(t, ts, identityKey, fmt.Sprintf("workspace-a-%d", time.Now().UnixNano()))
 	w2 := createWorkspaceViaAPI(t, ts, identityKey, fmt.Sprintf("workspace-b-%d", time.Now().UnixNano()))
 
-	resp, data := doRequest(t, ts, http.MethodPatch, "/v0/workspaces/"+w1.ID, []byte(fmt.Sprintf(`{"name":"%s"}`, w2.Name)), map[string]string{
+	resp, data := doRequest(t, ts, http.MethodPatch, "/v1/workspaces/"+w1.ID, []byte(fmt.Sprintf(`{"name":"%s"}`, w2.Name)), map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, identityKey),
 		"Content-Type":  "application/json",
 	})
@@ -246,12 +246,12 @@ func TestDeleteWorkspace(t *testing.T) {
 
 	workspace := createWorkspaceViaAPI(t, ts, owner, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 
-	resp, data := doRequest(t, ts, http.MethodDelete, "/v0/workspaces/"+workspace.ID, nil, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodDelete, "/v1/workspaces/"+workspace.ID, nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, owner),
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode, string(data))
 
-	resp, data = doRequest(t, ts, http.MethodGet, "/v0/workspaces/"+workspace.ID, nil, map[string]string{
+	resp, data = doRequest(t, ts, http.MethodGet, "/v1/workspaces/"+workspace.ID, nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, owner),
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
@@ -268,7 +268,7 @@ func TestDeleteWorkspaceOwnership(t *testing.T) {
 
 	workspace := createWorkspaceViaAPI(t, ts, owner, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 
-	resp, data := doRequest(t, ts, http.MethodDelete, "/v0/workspaces/"+workspace.ID, nil, map[string]string{
+	resp, data := doRequest(t, ts, http.MethodDelete, "/v1/workspaces/"+workspace.ID, nil, map[string]string{
 		"Authorization": authHeaderForIdentityKey(t, other),
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))

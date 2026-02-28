@@ -32,7 +32,7 @@ type readJSONPayload struct {
 func newJSONTestRequest(body string) *http.Request {
 	return httptest.NewRequest(
 		http.MethodPost,
-		"/v0/projects",
+		"/v1/projects",
 		strings.NewReader(body),
 	)
 }

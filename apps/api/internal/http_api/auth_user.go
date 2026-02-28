@@ -1,5 +1,5 @@
 // This file provides helpers that resolve the authenticated caller into a
-// persisted user record for /v0 handlers.
+// persisted user record for /v1 handlers.
 
 package http_api
 
