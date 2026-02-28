@@ -1,4 +1,4 @@
-.PHONY: db-build db-start run test stop mint proto-go
+.PHONY: db-build db-start run test stop mint proto-go proto
 
 db-build:
 	docker build -f apps/db/Dockerfile -t spacescale-db:local apps/db
@@ -19,6 +19,8 @@ test: db-start
 
 proto-go:
 	protoc --proto_path=. --go_out=packages/proto-go --go_opt=module=github.com/t0gun/spacescale/packages/proto-go --go-grpc_out=packages/proto-go --go-grpc_opt=module=github.com/t0gun/spacescale/packages/proto-go $$(find contracts/proto -type f -name '*.proto' | sort)
+
+proto: proto-go
 
 stop:
 	@docker rm -f spacescale-db || true
