@@ -14,6 +14,7 @@ A deployment platform built as a monorepo with [Turborepo](https://turbo.build/)
 ```
 apps/
   api/          Go API server (Chi router)
+  scaled/       Node agent daemon and runtime engine (Go)
   web/          Dashboard (Next.js 15 + React 19)
   marketing/    Marketing site (Next.js 15)
   db/           Postgres migrations & sqlc queries
