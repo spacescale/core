@@ -8,10 +8,8 @@ CREATE
 CREATE TABLE users
 (
     id                   UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
-    identity_key         TEXT        NOT NULL UNIQUE CHECK (
-        CHAR_LENGTH(BTRIM(identity_key)) > 0
-            AND CHAR_LENGTH(identity_key) <= 512
-        ),
+    identity_key         TEXT        NOT NULL UNIQUE CHECK (CHAR_LENGTH(BTRIM(identity_key)) > 0 AND
+                                                            CHAR_LENGTH(identity_key) <= 512),
     email                TEXT CHECK (email IS NULL OR CHAR_LENGTH(email) <= 320),
     name                 TEXT CHECK (name IS NULL OR CHAR_LENGTH(name) <= 255),
     avatar_url           TEXT CHECK (avatar_url IS NULL OR CHAR_LENGTH(avatar_url) <= 2048),
@@ -69,12 +67,13 @@ CREATE TABLE apps
 (
     id           UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
     project_id   UUID        NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
-    name         TEXT,
+    name         TEXT        NOT NULL,
     slug         TEXT        NOT NULL,
     subdomain    TEXT        NOT NULL,
     image_ref    TEXT        NOT NULL,
-    runtime_port INT,
-    status       TEXT        NOT NULL CHECK (status IN ('created', 'building', 'running', 'failed')),
+    runtime_port INT         NOT NULL DEFAULT 8080,
+    is_public    BOOLEAN     NOT NULL DEFAULT TRUE,
+    status       TEXT        NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'deploying', 'running', 'failed')),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (project_id, slug),
@@ -90,7 +89,7 @@ CREATE TABLE deployments
     status        TEXT        NOT NULL CHECK (status IN ('queued', 'deploying', 'running', 'failed')),
     image_ref     TEXT        NOT NULL,
     runtime_port  INT         NOT NULL,
-    public_url    TEXT        NOT NULL,
+    public_url    TEXT,
     error_message TEXT,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()

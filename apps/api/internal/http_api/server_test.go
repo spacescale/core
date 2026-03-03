@@ -31,6 +31,8 @@ const (
 	testIssuer             = "spacescale-web-bff-test" // shared test token issuer.
 	testAudience           = "spacescale-api-test"     // shared test token audience.
 	testInternalAuthSecret = "test-internal-secret"
+	testEnvEncryptionKeyID = "test-key-v1"
+	testEnvEncryptionKey   = "0123456789abcdef0123456789abcdef"
 )
 
 // testServer bundles resources needed by integration tests.
@@ -111,6 +113,7 @@ func TestNewServerRequiresNonEmptyInternalSecret(t *testing.T) {
 				Users:      &service.UserService{},
 				Workspaces: &service.WorkspaceService{},
 				Bootstrap:  &service.BootstrapService{},
+				Apps:       &service.AppService{},
 			},
 			DBPool: &pgxpool.Pool{},
 			Config: config.APIConfig{
@@ -285,7 +288,12 @@ func newTestServerWithRateLimitConfigs(
 	}
 
 	queries := pgstore.New(pool)
-	svcs := service.NewServices(queries)
+	envCipher, err := service.NewEnvValueCipher(testEnvEncryptionKeyID, []byte(testEnvEncryptionKey))
+	if err != nil {
+		pool.Close()
+		t.Fatalf("env cipher: %v", err)
+	}
+	svcs := service.NewServices(queries, pool, envCipher)
 	api := http_api.NewServer(http_api.ServerDeps{
 		Services: svcs,
 		DBPool:   pool,

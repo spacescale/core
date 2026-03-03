@@ -13,11 +13,12 @@ import (
 type App struct {
 	ID          uuid.UUID
 	ProjectID   uuid.UUID
-	Name        *string
+	Name        string
 	Slug        string
 	Subdomain   string
 	ImageRef    string
-	RuntimePort *int32
+	RuntimePort int32
+	IsPublic    bool
 	Status      string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
@@ -46,7 +47,7 @@ type Deployment struct {
 	Status       string
 	ImageRef     string
 	RuntimePort  int32
-	PublicUrl    string
+	PublicUrl    *string
 	ErrorMessage *string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time

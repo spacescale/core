@@ -74,6 +74,9 @@ func NewServer(deps ServerDeps) *Server {
 	if deps.Services.Bootstrap == nil {
 		panic("http_api.NewServer requires non-nil bootstrap service")
 	}
+	if deps.Services.Apps == nil {
+		panic("http_api.NewServer requires non-nil app service")
+	}
 	if deps.Services.Users == nil {
 		panic("http_api.NewServer requires non-nil user service")
 	}
@@ -106,7 +109,7 @@ func (s *Server) Router() http.Handler {
 	r.Use(accessLogMiddleware(s.config.LogPrivacy))
 	r.Use(recovererMiddleware(s.config.LogPrivacy))
 
-	// userLimiter applies per-authenticated-user request limits on API v0 routes.
+	// userLimiter applies per-authenticated-user request limits on API v1 routes.
 	// Keys come from keyByIdentityKey, so limits are enforced by authenticated
 	// identity key instead of source IP. This keeps limits fair when requests
 	// are proxied through Next.js, CLI backends, or shared infrastructure.
@@ -159,6 +162,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/workspaces/{workspaceId}/projects/{projectId}", s.handleGetProject)
 		r.Patch("/workspaces/{workspaceId}/projects/{projectId}", s.handleUpdateProject)
 		r.Delete("/workspaces/{workspaceId}/projects/{projectId}", s.handleDeleteProject)
+
+		// Apps endpoints.
+		r.Post("/workspaces/{workspaceId}/projects/{projectId}/apps", s.handleCreateApp)
 	})
 
 	return r

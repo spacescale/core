@@ -37,8 +37,13 @@ func main() {
 	}
 	defer dbPool.Close()
 	queries := pgstore.New(dbPool)
+	envCipher, err := service.NewEnvValueCipher(cfg.API.EnvEncryption.KeyID, cfg.API.EnvEncryption.Key)
+	if err != nil {
+		logger.Error("env encryption init failed", "event", "startup_error", "error", err)
+		os.Exit(1)
+	}
 
-	svcs := service.NewServices(queries)
+	svcs := service.NewServices(queries, dbPool, envCipher)
 	api := http_api.NewServer(http_api.ServerDeps{
 		Services: svcs,
 		DBPool:   dbPool,

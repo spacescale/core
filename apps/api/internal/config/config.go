@@ -5,6 +5,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"log/slog"
 	"os"
@@ -94,6 +95,11 @@ func readAPIServerConfig() (APIConfig, error) {
 		return APIConfig{}, err
 	}
 
+	envEncryptionCfg, err := readEnvEncryptionConfig()
+	if err != nil {
+		return APIConfig{}, err
+	}
+
 	logPrivacyCfg, err := readLogPrivacyConfig()
 	if err != nil {
 		return APIConfig{}, err
@@ -111,6 +117,7 @@ func readAPIServerConfig() (APIConfig, error) {
 		InternalIdentityRateLimit: readInternalIdentityRateLimitConfig(),
 		LogPrivacy:                logPrivacyCfg,
 		InternalAuthSecret:        internalAuthSecret,
+		EnvEncryption:             envEncryptionCfg,
 	}, nil
 }
 
@@ -172,6 +179,32 @@ func readAuthConfig() (AuthConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+// readEnvEncryptionConfig loads env value encryption key configuration.
+func readEnvEncryptionConfig() (EnvEncryptionConfig, error) {
+	keyID := strings.TrimSpace(envStr("API_ENV_ENCRYPTION_KEY_ID", ""))
+	if keyID == "" {
+		return EnvEncryptionConfig{}, errors.New("missing required config API_ENV_ENCRYPTION_KEY_ID")
+	}
+
+	keyB64 := strings.TrimSpace(envStr("API_ENV_ENCRYPTION_KEY", ""))
+	if keyB64 == "" {
+		return EnvEncryptionConfig{}, errors.New("missing required config API_ENV_ENCRYPTION_KEY")
+	}
+
+	key, err := base64.StdEncoding.DecodeString(keyB64)
+	if err != nil {
+		return EnvEncryptionConfig{}, errors.New("invalid config API_ENV_ENCRYPTION_KEY: must be base64-encoded 32-byte key")
+	}
+	if len(key) != 32 {
+		return EnvEncryptionConfig{}, errors.New("invalid config API_ENV_ENCRYPTION_KEY: must decode to 32 bytes")
+	}
+
+	return EnvEncryptionConfig{
+		KeyID: keyID,
+		Key:   append([]byte(nil), key...),
+	}, nil
 }
 
 // readRateLimitConfig loads per-user limiter settings with safe defaults.

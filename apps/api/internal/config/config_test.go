@@ -26,6 +26,8 @@ func setBaselineEnv(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable")
 	t.Setenv("BFF_JWT_SECRET", "test-secret")
 	t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "test-internal-auth-secret")
+	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "test-key-v1")
+	t.Setenv("API_ENV_ENCRYPTION_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
 	// Use off mode by default so tests that do not care about hash mode are not
 	// coupled to hash-secret requirements.
 	t.Setenv("API_LOG_USER_AGENT_MODE", "off")
@@ -59,6 +61,36 @@ func TestLoadAppConfigMissingInternalAuthSecret(t *testing.T) {
 
 	_, err := LoadFromEnv()
 	require.EqualError(t, err, "missing required config INTERNAL_AUTH_SYNC_SECRET")
+}
+
+// TestLoadAppConfigMissingEnvEncryptionKeyID verifies startup fails fast when
+// env value encryption key id is missing.
+func TestLoadAppConfigMissingEnvEncryptionKeyID(t *testing.T) {
+	setBaselineEnv(t)
+	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "")
+
+	_, err := LoadFromEnv()
+	require.EqualError(t, err, "missing required config API_ENV_ENCRYPTION_KEY_ID")
+}
+
+// TestLoadAppConfigMissingEnvEncryptionKey verifies startup fails fast when
+// env value encryption key material is missing.
+func TestLoadAppConfigMissingEnvEncryptionKey(t *testing.T) {
+	setBaselineEnv(t)
+	t.Setenv("API_ENV_ENCRYPTION_KEY", "")
+
+	_, err := LoadFromEnv()
+	require.EqualError(t, err, "missing required config API_ENV_ENCRYPTION_KEY")
+}
+
+// TestLoadAppConfigInvalidEnvEncryptionKey verifies invalid key material is
+// rejected during startup config loading.
+func TestLoadAppConfigInvalidEnvEncryptionKey(t *testing.T) {
+	setBaselineEnv(t)
+	t.Setenv("API_ENV_ENCRYPTION_KEY", "not-base64")
+
+	_, err := LoadFromEnv()
+	require.EqualError(t, err, "invalid config API_ENV_ENCRYPTION_KEY: must be base64-encoded 32-byte key")
 }
 
 // TestLoadAppConfigHashModeRequiresSecret verifies that hash mode cannot start

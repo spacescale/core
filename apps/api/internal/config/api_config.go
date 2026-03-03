@@ -110,6 +110,12 @@ type LogPrivacyConfig struct {
 	IncludeStackTrace   bool
 }
 
+// EnvEncryptionConfig defines key material used to encrypt app env vars.
+type EnvEncryptionConfig struct {
+	KeyID string
+	Key   []byte
+}
+
 // DefaultLogPrivacyConfig returns package default privacy settings.
 func DefaultLogPrivacyConfig() LogPrivacyConfig {
 	return LogPrivacyConfig{
@@ -147,6 +153,7 @@ type APIConfig struct {
 	InternalIdentityRateLimit RateLimitConfig
 	LogPrivacy                LogPrivacyConfig
 	InternalAuthSecret        string
+	EnvEncryption             EnvEncryptionConfig
 }
 
 // Normalized returns a safe runtime API config for server wiring.
@@ -156,5 +163,6 @@ func (c APIConfig) Normalized() APIConfig {
 	c.InternalIdentityRateLimit = c.InternalIdentityRateLimit.normalizedWith(DefaultInternalIdentityRateLimitConfig())
 	c.LogPrivacy = c.LogPrivacy.Normalized()
 	c.InternalAuthSecret = strings.TrimSpace(c.InternalAuthSecret)
+	c.EnvEncryption.KeyID = strings.TrimSpace(c.EnvEncryption.KeyID)
 	return c
 }

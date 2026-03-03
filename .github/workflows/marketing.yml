@@ -5,8 +5,24 @@ permissions:
 on:
   push:
     branches: [main]
+    paths:
+      - "apps/marketing/**"
+      - "packages/ui/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - ".github/workflows/marketing.yml"
   pull_request:
     branches: [main, dev]
+    paths:
+      - "apps/marketing/**"
+      - "packages/ui/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "turbo.json"
+      - ".github/workflows/marketing.yml"
 
 jobs:
   build:
