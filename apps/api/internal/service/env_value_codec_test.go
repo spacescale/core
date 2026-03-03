@@ -9,7 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
+	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
 )
 
 const testEnvCipherKey32 = "0123456789abcdef0123456789abcdef"
@@ -138,6 +140,63 @@ func TestNewEnvValueKeyringValidatesInputs(t *testing.T) {
 
 	_, err = NewEnvValueKeyring("kid-b", map[string][]byte{"kid-a": []byte(testEnvCipherKey32)})
 	require.Error(t, err)
+}
+
+func TestNewEnvValueReencryptWorkerValidatesKeyAlignment(t *testing.T) {
+	pool := &pgxpool.Pool{}
+	queries := &pgstore.Queries{}
+
+	keyring, err := NewEnvValueKeyring("kid-a", map[string][]byte{
+		"kid-a": []byte(testEnvCipherKey32),
+		"kid-b": []byte(testEnvCipherKeyAlt32),
+	})
+	require.NoError(t, err)
+
+	t.Run("rejects mismatched active key id", func(t *testing.T) {
+		_, err := NewEnvValueReencryptWorker(EnvValueReencryptWorkerConfig{
+			Pool:         pool,
+			Queries:      queries,
+			Keyring:      keyring,
+			ActiveKeyID:  "kid-b",
+			LoadedKeyIDs: []string{"kid-a", "kid-b"},
+		})
+		require.EqualError(t, err, "env reencrypt worker active key id must match keyring active key id")
+	})
+
+	t.Run("rejects missing active key in loaded ids", func(t *testing.T) {
+		_, err := NewEnvValueReencryptWorker(EnvValueReencryptWorkerConfig{
+			Pool:         pool,
+			Queries:      queries,
+			Keyring:      keyring,
+			ActiveKeyID:  "kid-a",
+			LoadedKeyIDs: []string{"kid-b"},
+		})
+		require.EqualError(t, err, "env reencrypt worker loaded keys must include active key id")
+	})
+
+	t.Run("rejects loaded key missing from keyring", func(t *testing.T) {
+		_, err := NewEnvValueReencryptWorker(EnvValueReencryptWorkerConfig{
+			Pool:         pool,
+			Queries:      queries,
+			Keyring:      keyring,
+			ActiveKeyID:  "kid-a",
+			LoadedKeyIDs: []string{"kid-a", "kid-c"},
+		})
+		require.EqualError(t, err, "env reencrypt worker loaded key id \"kid-c\" is missing in keyring")
+	})
+
+	t.Run("accepts aligned configuration", func(t *testing.T) {
+		worker, err := NewEnvValueReencryptWorker(EnvValueReencryptWorkerConfig{
+			Pool:         pool,
+			Queries:      queries,
+			Keyring:      keyring,
+			ActiveKeyID:  "kid-a",
+			LoadedKeyIDs: []string{"kid-a", "kid-b"},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, worker)
+		require.True(t, worker.Enabled())
+	})
 }
 
 func TestNewEnvValueCipherValidatesInputs(t *testing.T) {

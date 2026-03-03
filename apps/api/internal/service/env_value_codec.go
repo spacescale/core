@@ -329,6 +329,12 @@ func isValidEnvValueKeyID(keyID string) bool {
 //
 // The worker derives its legacy key set by subtracting ActiveKeyID from
 // LoadedKeyIDs, then sorts that list for deterministic traversal order.
+//
+// Validation behavior:
+//   - ActiveKeyID must match keyring active key id.
+//   - ActiveKeyID must exist in keyring and in LoadedKeyIDs.
+//   - Every LoadedKeyID must be present in keyring, preventing sweep loops from
+//     claiming rows that are not decryptable by configured key material.
 func NewEnvValueReencryptWorker(cfg EnvValueReencryptWorkerConfig) (*EnvValueReencryptWorker, error) {
 	if cfg.Pool == nil {
 		return nil, errors.New("env reencrypt worker requires non-nil db pool")
@@ -343,6 +349,12 @@ func NewEnvValueReencryptWorker(cfg EnvValueReencryptWorkerConfig) (*EnvValueRee
 	if active == "" {
 		return nil, errors.New("env reencrypt worker requires non-empty active key id")
 	}
+	if cfg.Keyring.activeKeyID != active {
+		return nil, errors.New("env reencrypt worker active key id must match keyring active key id")
+	}
+	if _, exists := cfg.Keyring.ciphers[active]; !exists {
+		return nil, errors.New("env reencrypt worker active key id is missing in keyring")
+	}
 	batchSize := cfg.BatchSize
 	if batchSize <= 0 {
 		batchSize = defaultEnvReencryptBatchSize
@@ -355,10 +367,30 @@ func NewEnvValueReencryptWorker(cfg EnvValueReencryptWorkerConfig) (*EnvValueRee
 	if logger == nil {
 		logger = slog.Default()
 	}
-	legacySet := make(map[string]struct{})
+	loadedSet := make(map[string]struct{}, len(cfg.LoadedKeyIDs))
+	activePresentInLoaded := false
 	for _, raw := range cfg.LoadedKeyIDs {
 		keyID := strings.TrimSpace(raw)
-		if keyID == "" || keyID == active {
+		if keyID == "" {
+			continue
+		}
+		loadedSet[keyID] = struct{}{}
+		if keyID == active {
+			activePresentInLoaded = true
+		}
+	}
+	if !activePresentInLoaded {
+		return nil, errors.New("env reencrypt worker loaded keys must include active key id")
+	}
+	for keyID := range loadedSet {
+		if _, exists := cfg.Keyring.ciphers[keyID]; !exists {
+			return nil, fmt.Errorf("env reencrypt worker loaded key id %q is missing in keyring", keyID)
+		}
+	}
+
+	legacySet := make(map[string]struct{})
+	for keyID := range loadedSet {
+		if keyID == active {
 			continue
 		}
 		legacySet[keyID] = struct{}{}
