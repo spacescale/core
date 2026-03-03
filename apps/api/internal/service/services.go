@@ -22,12 +22,12 @@ type Services struct {
 }
 
 // NewServices builds all service dependencies from one shared dependency set.
-func NewServices(queries *pgstore.Queries, dbPool *pgxpool.Pool, envCipher *EnvValueCipher) *Services {
+func NewServices(queries *pgstore.Queries, dbPool *pgxpool.Pool, envKeyring *EnvValueKeyring) *Services {
 	return &Services{
 		Users:      NewUserService(queries),
 		Projects:   NewProjectService(queries),
 		Workspaces: NewWorkspaceService(queries),
 		Bootstrap:  NewBootstrapService(queries),
-		Apps:       NewAppService(queries, dbPool, envCipher),
+		Apps:       NewAppService(queries, dbPool, envKeyring),
 	}
 }

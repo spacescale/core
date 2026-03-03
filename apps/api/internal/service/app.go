@@ -33,6 +33,7 @@ const (
 	appImageRefMaxChars    = 1024 // maximum accepted image reference length.
 	appEnvVarKeyMaxChars   = 128  // maximum environment-variable key length.
 	appEnvVarValueMaxRunes = 8192 // maximum environment-variable value length in runes.
+	appEnvVarsMaxCount     = 50   // maximum environment variables accepted per create request.
 )
 
 // App is the service-layer model returned to HTTP handlers.
@@ -62,30 +63,30 @@ type CreateAppParams struct {
 	Name                 string           // optional; derived from ImageRef when empty.
 	ImageRef             string           // required OCI image reference.
 	RuntimePort          *int             // optional; nil uses defaultAppRuntimePort.
-	IsPublic             *bool            // optional; nil defaults to true.
+	IsPublic             *bool            // optional; nil defaults to false.
 	RegistryCredentialID string           // optional; must belong to same project.
 	EnvVars              []AppEnvVarInput // optional; validated for format and duplicates.
 }
 
 // AppService owns app creation workflows.
 type AppService struct {
-	queries   *pgstore.Queries // SQLC-backed persistence operations.
-	pool      *pgxpool.Pool    // transaction entrypoint for atomic create-app writes.
-	envCipher *EnvValueCipher  // encrypts env values before DB writes.
+	queries    *pgstore.Queries // SQLC-backed persistence operations.
+	pool       *pgxpool.Pool    // transaction entrypoint for atomic create-app writes.
+	envKeyring *EnvValueKeyring // encrypts with active key and supports multi-key decrypt.
 }
 
 // NewAppService constructs an AppService with shared query and crypto deps.
-func NewAppService(queries *pgstore.Queries, pool *pgxpool.Pool, envCipher *EnvValueCipher) *AppService {
+func NewAppService(queries *pgstore.Queries, pool *pgxpool.Pool, envKeyring *EnvValueKeyring) *AppService {
 	if queries == nil {
 		panic("service.NewAppService requires non-nil queries")
 	}
 	if pool == nil {
 		panic("service.NewAppService requires non-nil db pool")
 	}
-	if envCipher == nil {
-		panic("service.NewAppService requires non-nil env cipher")
+	if envKeyring == nil {
+		panic("service.NewAppService requires non-nil env keyring")
 	}
-	return &AppService{queries: queries, pool: pool, envCipher: envCipher}
+	return &AppService{queries: queries, pool: pool, envKeyring: envKeyring}
 }
 
 // CreateApp creates an app under an owned workspace/project and applies defaults.
@@ -184,7 +185,7 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 		}
 
 		for _, env := range envVars {
-			valueEncrypted, encErr := s.envCipher.EncryptForStorage(env.Value)
+			valueEncrypted, encErr := s.envKeyring.EncryptForStorage(env.Value)
 			if encErr != nil {
 				_ = tx.Rollback(ctx)
 				return App{}, encErr
@@ -356,7 +357,7 @@ func normalizeRuntimePort(raw *int) (int32, bool) {
 // normalizeIsPublic resolves optional public exposure input.
 func normalizeIsPublic(raw *bool) bool {
 	if raw == nil {
-		return true
+		return false
 	}
 	return *raw
 }
@@ -366,6 +367,9 @@ func normalizeIsPublic(raw *bool) bool {
 func normalizeEnvVars(raw []AppEnvVarInput) ([]AppEnvVarInput, bool) {
 	if len(raw) == 0 {
 		return nil, true
+	}
+	if len(raw) > appEnvVarsMaxCount {
+		return nil, false
 	}
 
 	out := make([]AppEnvVarInput, 0, len(raw))

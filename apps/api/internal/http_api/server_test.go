@@ -288,12 +288,14 @@ func newTestServerWithRateLimitConfigs(
 	}
 
 	queries := pgstore.New(pool)
-	envCipher, err := service.NewEnvValueCipher(testEnvEncryptionKeyID, []byte(testEnvEncryptionKey))
+	envKeyring, err := service.NewEnvValueKeyring(testEnvEncryptionKeyID, map[string][]byte{
+		testEnvEncryptionKeyID: []byte(testEnvEncryptionKey),
+	})
 	if err != nil {
 		pool.Close()
-		t.Fatalf("env cipher: %v", err)
+		t.Fatalf("env keyring: %v", err)
 	}
-	svcs := service.NewServices(queries, pool, envCipher)
+	svcs := service.NewServices(queries, pool, envKeyring)
 	api := http_api.NewServer(http_api.ServerDeps{
 		Services: svcs,
 		DBPool:   pool,

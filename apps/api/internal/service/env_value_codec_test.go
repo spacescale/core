@@ -13,6 +13,7 @@ import (
 )
 
 const testEnvCipherKey32 = "0123456789abcdef0123456789abcdef"
+const testEnvCipherKeyAlt32 = "fedcba9876543210fedcba9876543210"
 
 func TestEnvValueCipherEncryptDecryptRoundTrip(t *testing.T) {
 	cipher, err := NewEnvValueCipher("test-v1", []byte(testEnvCipherKey32))
@@ -72,6 +73,71 @@ func TestEnvValueCipherRejectsWrongKeyID(t *testing.T) {
 
 	_, err = right.DecryptFromStorage(encrypted)
 	require.ErrorIs(t, err, ErrInvalidEnvValueCiphertext)
+}
+
+func TestEnvValueKeyringEncryptUsesActiveKey(t *testing.T) {
+	keyring, err := NewEnvValueKeyring("kid-b", map[string][]byte{
+		"kid-a": []byte(testEnvCipherKey32),
+		"kid-b": []byte(testEnvCipherKeyAlt32),
+	})
+	require.NoError(t, err)
+
+	encrypted, err := keyring.EncryptForStorage("postgres://local")
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(encrypted, "v1:aesgcm:kid-b:"))
+}
+
+func TestEnvValueKeyringDecryptsByPayloadKeyID(t *testing.T) {
+	legacyCipher, err := NewEnvValueCipher("kid-a", []byte(testEnvCipherKey32))
+	require.NoError(t, err)
+	activeCipher, err := NewEnvValueCipher("kid-b", []byte(testEnvCipherKeyAlt32))
+	require.NoError(t, err)
+
+	legacyEncrypted, err := legacyCipher.EncryptForStorage("legacy-secret")
+	require.NoError(t, err)
+	activeEncrypted, err := activeCipher.EncryptForStorage("active-secret")
+	require.NoError(t, err)
+
+	keyring, err := NewEnvValueKeyring("kid-b", map[string][]byte{
+		"kid-a": []byte(testEnvCipherKey32),
+		"kid-b": []byte(testEnvCipherKeyAlt32),
+	})
+	require.NoError(t, err)
+
+	legacyDecrypted, err := keyring.DecryptFromStorage(legacyEncrypted)
+	require.NoError(t, err)
+	require.Equal(t, "legacy-secret", legacyDecrypted)
+
+	activeDecrypted, err := keyring.DecryptFromStorage(activeEncrypted)
+	require.NoError(t, err)
+	require.Equal(t, "active-secret", activeDecrypted)
+}
+
+func TestEnvValueKeyringRejectsUnknownKeyID(t *testing.T) {
+	legacyCipher, err := NewEnvValueCipher("kid-a", []byte(testEnvCipherKey32))
+	require.NoError(t, err)
+
+	encrypted, err := legacyCipher.EncryptForStorage("legacy-secret")
+	require.NoError(t, err)
+
+	keyring, err := NewEnvValueKeyring("kid-b", map[string][]byte{
+		"kid-b": []byte(testEnvCipherKeyAlt32),
+	})
+	require.NoError(t, err)
+
+	_, err = keyring.DecryptFromStorage(encrypted)
+	require.ErrorIs(t, err, ErrInvalidEnvValueCiphertext)
+}
+
+func TestNewEnvValueKeyringValidatesInputs(t *testing.T) {
+	_, err := NewEnvValueKeyring("", map[string][]byte{"kid-a": []byte(testEnvCipherKey32)})
+	require.Error(t, err)
+
+	_, err = NewEnvValueKeyring("kid-a", nil)
+	require.Error(t, err)
+
+	_, err = NewEnvValueKeyring("kid-b", map[string][]byte{"kid-a": []byte(testEnvCipherKey32)})
+	require.Error(t, err)
 }
 
 func TestNewEnvValueCipherValidatesInputs(t *testing.T) {

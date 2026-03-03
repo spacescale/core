@@ -72,7 +72,7 @@ CREATE TABLE apps
     subdomain    TEXT        NOT NULL,
     image_ref    TEXT        NOT NULL,
     runtime_port INT         NOT NULL DEFAULT 8080,
-    is_public    BOOLEAN     NOT NULL DEFAULT TRUE,
+    is_public    BOOLEAN     NOT NULL DEFAULT FALSE,
     status       TEXT        NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'deploying', 'running', 'failed')),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),

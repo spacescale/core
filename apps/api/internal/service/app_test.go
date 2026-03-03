@@ -7,6 +7,7 @@
 package service
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -122,7 +123,7 @@ func TestNormalizeRuntimePort(t *testing.T) {
 }
 
 func TestNormalizeIsPublic(t *testing.T) {
-	require.True(t, normalizeIsPublic(nil))
+	require.False(t, normalizeIsPublic(nil))
 
 	falseVal := false
 	require.False(t, normalizeIsPublic(&falseVal))
@@ -196,6 +197,19 @@ func TestNormalizeEnvVars(t *testing.T) {
 	t.Run("rejects over max value length", func(t *testing.T) {
 		tooLong := strings.Repeat("a", appEnvVarValueMaxRunes+1)
 		_, ok := normalizeEnvVars([]AppEnvVarInput{{Key: "APP_MODE", Value: tooLong, IsSecret: false}})
+		require.False(t, ok)
+	})
+
+	t.Run("rejects over max env var count", func(t *testing.T) {
+		raw := make([]AppEnvVarInput, appEnvVarsMaxCount+1)
+		for i := 0; i < len(raw); i++ {
+			raw[i] = AppEnvVarInput{
+				Key:      "KEY_" + strconv.Itoa(i),
+				Value:    "x",
+				IsSecret: false,
+			}
+		}
+		_, ok := normalizeEnvVars(raw)
 		require.False(t, ok)
 	})
 }

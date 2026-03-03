@@ -46,9 +46,10 @@ description: |-
   - `imageRef` (required): OCI image reference
   - `name` (optional): display name; when omitted service derives from image ref
   - `runtimePort` (optional): defaults to `8080`
-  - `isPublic` (optional): defaults to `true`
+  - `isPublic` (optional): defaults to `false`
   - `registryCredentialId` (optional): must belong to same project when supplied
   - `envVars` (optional): list of env vars
+    - max items per request: `50`
     - key format: shell-style uppercase identifier after normalization
     - values are encrypted before DB write
     - duplicate keys (after normalization) are rejected
@@ -85,14 +86,14 @@ description: |-
   - `429 Too Many Requests`: per-user API rate limit exceeded
   - `500 Internal Server Error`: unexpected runtime error
 headers:
-- enabled: true
-  name: Authorization
-  value: Bearer ${[ BFF_TOKEN ]}
-  id: hAppCrAuth01
-- enabled: true
-  name: Content-Type
-  value: application/json
-  id: hAppCrType01
+  - enabled: true
+    name: Authorization
+    value: Bearer ${[ BFF_TOKEN ]}
+    id: hAppCrAuth01
+  - enabled: true
+    name: Content-Type
+    value: application/json
+    id: hAppCrType01
 method: POST
 name: Create App
 sortPriority: 0.0

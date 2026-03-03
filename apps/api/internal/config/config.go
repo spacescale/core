@@ -5,8 +5,10 @@
 package config
 
 import (
+	"bytes"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
@@ -183,28 +185,99 @@ func readAuthConfig() (AuthConfig, error) {
 
 // readEnvEncryptionConfig loads env value encryption key configuration.
 func readEnvEncryptionConfig() (EnvEncryptionConfig, error) {
-	keyID := strings.TrimSpace(envStr("API_ENV_ENCRYPTION_KEY_ID", ""))
-	if keyID == "" {
+	activeKeyID := strings.TrimSpace(envStr("API_ENV_ENCRYPTION_KEY_ID", ""))
+	if activeKeyID == "" {
 		return EnvEncryptionConfig{}, errors.New("missing required config API_ENV_ENCRYPTION_KEY_ID")
+	}
+	if err := validateEnvEncryptionKeyID(activeKeyID, "API_ENV_ENCRYPTION_KEY_ID"); err != nil {
+		return EnvEncryptionConfig{}, err
 	}
 
 	keyB64 := strings.TrimSpace(envStr("API_ENV_ENCRYPTION_KEY", ""))
 	if keyB64 == "" {
 		return EnvEncryptionConfig{}, errors.New("missing required config API_ENV_ENCRYPTION_KEY")
 	}
-
-	key, err := base64.StdEncoding.DecodeString(keyB64)
+	activeKey, err := decodeEnvEncryptionKey(keyB64, "API_ENV_ENCRYPTION_KEY")
 	if err != nil {
-		return EnvEncryptionConfig{}, errors.New("invalid config API_ENV_ENCRYPTION_KEY: must be base64-encoded 32-byte key")
+		return EnvEncryptionConfig{}, err
 	}
-	if len(key) != 32 {
-		return EnvEncryptionConfig{}, errors.New("invalid config API_ENV_ENCRYPTION_KEY: must decode to 32 bytes")
+
+	keys := map[string][]byte{
+		activeKeyID: activeKey,
 	}
+
+	extraKeysRaw := strings.TrimSpace(envStr("API_ENV_ENCRYPTION_DECRYPT_KEYS", ""))
+	if extraKeysRaw != "" {
+		entries := strings.Split(extraKeysRaw, ",")
+		for _, entry := range entries {
+			trimmedEntry := strings.TrimSpace(entry)
+			if trimmedEntry == "" {
+				continue
+			}
+
+			entryKeyID, entryKeyB64, ok := strings.Cut(trimmedEntry, ":")
+			if !ok {
+				return EnvEncryptionConfig{}, errors.New("invalid config API_ENV_ENCRYPTION_DECRYPT_KEYS: expected comma-separated key_id:base64 pairs")
+			}
+
+			trimmedEntryKeyID := strings.TrimSpace(entryKeyID)
+			trimmedEntryKeyB64 := strings.TrimSpace(entryKeyB64)
+			if trimmedEntryKeyID == "" || trimmedEntryKeyB64 == "" {
+				return EnvEncryptionConfig{}, errors.New("invalid config API_ENV_ENCRYPTION_DECRYPT_KEYS: expected comma-separated key_id:base64 pairs")
+			}
+			if err := validateEnvEncryptionKeyID(trimmedEntryKeyID, "API_ENV_ENCRYPTION_DECRYPT_KEYS"); err != nil {
+				return EnvEncryptionConfig{}, err
+			}
+
+			decodedEntryKey, err := decodeEnvEncryptionKey(trimmedEntryKeyB64, "API_ENV_ENCRYPTION_DECRYPT_KEYS")
+			if err != nil {
+				return EnvEncryptionConfig{}, err
+			}
+
+			if existing, exists := keys[trimmedEntryKeyID]; exists {
+				if !bytes.Equal(existing, decodedEntryKey) {
+					return EnvEncryptionConfig{}, errors.New("invalid config API_ENV_ENCRYPTION_DECRYPT_KEYS: duplicate key id with different key material")
+				}
+				continue
+			}
+			keys[trimmedEntryKeyID] = decodedEntryKey
+		}
+	}
+
+	batchSizeRaw := strings.TrimSpace(os.Getenv("API_ENV_ENCRYPTION_REENCRYPT_BATCH_SIZE"))
+	batchSize := int(parseEnvInt32("API_ENV_ENCRYPTION_REENCRYPT_BATCH_SIZE", int32(defaultEnvReencryptBatchSize)))
+	if batchSize <= 0 {
+		if batchSizeRaw != "" {
+			logDefaultedEnv("API_ENV_ENCRYPTION_REENCRYPT_BATCH_SIZE", batchSizeRaw, defaultEnvReencryptBatchSize)
+		}
+		batchSize = defaultEnvReencryptBatchSize
+	}
+	sweepPeriod := parseEnvDuration("API_ENV_ENCRYPTION_REENCRYPT_SWEEP_PERIOD", defaultEnvReencryptSweepPeriod)
 
 	return EnvEncryptionConfig{
-		KeyID: keyID,
-		Key:   append([]byte(nil), key...),
+		ActiveKeyID:          activeKeyID,
+		Keys:                 keys,
+		ReencryptBatchSize:   batchSize,
+		ReencryptSweepPeriod: sweepPeriod,
 	}, nil
+}
+
+func decodeEnvEncryptionKey(raw, envName string) ([]byte, error) {
+	key, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid config %s: must be base64-encoded 32-byte key", envName)
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("invalid config %s: must decode to 32 bytes", envName)
+	}
+	return append([]byte(nil), key...), nil
+}
+
+func validateEnvEncryptionKeyID(keyID, envName string) error {
+	if strings.Contains(keyID, ":") || strings.ContainsAny(keyID, " \t\r\n") {
+		return fmt.Errorf("invalid config %s: key id must not contain ':' or whitespace", envName)
+	}
+	return nil
 }
 
 // readRateLimitConfig loads per-user limiter settings with safe defaults.

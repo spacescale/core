@@ -11,6 +11,49 @@ import (
 	"github.com/google/uuid"
 )
 
+const claimAppEnvVarsByKeyID = `-- name: ClaimAppEnvVarsByKeyID :many
+WITH candidates AS (
+    SELECT id, value_encrypted
+    FROM app_env_vars
+    WHERE split_part(value_encrypted, ':', 3) = $1
+    ORDER BY created_at ASC
+        FOR UPDATE SKIP LOCKED
+    LIMIT $2::int
+)
+SELECT id, value_encrypted
+FROM candidates
+`
+
+type ClaimAppEnvVarsByKeyIDParams struct {
+	KeyID     string
+	LimitRows int32
+}
+
+type ClaimAppEnvVarsByKeyIDRow struct {
+	ID             uuid.UUID
+	ValueEncrypted string
+}
+
+func (q *Queries) ClaimAppEnvVarsByKeyID(ctx context.Context, arg ClaimAppEnvVarsByKeyIDParams) ([]ClaimAppEnvVarsByKeyIDRow, error) {
+	rows, err := q.db.Query(ctx, claimAppEnvVarsByKeyID, arg.KeyID, arg.LimitRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ClaimAppEnvVarsByKeyIDRow
+	for rows.Next() {
+		var i ClaimAppEnvVarsByKeyIDRow
+		if err := rows.Scan(&i.ID, &i.ValueEncrypted); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createApp = `-- name: CreateApp :one
 INSERT INTO apps (project_id, name, slug, subdomain, image_ref, runtime_port, status, is_public, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, 'queued', $7, now(), now())
@@ -119,6 +162,28 @@ func (q *Queries) GetRegistryCredentialByIDAndProjectID(ctx context.Context, arg
 		&i.LastUsed,
 	)
 	return i, err
+}
+
+const updateAppEnvVarCiphertextCAS = `-- name: UpdateAppEnvVarCiphertextCAS :execrows
+UPDATE app_env_vars
+SET value_encrypted = $1,
+    updated_at = now()
+WHERE id = $2
+  AND value_encrypted = $3
+`
+
+type UpdateAppEnvVarCiphertextCASParams struct {
+	NewCiphertext      string
+	EnvVarID           uuid.UUID
+	PreviousCiphertext string
+}
+
+func (q *Queries) UpdateAppEnvVarCiphertextCAS(ctx context.Context, arg UpdateAppEnvVarCiphertextCASParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateAppEnvVarCiphertextCAS, arg.NewCiphertext, arg.EnvVarID, arg.PreviousCiphertext)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const upsertAppRegistryCredential = `-- name: UpsertAppRegistryCredential :exec

@@ -21,3 +21,23 @@ WHERE id = $1
 INSERT INTO app_registry_credentials (app_id, registry_credential_id, created_at, last_used)
 VALUES ($1, $2, now(), NULL)
 ON CONFLICT (app_id, registry_credential_id) DO NOTHING;
+
+-- name: ClaimAppEnvVarsByKeyID :many
+WITH candidates AS (
+    SELECT id, value_encrypted
+    FROM app_env_vars
+    WHERE split_part(value_encrypted, ':', 3) = sqlc.arg(key_id)
+    ORDER BY created_at ASC
+        FOR UPDATE SKIP LOCKED
+    LIMIT sqlc.arg(limit_rows)::int
+)
+SELECT id, value_encrypted
+FROM candidates;
+
+
+-- name: UpdateAppEnvVarCiphertextCAS :execrows
+UPDATE app_env_vars
+SET value_encrypted = sqlc.arg(new_ciphertext),
+    updated_at = now()
+WHERE id = sqlc.arg(env_var_id)
+  AND value_encrypted = sqlc.arg(previous_ciphertext);
