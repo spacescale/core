@@ -107,11 +107,20 @@ CREATE TABLE app_env_vars
     app_id          UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
     key             TEXT        NOT NULL,
     value_encrypted TEXT        NOT NULL,
+    cipher_version  TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 1)) STORED,
+    cipher_algo     TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 2)) STORED,
+    cipher_key_id   TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 3)) STORED,
     is_secret       BOOLEAN     NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (app_id, key)
 );
+
+-- Supports efficient key-rotation sweep claims without repeated split_part scans.
+CREATE INDEX app_env_vars_cipher_claim_idx
+    ON app_env_vars (cipher_key_id, created_at)
+    WHERE cipher_version = 'v1'
+      AND cipher_algo = 'aesgcm';
 
 
 CREATE TABLE registry_credentials

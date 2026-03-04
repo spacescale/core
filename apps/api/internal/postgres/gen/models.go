@@ -29,6 +29,9 @@ type AppEnvVar struct {
 	AppID          uuid.UUID
 	Key            string
 	ValueEncrypted string
+	CipherVersion  *string
+	CipherAlgo     *string
+	CipherKeyID    *string
 	IsSecret       bool
 	CreatedAt      time.Time
 	UpdatedAt      time.Time

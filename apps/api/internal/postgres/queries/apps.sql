@@ -26,9 +26,9 @@ ON CONFLICT (app_id, registry_credential_id) DO NOTHING;
 WITH candidates AS (
     SELECT id, value_encrypted
     FROM app_env_vars
-    WHERE split_part(value_encrypted, ':', 1) = 'v1'
-      AND split_part(value_encrypted, ':', 2) = 'aesgcm'
-      AND split_part(value_encrypted, ':', 3) = sqlc.arg(key_id)
+    WHERE cipher_version = 'v1'
+      AND cipher_algo = 'aesgcm'
+      AND cipher_key_id = sqlc.arg(key_id)
     ORDER BY created_at ASC
         FOR UPDATE SKIP LOCKED
     LIMIT sqlc.arg(limit_rows)::int
