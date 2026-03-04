@@ -24,17 +24,35 @@ ON CONFLICT (app_id, registry_credential_id) DO NOTHING;
 
 -- name: ClaimAppEnvVarsByKeyID :many
 WITH candidates AS (
-    SELECT id, value_encrypted
+    SELECT id, app_id, key, value_encrypted
     FROM app_env_vars
     WHERE cipher_version = 'v1'
       AND cipher_algo = 'aesgcm'
       AND cipher_key_id = sqlc.arg(key_id)
+      AND reencrypt_fail_count < sqlc.arg(max_fail_count)::int
+      AND (reencrypt_failed_at IS NULL OR reencrypt_failed_at <= now() - make_interval(secs => sqlc.arg(backoff_seconds)::int))
     ORDER BY created_at ASC
         FOR UPDATE SKIP LOCKED
     LIMIT sqlc.arg(limit_rows)::int
 )
-SELECT id, value_encrypted
+SELECT id, app_id, key, value_encrypted
 FROM candidates;
+
+
+-- name: MarkAppEnvVarReencryptFailure :exec
+UPDATE app_env_vars
+SET reencrypt_fail_count = reencrypt_fail_count + 1,
+    reencrypt_failed_at = now(),
+    updated_at = now()
+WHERE id = sqlc.arg(env_var_id);
+
+
+-- name: ResetAppEnvVarReencryptFailure :exec
+UPDATE app_env_vars
+SET reencrypt_fail_count = 0,
+    reencrypt_failed_at = NULL,
+    updated_at = now()
+WHERE id = sqlc.arg(env_var_id);
 
 
 -- name: UpdateAppEnvVarCiphertextCAS :execrows

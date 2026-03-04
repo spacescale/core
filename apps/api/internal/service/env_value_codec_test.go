@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
@@ -21,23 +22,48 @@ func TestEnvValueCipherEncryptDecryptRoundTrip(t *testing.T) {
 	cipher, err := NewEnvValueCipher("test-v1", []byte(testEnvCipherKey32))
 	require.NoError(t, err)
 
-	encrypted, err := cipher.EncryptForStorage("postgres://local")
+	rowCtx := EnvValueRowContext{
+		AppID: uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		Key:   "DATABASE_URL",
+	}
+	encrypted, err := cipher.EncryptForStorage("postgres://local", rowCtx)
 	require.NoError(t, err)
 	require.NotEqual(t, "postgres://local", encrypted)
 	require.True(t, strings.HasPrefix(encrypted, "v1:aesgcm:test-v1:"))
 
-	decrypted, err := cipher.DecryptFromStorage(encrypted)
+	decrypted, err := cipher.DecryptFromStorage(encrypted, rowCtx)
 	require.NoError(t, err)
 	require.Equal(t, "postgres://local", decrypted)
+}
+
+func TestEnvValueCipherRejectsRowContextSwap(t *testing.T) {
+	cipher, err := NewEnvValueCipher("test-v1", []byte(testEnvCipherKey32))
+	require.NoError(t, err)
+
+	encrypted, err := cipher.EncryptForStorage("postgres://local", EnvValueRowContext{
+		AppID: uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		Key:   "DATABASE_URL",
+	})
+	require.NoError(t, err)
+
+	_, err = cipher.DecryptFromStorage(encrypted, EnvValueRowContext{
+		AppID: uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		Key:   "REDIS_URL",
+	})
+	require.ErrorIs(t, err, ErrInvalidEnvValueCiphertext)
 }
 
 func TestEnvValueCipherUsesRandomNonce(t *testing.T) {
 	cipher, err := NewEnvValueCipher("test-v1", []byte(testEnvCipherKey32))
 	require.NoError(t, err)
 
-	one, err := cipher.EncryptForStorage("same-value")
+	rowCtx := EnvValueRowContext{
+		AppID: uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		Key:   "DATABASE_URL",
+	}
+	one, err := cipher.EncryptForStorage("same-value", rowCtx)
 	require.NoError(t, err)
-	two, err := cipher.EncryptForStorage("same-value")
+	two, err := cipher.EncryptForStorage("same-value", rowCtx)
 	require.NoError(t, err)
 
 	require.NotEqual(t, one, two)
@@ -47,7 +73,11 @@ func TestEnvValueCipherRejectsTamperedCiphertext(t *testing.T) {
 	cipher, err := NewEnvValueCipher("test-v1", []byte(testEnvCipherKey32))
 	require.NoError(t, err)
 
-	encrypted, err := cipher.EncryptForStorage("postgres://local")
+	rowCtx := EnvValueRowContext{
+		AppID: uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		Key:   "DATABASE_URL",
+	}
+	encrypted, err := cipher.EncryptForStorage("postgres://local", rowCtx)
 	require.NoError(t, err)
 
 	parts := strings.Split(encrypted, ":")
@@ -60,7 +90,7 @@ func TestEnvValueCipherRejectsTamperedCiphertext(t *testing.T) {
 	}
 	tampered := strings.Join(parts, ":")
 
-	_, err = cipher.DecryptFromStorage(tampered)
+	_, err = cipher.DecryptFromStorage(tampered, rowCtx)
 	require.ErrorIs(t, err, ErrInvalidEnvValueCiphertext)
 }
 
@@ -70,10 +100,16 @@ func TestEnvValueCipherRejectsWrongKeyID(t *testing.T) {
 	right, err := NewEnvValueCipher("kid-b", []byte(testEnvCipherKey32))
 	require.NoError(t, err)
 
-	encrypted, err := left.EncryptForStorage("postgres://local")
+	encrypted, err := left.EncryptForStorage("postgres://local", EnvValueRowContext{
+		AppID: uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		Key:   "DATABASE_URL",
+	})
 	require.NoError(t, err)
 
-	_, err = right.DecryptFromStorage(encrypted)
+	_, err = right.DecryptFromStorage(encrypted, EnvValueRowContext{
+		AppID: uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		Key:   "DATABASE_URL",
+	})
 	require.ErrorIs(t, err, ErrInvalidEnvValueCiphertext)
 }
 
@@ -84,20 +120,28 @@ func TestEnvValueKeyringEncryptUsesActiveKey(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	encrypted, err := keyring.EncryptForStorage("postgres://local")
+	encrypted, err := keyring.EncryptForStorage("postgres://local", EnvValueRowContext{
+		AppID: uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		Key:   "DATABASE_URL",
+	})
 	require.NoError(t, err)
 	require.True(t, strings.HasPrefix(encrypted, "v1:aesgcm:kid-b:"))
 }
 
 func TestEnvValueKeyringDecryptsByPayloadKeyID(t *testing.T) {
-	legacyCipher, err := NewEnvValueCipher("kid-a", []byte(testEnvCipherKey32))
+	previousCipher, err := NewEnvValueCipher("kid-a", []byte(testEnvCipherKey32))
 	require.NoError(t, err)
 	activeCipher, err := NewEnvValueCipher("kid-b", []byte(testEnvCipherKeyAlt32))
 	require.NoError(t, err)
 
-	legacyEncrypted, err := legacyCipher.EncryptForStorage("legacy-secret")
+	rowCtx := EnvValueRowContext{
+		AppID: uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		Key:   "DATABASE_URL",
+	}
+
+	previousEncrypted, err := previousCipher.EncryptForStorage("previous-secret", rowCtx)
 	require.NoError(t, err)
-	activeEncrypted, err := activeCipher.EncryptForStorage("active-secret")
+	activeEncrypted, err := activeCipher.EncryptForStorage("active-secret", rowCtx)
 	require.NoError(t, err)
 
 	keyring, err := NewEnvValueKeyring("kid-b", map[string][]byte{
@@ -106,20 +150,23 @@ func TestEnvValueKeyringDecryptsByPayloadKeyID(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	legacyDecrypted, err := keyring.DecryptFromStorage(legacyEncrypted)
+	previousDecrypted, err := keyring.DecryptFromStorage(previousEncrypted, rowCtx)
 	require.NoError(t, err)
-	require.Equal(t, "legacy-secret", legacyDecrypted)
+	require.Equal(t, "previous-secret", previousDecrypted)
 
-	activeDecrypted, err := keyring.DecryptFromStorage(activeEncrypted)
+	activeDecrypted, err := keyring.DecryptFromStorage(activeEncrypted, rowCtx)
 	require.NoError(t, err)
 	require.Equal(t, "active-secret", activeDecrypted)
 }
 
 func TestEnvValueKeyringRejectsUnknownKeyID(t *testing.T) {
-	legacyCipher, err := NewEnvValueCipher("kid-a", []byte(testEnvCipherKey32))
+	previousCipher, err := NewEnvValueCipher("kid-a", []byte(testEnvCipherKey32))
 	require.NoError(t, err)
 
-	encrypted, err := legacyCipher.EncryptForStorage("legacy-secret")
+	encrypted, err := previousCipher.EncryptForStorage("previous-secret", EnvValueRowContext{
+		AppID: uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		Key:   "DATABASE_URL",
+	})
 	require.NoError(t, err)
 
 	keyring, err := NewEnvValueKeyring("kid-b", map[string][]byte{
@@ -127,7 +174,10 @@ func TestEnvValueKeyringRejectsUnknownKeyID(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = keyring.DecryptFromStorage(encrypted)
+	_, err = keyring.DecryptFromStorage(encrypted, EnvValueRowContext{
+		AppID: uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		Key:   "DATABASE_URL",
+	})
 	require.ErrorIs(t, err, ErrInvalidEnvValueCiphertext)
 }
 

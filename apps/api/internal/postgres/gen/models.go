@@ -25,16 +25,18 @@ type App struct {
 }
 
 type AppEnvVar struct {
-	ID             uuid.UUID
-	AppID          uuid.UUID
-	Key            string
-	ValueEncrypted string
-	CipherVersion  *string
-	CipherAlgo     *string
-	CipherKeyID    *string
-	IsSecret       bool
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID                 uuid.UUID
+	AppID              uuid.UUID
+	Key                string
+	ValueEncrypted     string
+	CipherVersion      *string
+	CipherAlgo         *string
+	CipherKeyID        *string
+	ReencryptFailCount int32
+	ReencryptFailedAt  *time.Time
+	IsSecret           bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type AppRegistryCredential struct {

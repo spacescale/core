@@ -97,14 +97,14 @@ func TestLoadAppConfigInvalidEnvEncryptionKey(t *testing.T) {
 // config extends decrypt-capable key set while preserving active key selection.
 func TestLoadAppConfigParsesEnvEncryptionDecryptKeys(t *testing.T) {
 	setBaselineEnv(t)
-	t.Setenv("API_ENV_ENCRYPTION_DECRYPT_KEYS", "legacy-v0:YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=")
+	t.Setenv("API_ENV_ENCRYPTION_DECRYPT_KEYS", "previous-v0:YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=")
 
 	cfg, err := LoadFromEnv()
 	require.NoError(t, err)
 	require.Equal(t, "test-key-v1", cfg.API.EnvEncryption.ActiveKeyID)
 	require.Len(t, cfg.API.EnvEncryption.Keys, 2)
 	require.Contains(t, cfg.API.EnvEncryption.Keys, "test-key-v1")
-	require.Contains(t, cfg.API.EnvEncryption.Keys, "legacy-v0")
+	require.Contains(t, cfg.API.EnvEncryption.Keys, "previous-v0")
 }
 
 // TestLoadAppConfigInvalidEnvEncryptionDecryptKeys verifies invalid decrypt key

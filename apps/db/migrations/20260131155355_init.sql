@@ -103,24 +103,28 @@ CREATE INDEX deployments_app_id_created_at_idx
 CREATE TABLE app_env_vars
 (
     -- app_id ties env vars to apps; cascade removes them on app deletion.
-    id              UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
-    app_id          UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
-    key             TEXT        NOT NULL,
-    value_encrypted TEXT        NOT NULL,
-    cipher_version  TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 1)) STORED,
-    cipher_algo     TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 2)) STORED,
-    cipher_key_id   TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 3)) STORED,
-    is_secret       BOOLEAN     NOT NULL DEFAULT TRUE,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    id                   UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
+    app_id               UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
+    key                  TEXT        NOT NULL,
+    value_encrypted      TEXT        NOT NULL,
+    cipher_version       TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 1)) STORED,
+    cipher_algo          TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 2)) STORED,
+    cipher_key_id        TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 3)) STORED,
+    reencrypt_fail_count INT         NOT NULL DEFAULT 0,
+    reencrypt_failed_at  TIMESTAMPTZ,
+    is_secret            BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (app_id, key)
 );
 
 -- Supports efficient key-rotation sweep claims without repeated split_part scans.
+-- Partial predicate excludes permanently-failing rows from hot-path index scans.
 CREATE INDEX app_env_vars_cipher_claim_idx
     ON app_env_vars (cipher_key_id, created_at)
     WHERE cipher_version = 'v1'
-      AND cipher_algo = 'aesgcm';
+      AND cipher_algo = 'aesgcm'
+      AND reencrypt_fail_count < 5;
 
 
 CREATE TABLE registry_credentials

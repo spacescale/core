@@ -115,3 +115,7 @@ Local infrastructure and migration workflows are handled from the root `Makefile
 | `make db-build` | Build the local DB image (`spacescale-db:local`)                |
 | `make db-start` | Start local DB container and wait for container-side migrations |
 | `make proto`    | Regenerate Go protobuf + gRPC stubs from `contracts/proto`      |
+
+## API Operations
+
+- Env encryption rotation runbook: `apps/api/ops/env-encryption-rotation.md`

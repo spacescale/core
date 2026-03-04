@@ -26,8 +26,8 @@ import (
 )
 
 const (
-	testLegacyEnvEncryptionKeyID = "legacy-v0"
-	testLegacyEnvEncryptionKey   = "fedcba9876543210fedcba9876543210"
+	testPreviousEnvEncryptionKeyID = "previous-v0"
+	testPreviousEnvEncryptionKey   = "fedcba9876543210fedcba9876543210"
 )
 
 type createAppResponse struct {
@@ -196,9 +196,9 @@ func TestCreateAppRejectsTooManyEnvVars(t *testing.T) {
 	require.Equal(t, "invalid input", out.Error)
 }
 
-// TestEnvReencryptWorkerMigratesLegacyCiphertext verifies background sweeps can
-// decrypt legacy-key ciphertext and re-encrypt with the current active key.
-func TestEnvReencryptWorkerMigratesLegacyCiphertext(t *testing.T) {
+// TestEnvReencryptWorkerMigratesPreviousKeyCiphertext verifies background sweeps
+// decrypt previous-key ciphertext and re-encrypt with the current active key.
+func TestEnvReencryptWorkerMigratesPreviousKeyCiphertext(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
@@ -208,7 +208,7 @@ func TestEnvReencryptWorkerMigratesLegacyCiphertext(t *testing.T) {
 	workspaceID := createWorkspaceForIdentity(t, ts, identityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 	project := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("project-%d", time.Now().UnixNano()), "global")
 
-	body := []byte(`{"name":"reencrypt","imageRef":"ghcr.io/acme/spacescale-api:latest","envVars":[{"key":"database_url","value":"postgres://legacy","isSecret":true}]}`)
+	body := []byte(`{"name":"reencrypt","imageRef":"ghcr.io/acme/spacescale-api:latest","envVars":[{"key":"database_url","value":"postgres://previous","isSecret":true}]}`)
 	resp, data := doRequest(
 		t,
 		ts,
@@ -227,23 +227,26 @@ func TestEnvReencryptWorkerMigratesLegacyCiphertext(t *testing.T) {
 	appID, err := uuid.Parse(out.ID)
 	require.NoError(t, err)
 
-	legacyCipher, err := service.NewEnvValueCipher(testLegacyEnvEncryptionKeyID, []byte(testLegacyEnvEncryptionKey))
+	previousCipher, err := service.NewEnvValueCipher(testPreviousEnvEncryptionKeyID, []byte(testPreviousEnvEncryptionKey))
 	require.NoError(t, err)
-	legacyEncrypted, err := legacyCipher.EncryptForStorage("postgres://legacy")
+	previousEncrypted, err := previousCipher.EncryptForStorage("postgres://previous", service.EnvValueRowContext{
+		AppID: appID,
+		Key:   "DATABASE_URL",
+	})
 	require.NoError(t, err)
 
 	_, err = ts.pool.Exec(
 		context.Background(),
 		`UPDATE app_env_vars SET value_encrypted = $1 WHERE app_id = $2 AND key = $3`,
-		legacyEncrypted,
+		previousEncrypted,
 		appID,
 		"DATABASE_URL",
 	)
 	require.NoError(t, err)
 
 	keyring, err := service.NewEnvValueKeyring(testEnvEncryptionKeyID, map[string][]byte{
-		testEnvEncryptionKeyID:       []byte(testEnvEncryptionKey),
-		testLegacyEnvEncryptionKeyID: []byte(testLegacyEnvEncryptionKey),
+		testEnvEncryptionKeyID:         []byte(testEnvEncryptionKey),
+		testPreviousEnvEncryptionKeyID: []byte(testPreviousEnvEncryptionKey),
 	})
 	require.NoError(t, err)
 
@@ -252,7 +255,7 @@ func TestEnvReencryptWorkerMigratesLegacyCiphertext(t *testing.T) {
 		Queries:      pgstore.New(ts.pool),
 		Keyring:      keyring,
 		ActiveKeyID:  testEnvEncryptionKeyID,
-		LoadedKeyIDs: []string{testEnvEncryptionKeyID, testLegacyEnvEncryptionKeyID},
+		LoadedKeyIDs: []string{testEnvEncryptionKeyID, testPreviousEnvEncryptionKeyID},
 		BatchSize:    10,
 		SweepPeriod:  20 * time.Millisecond,
 	})
@@ -278,13 +281,16 @@ func TestEnvReencryptWorkerMigratesLegacyCiphertext(t *testing.T) {
 		require.NoError(t, err)
 
 		if strings.HasPrefix(encryptedValue, "v1:aesgcm:"+testEnvEncryptionKeyID+":") {
-			plaintext, decErr := keyring.DecryptFromStorage(encryptedValue)
+			plaintext, decErr := keyring.DecryptFromStorage(encryptedValue, service.EnvValueRowContext{
+				AppID: appID,
+				Key:   "DATABASE_URL",
+			})
 			require.NoError(t, decErr)
-			require.Equal(t, "postgres://legacy", plaintext)
+			require.Equal(t, "postgres://previous", plaintext)
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("legacy ciphertext was not re-encrypted before deadline: %s", encryptedValue)
+			t.Fatalf("previous-key ciphertext was not re-encrypted before deadline: %s", encryptedValue)
 		}
 		time.Sleep(25 * time.Millisecond)
 	}

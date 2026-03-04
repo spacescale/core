@@ -1,10 +1,16 @@
-// This file implements authenticated encryption for app environment-variable
-// values and background key-rotation re-encryption.
+// This file implements env-value encryption and background key-rotation sweeps.
 //
-// Design intent:
-// - Keep ciphertext format stable (`v1`) while rotating key material via key ids.
-// - Encrypt all env var values before persistence.
-// - Support active-key encryption and multi-key decrypt during rotation windows.
+// Encryption model:
+// - Ciphertext format remains stable: `v1:aesgcm:<key-id>:<nonce>:<ciphertext>`.
+// - New writes bind AEAD associated data (AAD) to stable row context
+//   (`app_id` + env var key), so ciphertext cannot be replayed across rows.
+// - Decrypt requires the same row context used during encryption.
+//
+// Rotation model:
+// - Keyring encrypts with one active key id.
+// - Keyring decrypts by ciphertext key id (active + previous keys loaded).
+// - Re-encryption worker upgrades previous-key rows to active key in bounded
+//   batches, with failure backoff to avoid hot-looping bad rows.
 
 package service
 
@@ -22,43 +28,55 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgstore "github.com/t0gun/spacescale/internal/postgres/gen"
 )
 
 const (
-	envCipherVersionV1  = "v1"     // current storage payload format version.
-	envCipherAlgoAESGCM = "aesgcm" // authenticated cipher identifier in payload header.
+	envCipherVersionV1  = "v1"     // ciphertext payload format version.
+	envCipherAlgoAESGCM = "aesgcm" // authenticated encryption algorithm identifier.
 )
 
 var (
-	// ErrInvalidEnvValueCiphertext indicates malformed payload or failed AEAD auth.
+	// ErrInvalidEnvValueCiphertext indicates malformed payload, unknown key-id,
+	// invalid nonce/ciphertext encoding, or failed AEAD authentication.
 	ErrInvalidEnvValueCiphertext = errors.New("invalid env value ciphertext")
 )
 
 const (
 	defaultEnvReencryptBatchSize   = 100
 	defaultEnvReencryptSweepPeriod = 30 * time.Second
+	defaultEnvReencryptMaxFailures = 5
+	defaultEnvReencryptFailBackoff = 5 * time.Minute
 )
 
-// EnvValueCipher encrypts/decrypts env values for DB persistence.
+// EnvValueCipher encrypts/decrypts env var values for one key id.
 //
-// Storage format:
+// Stored payload format:
 //
 //	v1:aesgcm:<key-id>:<nonce-base64url>:<ciphertext-base64url>
 type EnvValueCipher struct {
-	keyID      string
-	aead       cipher.AEAD
-	randReader io.Reader
+	keyID      string      // logical key id embedded in payload header.
+	aead       cipher.AEAD // AES-256-GCM AEAD primitive.
+	randReader io.Reader   // nonce entropy source.
 }
 
-// EnvValueKeyring encrypts with one active key and decrypts by payload key-id.
+// EnvValueRowContext identifies the row-bound context used in AAD for new
+// encryptions. Values must be stable across reads/writes for the same row.
+type EnvValueRowContext struct {
+	AppID uuid.UUID
+	Key   string
+}
+
+// EnvValueKeyring encrypts with one active key and decrypts by payload key id.
 type EnvValueKeyring struct {
 	activeKeyID string
 	ciphers     map[string]*EnvValueCipher
 }
 
-// EnvValueReencryptWorkerConfig defines runtime dependencies and sweep behavior.
+// EnvValueReencryptWorkerConfig defines dependencies and scheduling behavior for
+// background key-rotation migrations.
 type EnvValueReencryptWorkerConfig struct {
 	Pool         *pgxpool.Pool
 	Queries      *pgstore.Queries
@@ -70,20 +88,20 @@ type EnvValueReencryptWorkerConfig struct {
 	Logger       *slog.Logger
 }
 
-// EnvValueReencryptWorker incrementally migrates legacy-key ciphertext to the
-// current active key.
+// EnvValueReencryptWorker incrementally migrates env var ciphertext from
+// non-active keys to the active key while preserving API availability.
 type EnvValueReencryptWorker struct {
-	pool         *pgxpool.Pool
-	queries      *pgstore.Queries
-	keyring      *EnvValueKeyring
-	activeKeyID  string
-	legacyKeyIDs []string
-	batchSize    int
-	sweepPeriod  time.Duration
-	logger       *slog.Logger
+	pool           *pgxpool.Pool
+	queries        *pgstore.Queries
+	keyring        *EnvValueKeyring
+	activeKeyID    string
+	previousKeyIDs []string
+	batchSize      int
+	sweepPeriod    time.Duration
+	logger         *slog.Logger
 }
 
-// NewEnvValueCipher constructs one AES-256-GCM cipher for a single key-id.
+// NewEnvValueCipher constructs one AES-256-GCM cipher for keyID.
 func NewEnvValueCipher(keyID string, key []byte) (*EnvValueCipher, error) {
 	trimmedKeyID := strings.TrimSpace(keyID)
 	if trimmedKeyID == "" {
@@ -106,14 +124,10 @@ func NewEnvValueCipher(keyID string, key []byte) (*EnvValueCipher, error) {
 		return nil, fmt.Errorf("build aes-gcm: %w", err)
 	}
 
-	return &EnvValueCipher{
-		keyID:      trimmedKeyID,
-		aead:       aead,
-		randReader: rand.Reader,
-	}, nil
+	return &EnvValueCipher{keyID: trimmedKeyID, aead: aead, randReader: rand.Reader}, nil
 }
 
-// NewEnvValueKeyring constructs a rotation-safe keyring.
+// NewEnvValueKeyring constructs a keyring for rotation windows.
 func NewEnvValueKeyring(activeKeyID string, keys map[string][]byte) (*EnvValueKeyring, error) {
 	trimmedActiveKeyID := strings.TrimSpace(activeKeyID)
 	if trimmedActiveKeyID == "" {
@@ -143,41 +157,48 @@ func NewEnvValueKeyring(activeKeyID string, keys map[string][]byte) (*EnvValueKe
 	return &EnvValueKeyring{activeKeyID: trimmedActiveKeyID, ciphers: ciphers}, nil
 }
 
-// EncryptForStorage encrypts plaintext with this cipher key id.
-func (c *EnvValueCipher) EncryptForStorage(plaintext string) (string, error) {
+// EncryptForStorage encrypts plaintext with row-bound AAD.
+//
+// Row-bound AAD ties ciphertext to one env var row identity and prevents
+// ciphertext replay between rows that share the same key id.
+func (c *EnvValueCipher) EncryptForStorage(plaintext string, rowCtx EnvValueRowContext) (string, error) {
 	nonce := make([]byte, c.aead.NonceSize())
 	if _, err := io.ReadFull(c.randReader, nonce); err != nil {
 		return "", fmt.Errorf("generate env nonce: %w", err)
 	}
 
 	header := c.header()
-	sealed := c.aead.Seal(nil, nonce, []byte(plaintext), []byte(header))
+	aad, err := rowBoundAAD(header, rowCtx)
+	if err != nil {
+		return "", err
+	}
+	sealed := c.aead.Seal(nil, nonce, []byte(plaintext), aad)
 
 	return header +
 		":" + base64.RawURLEncoding.EncodeToString(nonce) +
 		":" + base64.RawURLEncoding.EncodeToString(sealed), nil
 }
 
-// DecryptFromStorage decrypts payload with strict key-id ownership.
-func (c *EnvValueCipher) DecryptFromStorage(encoded string) (string, error) {
+// DecryptFromStorage decrypts payload using row-bound AAD only.
+func (c *EnvValueCipher) DecryptFromStorage(encoded string, rowCtx EnvValueRowContext) (string, error) {
 	parts, err := parseEnvValueCiphertextParts(encoded)
 	if err != nil {
 		return "", ErrInvalidEnvValueCiphertext
 	}
-	return c.decryptFromParts(parts)
+	return c.decryptFromParts(parts, rowCtx)
 }
 
-// EncryptForStorage encrypts plaintext using the active key id.
-func (k *EnvValueKeyring) EncryptForStorage(plaintext string) (string, error) {
+// EncryptForStorage encrypts using the keyring active key id.
+func (k *EnvValueKeyring) EncryptForStorage(plaintext string, rowCtx EnvValueRowContext) (string, error) {
 	active, exists := k.ciphers[k.activeKeyID]
 	if !exists {
 		return "", errors.New("env value keyring missing active cipher")
 	}
-	return active.EncryptForStorage(plaintext)
+	return active.EncryptForStorage(plaintext, rowCtx)
 }
 
-// DecryptFromStorage decrypts payload by routing on payload key-id.
-func (k *EnvValueKeyring) DecryptFromStorage(encoded string) (string, error) {
+// DecryptFromStorage routes decryption by payload key id.
+func (k *EnvValueKeyring) DecryptFromStorage(encoded string, rowCtx EnvValueRowContext) (string, error) {
 	parts, err := parseEnvValueCiphertextParts(encoded)
 	if err != nil {
 		return "", err
@@ -189,7 +210,7 @@ func (k *EnvValueKeyring) DecryptFromStorage(encoded string) (string, error) {
 		return "", ErrInvalidEnvValueCiphertext
 	}
 
-	return cipher.decryptFromParts(parts)
+	return cipher.decryptFromParts(parts, rowCtx)
 }
 
 func parseEnvValueCiphertextParts(encoded string) ([]string, error) {
@@ -206,7 +227,7 @@ func parseEnvValueCiphertextParts(encoded string) ([]string, error) {
 	return parts, nil
 }
 
-func (c *EnvValueCipher) decryptFromParts(parts []string) (string, error) {
+func (c *EnvValueCipher) decryptFromParts(parts []string, rowCtx EnvValueRowContext) (string, error) {
 	if len(parts) != 5 {
 		return "", ErrInvalidEnvValueCiphertext
 	}
@@ -225,11 +246,14 @@ func (c *EnvValueCipher) decryptFromParts(parts []string) (string, error) {
 	}
 
 	header := strings.Join(parts[:3], ":")
-	plaintext, err := c.aead.Open(nil, nonce, ciphertext, []byte(header))
+	aad, err := rowBoundAAD(header, rowCtx)
 	if err != nil {
 		return "", ErrInvalidEnvValueCiphertext
 	}
-
+	plaintext, err := c.aead.Open(nil, nonce, ciphertext, aad)
+	if err != nil {
+		return "", ErrInvalidEnvValueCiphertext
+	}
 	return string(plaintext), nil
 }
 
@@ -247,8 +271,19 @@ func isValidEnvValueKeyID(keyID string) bool {
 	return true
 }
 
-// NewEnvValueReencryptWorker builds a background worker that migrates legacy
-// ciphertext to the active key in bounded sweeps.
+func rowBoundAAD(header string, rowCtx EnvValueRowContext) ([]byte, error) {
+	if rowCtx.AppID == uuid.Nil {
+		return nil, ErrInvalidEnvValueCiphertext
+	}
+	key := strings.TrimSpace(rowCtx.Key)
+	if key == "" {
+		return nil, ErrInvalidEnvValueCiphertext
+	}
+	return []byte(header + "|app_id=" + rowCtx.AppID.String() + "|key=" + key), nil
+}
+
+// NewEnvValueReencryptWorker builds a background worker that migrates
+// non-active-key ciphertext to the active key in bounded sweeps.
 func NewEnvValueReencryptWorker(cfg EnvValueReencryptWorkerConfig) (*EnvValueReencryptWorker, error) {
 	if cfg.Pool == nil {
 		return nil, errors.New("env reencrypt worker requires non-nil db pool")
@@ -305,47 +340,47 @@ func NewEnvValueReencryptWorker(cfg EnvValueReencryptWorkerConfig) (*EnvValueRee
 		}
 	}
 
-	legacySet := make(map[string]struct{})
+	previousSet := make(map[string]struct{})
 	for keyID := range loadedSet {
 		if keyID == active {
 			continue
 		}
-		legacySet[keyID] = struct{}{}
+		previousSet[keyID] = struct{}{}
 	}
-	legacy := make([]string, 0, len(legacySet))
-	for keyID := range legacySet {
-		legacy = append(legacy, keyID)
+	previous := make([]string, 0, len(previousSet))
+	for keyID := range previousSet {
+		previous = append(previous, keyID)
 	}
-	sort.Strings(legacy)
+	sort.Strings(previous)
 
 	return &EnvValueReencryptWorker{
-		pool:         cfg.Pool,
-		queries:      cfg.Queries,
-		keyring:      cfg.Keyring,
-		activeKeyID:  active,
-		legacyKeyIDs: legacy,
-		batchSize:    batchSize,
-		sweepPeriod:  sweepPeriod,
-		logger:       logger,
+		pool:           cfg.Pool,
+		queries:        cfg.Queries,
+		keyring:        cfg.Keyring,
+		activeKeyID:    active,
+		previousKeyIDs: previous,
+		batchSize:      batchSize,
+		sweepPeriod:    sweepPeriod,
+		logger:         logger,
 	}, nil
 }
 
-// Enabled reports whether there are legacy keys to migrate.
+// Enabled reports whether there are non-active keys to migrate.
 func (w *EnvValueReencryptWorker) Enabled() bool {
-	return len(w.legacyKeyIDs) > 0
+	return len(w.previousKeyIDs) > 0
 }
 
 // Run is a blocking sweep loop. Start it in a dedicated goroutine from main.
 // The loop blocks in a select waiting on ctx cancellation or ticker ticks.
 func (w *EnvValueReencryptWorker) Run(ctx context.Context) {
 	if !w.Enabled() {
-		w.logger.Info("env re-encryption worker disabled", "reason", "no legacy keys configured")
+		w.logger.Info("env re-encryption worker disabled", "reason", "no previous keys configured")
 		return
 	}
 
 	w.logger.Info("env re-encryption worker started",
 		"active_key_id", w.activeKeyID,
-		"legacy_keys", len(w.legacyKeyIDs),
+		"previous_keys", len(w.previousKeyIDs),
 		"batch_size", w.batchSize,
 		"sweep_period", w.sweepPeriod.String(),
 	)
@@ -365,29 +400,29 @@ func (w *EnvValueReencryptWorker) Run(ctx context.Context) {
 }
 
 func (w *EnvValueReencryptWorker) sweepOnce(ctx context.Context) {
-	for _, legacyKeyID := range w.legacyKeyIDs {
+	for _, previousKeyID := range w.previousKeyIDs {
 		for {
 			if ctx.Err() != nil {
 				return
 			}
 
-			n, err := w.reencryptBatchForKey(ctx, legacyKeyID)
+			n, err := w.reencryptBatchForKey(ctx, previousKeyID)
 			if err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return
 				}
-				w.logger.Error("env re-encryption batch failed", "legacy_key_id", legacyKeyID, "error", err)
+				w.logger.Error("env re-encryption batch failed", "previous_key_id", previousKeyID, "error", err)
 				break
 			}
 			if n == 0 {
 				break
 			}
-			w.logger.Info("env re-encryption batch complete", "legacy_key_id", legacyKeyID, "rows_reencrypted", n)
+			w.logger.Info("env re-encryption batch complete", "previous_key_id", previousKeyID, "rows_reencrypted", n)
 		}
 	}
 }
 
-func (w *EnvValueReencryptWorker) reencryptBatchForKey(ctx context.Context, legacyKeyID string) (int, error) {
+func (w *EnvValueReencryptWorker) reencryptBatchForKey(ctx context.Context, previousKeyID string) (int, error) {
 	tx, err := w.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
@@ -398,8 +433,10 @@ func (w *EnvValueReencryptWorker) reencryptBatchForKey(ctx context.Context, lega
 
 	txQueries := w.queries.WithTx(tx)
 	rows, err := txQueries.ClaimAppEnvVarsByKeyID(ctx, pgstore.ClaimAppEnvVarsByKeyIDParams{
-		KeyID:     &legacyKeyID,
-		LimitRows: int32(w.batchSize),
+		KeyID:          &previousKeyID,
+		MaxFailCount:   int32(defaultEnvReencryptMaxFailures),
+		BackoffSeconds: int32(defaultEnvReencryptFailBackoff / time.Second),
+		LimitRows:      int32(w.batchSize),
 	})
 	if err != nil {
 		return 0, err
@@ -413,17 +450,21 @@ func (w *EnvValueReencryptWorker) reencryptBatchForKey(ctx context.Context, lega
 
 	reencrypted := 0
 	for _, row := range rows {
-		plaintext, err := w.keyring.DecryptFromStorage(row.ValueEncrypted)
+		rowCtx := EnvValueRowContext{AppID: row.AppID, Key: row.Key}
+		plaintext, err := w.keyring.DecryptFromStorage(row.ValueEncrypted, rowCtx)
 		if err != nil {
-			w.logger.Error("env re-encryption decrypt failed; leaving row unchanged",
+			if markErr := txQueries.MarkAppEnvVarReencryptFailure(ctx, row.ID); markErr != nil {
+				return reencrypted, markErr
+			}
+			w.logger.Error("env re-encryption decrypt failed; row deferred",
 				"env_var_id", row.ID.String(),
-				"legacy_key_id", legacyKeyID,
+				"previous_key_id", previousKeyID,
 				"error", err,
 			)
 			continue
 		}
 
-		newCiphertext, err := w.keyring.EncryptForStorage(plaintext)
+		newCiphertext, err := w.keyring.EncryptForStorage(plaintext, rowCtx)
 		if err != nil {
 			return reencrypted, err
 		}
@@ -437,6 +478,9 @@ func (w *EnvValueReencryptWorker) reencryptBatchForKey(ctx context.Context, lega
 			return reencrypted, err
 		}
 		if updatedRows == 1 {
+			if err := txQueries.ResetAppEnvVarReencryptFailure(ctx, row.ID); err != nil {
+				return reencrypted, err
+			}
 			reencrypted++
 		}
 	}

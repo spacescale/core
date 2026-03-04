@@ -185,7 +185,10 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 		}
 
 		for _, env := range envVars {
-			valueEncrypted, encErr := s.envKeyring.EncryptForStorage(env.Value)
+			valueEncrypted, encErr := s.envKeyring.EncryptForStorage(env.Value, EnvValueRowContext{
+				AppID: row.ID,
+				Key:   env.Key,
+			})
 			if encErr != nil {
 				_ = tx.Rollback(ctx)
 				return App{}, encErr

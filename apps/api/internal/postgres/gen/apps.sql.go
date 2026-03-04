@@ -13,31 +13,42 @@ import (
 
 const claimAppEnvVarsByKeyID = `-- name: ClaimAppEnvVarsByKeyID :many
 WITH candidates AS (
-    SELECT id, value_encrypted
+    SELECT id, app_id, key, value_encrypted
     FROM app_env_vars
     WHERE cipher_version = 'v1'
       AND cipher_algo = 'aesgcm'
       AND cipher_key_id = $1
+      AND reencrypt_fail_count < $2::int
+      AND (reencrypt_failed_at IS NULL OR reencrypt_failed_at <= now() - make_interval(secs => $3::int))
     ORDER BY created_at ASC
         FOR UPDATE SKIP LOCKED
-    LIMIT $2::int
+    LIMIT $4::int
 )
-SELECT id, value_encrypted
+SELECT id, app_id, key, value_encrypted
 FROM candidates
 `
 
 type ClaimAppEnvVarsByKeyIDParams struct {
-	KeyID     *string
-	LimitRows int32
+	KeyID          *string
+	MaxFailCount   int32
+	BackoffSeconds int32
+	LimitRows      int32
 }
 
 type ClaimAppEnvVarsByKeyIDRow struct {
 	ID             uuid.UUID
+	AppID          uuid.UUID
+	Key            string
 	ValueEncrypted string
 }
 
 func (q *Queries) ClaimAppEnvVarsByKeyID(ctx context.Context, arg ClaimAppEnvVarsByKeyIDParams) ([]ClaimAppEnvVarsByKeyIDRow, error) {
-	rows, err := q.db.Query(ctx, claimAppEnvVarsByKeyID, arg.KeyID, arg.LimitRows)
+	rows, err := q.db.Query(ctx, claimAppEnvVarsByKeyID,
+		arg.KeyID,
+		arg.MaxFailCount,
+		arg.BackoffSeconds,
+		arg.LimitRows,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +56,12 @@ func (q *Queries) ClaimAppEnvVarsByKeyID(ctx context.Context, arg ClaimAppEnvVar
 	var items []ClaimAppEnvVarsByKeyIDRow
 	for rows.Next() {
 		var i ClaimAppEnvVarsByKeyIDRow
-		if err := rows.Scan(&i.ID, &i.ValueEncrypted); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.AppID,
+			&i.Key,
+			&i.ValueEncrypted,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -164,6 +180,32 @@ func (q *Queries) GetRegistryCredentialByIDAndProjectID(ctx context.Context, arg
 		&i.LastUsed,
 	)
 	return i, err
+}
+
+const markAppEnvVarReencryptFailure = `-- name: MarkAppEnvVarReencryptFailure :exec
+UPDATE app_env_vars
+SET reencrypt_fail_count = reencrypt_fail_count + 1,
+    reencrypt_failed_at = now(),
+    updated_at = now()
+WHERE id = $1
+`
+
+func (q *Queries) MarkAppEnvVarReencryptFailure(ctx context.Context, envVarID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markAppEnvVarReencryptFailure, envVarID)
+	return err
+}
+
+const resetAppEnvVarReencryptFailure = `-- name: ResetAppEnvVarReencryptFailure :exec
+UPDATE app_env_vars
+SET reencrypt_fail_count = 0,
+    reencrypt_failed_at = NULL,
+    updated_at = now()
+WHERE id = $1
+`
+
+func (q *Queries) ResetAppEnvVarReencryptFailure(ctx context.Context, envVarID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, resetAppEnvVarReencryptFailure, envVarID)
+	return err
 }
 
 const updateAppEnvVarCiphertextCAS = `-- name: UpdateAppEnvVarCiphertextCAS :execrows
