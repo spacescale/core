@@ -13,24 +13,30 @@ import (
 type App struct {
 	ID          uuid.UUID
 	ProjectID   uuid.UUID
-	Name        *string
+	Name        string
 	Slug        string
 	Subdomain   string
 	ImageRef    string
-	RuntimePort *int32
+	RuntimePort int32
+	IsPublic    bool
 	Status      string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
 
 type AppEnvVar struct {
-	ID             uuid.UUID
-	AppID          uuid.UUID
-	Key            string
-	ValueEncrypted string
-	IsSecret       bool
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID                 uuid.UUID
+	AppID              uuid.UUID
+	Key                string
+	ValueEncrypted     string
+	CipherVersion      *string
+	CipherAlgo         *string
+	CipherKeyID        *string
+	ReencryptFailCount int32
+	ReencryptFailedAt  *time.Time
+	IsSecret           bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type AppRegistryCredential struct {
@@ -46,7 +52,7 @@ type Deployment struct {
 	Status       string
 	ImageRef     string
 	RuntimePort  int32
-	PublicUrl    string
+	PublicUrl    *string
 	ErrorMessage *string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time

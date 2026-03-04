@@ -26,6 +26,8 @@ func setBaselineEnv(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable")
 	t.Setenv("BFF_JWT_SECRET", "test-secret")
 	t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "test-internal-auth-secret")
+	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "test-key-v1")
+	t.Setenv("API_ENV_ENCRYPTION_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
 	// Use off mode by default so tests that do not care about hash mode are not
 	// coupled to hash-secret requirements.
 	t.Setenv("API_LOG_USER_AGENT_MODE", "off")
@@ -59,6 +61,60 @@ func TestLoadAppConfigMissingInternalAuthSecret(t *testing.T) {
 
 	_, err := LoadFromEnv()
 	require.EqualError(t, err, "missing required config INTERNAL_AUTH_SYNC_SECRET")
+}
+
+// TestLoadAppConfigMissingEnvEncryptionKeyID verifies startup fails fast when
+// env value encryption key id is missing.
+func TestLoadAppConfigMissingEnvEncryptionKeyID(t *testing.T) {
+	setBaselineEnv(t)
+	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "")
+
+	_, err := LoadFromEnv()
+	require.EqualError(t, err, "missing required config API_ENV_ENCRYPTION_KEY_ID")
+}
+
+// TestLoadAppConfigMissingEnvEncryptionKey verifies startup fails fast when
+// env value encryption key material is missing.
+func TestLoadAppConfigMissingEnvEncryptionKey(t *testing.T) {
+	setBaselineEnv(t)
+	t.Setenv("API_ENV_ENCRYPTION_KEY", "")
+
+	_, err := LoadFromEnv()
+	require.EqualError(t, err, "missing required config API_ENV_ENCRYPTION_KEY")
+}
+
+// TestLoadAppConfigInvalidEnvEncryptionKey verifies invalid key material is
+// rejected during startup config loading.
+func TestLoadAppConfigInvalidEnvEncryptionKey(t *testing.T) {
+	setBaselineEnv(t)
+	t.Setenv("API_ENV_ENCRYPTION_KEY", "not-base64")
+
+	_, err := LoadFromEnv()
+	require.EqualError(t, err, "invalid config API_ENV_ENCRYPTION_KEY: must be base64-encoded 32-byte key")
+}
+
+// TestLoadAppConfigParsesEnvEncryptionDecryptKeys verifies optional keyring
+// config extends decrypt-capable key set while preserving active key selection.
+func TestLoadAppConfigParsesEnvEncryptionDecryptKeys(t *testing.T) {
+	setBaselineEnv(t)
+	t.Setenv("API_ENV_ENCRYPTION_DECRYPT_KEYS", "previous-v0:YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=")
+
+	cfg, err := LoadFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, "test-key-v1", cfg.API.EnvEncryption.ActiveKeyID)
+	require.Len(t, cfg.API.EnvEncryption.Keys, 2)
+	require.Contains(t, cfg.API.EnvEncryption.Keys, "test-key-v1")
+	require.Contains(t, cfg.API.EnvEncryption.Keys, "previous-v0")
+}
+
+// TestLoadAppConfigInvalidEnvEncryptionDecryptKeys verifies invalid decrypt key
+// entry formatting fails startup validation.
+func TestLoadAppConfigInvalidEnvEncryptionDecryptKeys(t *testing.T) {
+	setBaselineEnv(t)
+	t.Setenv("API_ENV_ENCRYPTION_DECRYPT_KEYS", "broken-entry")
+
+	_, err := LoadFromEnv()
+	require.EqualError(t, err, "invalid config API_ENV_ENCRYPTION_DECRYPT_KEYS: expected comma-separated key_id:base64 pairs")
 }
 
 // TestLoadAppConfigHashModeRequiresSecret verifies that hash mode cannot start
@@ -104,11 +160,26 @@ func TestLoadAppConfigBuildsTypedDefaults(t *testing.T) {
 	expectedLogPrivacy.UserAgentMode = UserAgentLogModeOff
 	require.Equal(t, expectedLogPrivacy, cfg.API.LogPrivacy)
 	require.Equal(t, "test-internal-auth-secret", cfg.API.InternalAuthSecret)
+	require.Equal(t, defaultEnvReencryptBatchSize, cfg.API.EnvEncryption.ReencryptBatchSize)
+	require.Equal(t, defaultEnvReencryptSweepPeriod, cfg.API.EnvEncryption.ReencryptSweepPeriod)
 	require.Equal(t, defaultHTTPServerConfig().MaxBodyBytes, cfg.HTTPServer.MaxBodyBytes)
 	require.Equal(t, defaultHTTPServerConfig().MaxHeaderBytes, cfg.HTTPServer.MaxHeaderBytes)
 	require.Equal(t, defaultHTTPServerConfig().ReadHeaderTimeout, cfg.HTTPServer.ReadHeaderTimeout)
 	require.Equal(t, defaultHTTPServerConfig().WriteTimeout, cfg.HTTPServer.WriteTimeout)
 	require.Equal(t, defaultHTTPServerConfig().IdleTimeout, cfg.HTTPServer.IdleTimeout)
+}
+
+// TestLoadAppConfigParsesEnvReencryptSettings verifies optional env re-encryption
+// worker tuning values are loaded into typed env-encryption config fields.
+func TestLoadAppConfigParsesEnvReencryptSettings(t *testing.T) {
+	setBaselineEnv(t)
+	t.Setenv("API_ENV_ENCRYPTION_REENCRYPT_BATCH_SIZE", "250")
+	t.Setenv("API_ENV_ENCRYPTION_REENCRYPT_SWEEP_PERIOD", "45s")
+
+	cfg, err := LoadFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, 250, cfg.API.EnvEncryption.ReencryptBatchSize)
+	require.Equal(t, 45*time.Second, cfg.API.EnvEncryption.ReencryptSweepPeriod)
 }
 
 // TestLoadAppConfigParsesInternalRateLimits verifies internal route limiter env

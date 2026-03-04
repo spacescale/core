@@ -8,10 +8,8 @@ CREATE
 CREATE TABLE users
 (
     id                   UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
-    identity_key         TEXT        NOT NULL UNIQUE CHECK (
-        CHAR_LENGTH(BTRIM(identity_key)) > 0
-            AND CHAR_LENGTH(identity_key) <= 512
-        ),
+    identity_key         TEXT        NOT NULL UNIQUE CHECK (CHAR_LENGTH(BTRIM(identity_key)) > 0 AND
+                                                            CHAR_LENGTH(identity_key) <= 512),
     email                TEXT CHECK (email IS NULL OR CHAR_LENGTH(email) <= 320),
     name                 TEXT CHECK (name IS NULL OR CHAR_LENGTH(name) <= 255),
     avatar_url           TEXT CHECK (avatar_url IS NULL OR CHAR_LENGTH(avatar_url) <= 2048),
@@ -69,12 +67,13 @@ CREATE TABLE apps
 (
     id           UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
     project_id   UUID        NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
-    name         TEXT,
+    name         TEXT        NOT NULL,
     slug         TEXT        NOT NULL,
     subdomain    TEXT        NOT NULL,
     image_ref    TEXT        NOT NULL,
-    runtime_port INT,
-    status       TEXT        NOT NULL CHECK (status IN ('created', 'building', 'running', 'failed')),
+    runtime_port INT         NOT NULL DEFAULT 8080,
+    is_public    BOOLEAN     NOT NULL DEFAULT FALSE,
+    status       TEXT        NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'deploying', 'running', 'failed')),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (project_id, slug),
@@ -90,7 +89,7 @@ CREATE TABLE deployments
     status        TEXT        NOT NULL CHECK (status IN ('queued', 'deploying', 'running', 'failed')),
     image_ref     TEXT        NOT NULL,
     runtime_port  INT         NOT NULL,
-    public_url    TEXT        NOT NULL,
+    public_url    TEXT,
     error_message TEXT,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -104,15 +103,28 @@ CREATE INDEX deployments_app_id_created_at_idx
 CREATE TABLE app_env_vars
 (
     -- app_id ties env vars to apps; cascade removes them on app deletion.
-    id              UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
-    app_id          UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
-    key             TEXT        NOT NULL,
-    value_encrypted TEXT        NOT NULL,
-    is_secret       BOOLEAN     NOT NULL DEFAULT TRUE,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    id                   UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
+    app_id               UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
+    key                  TEXT        NOT NULL,
+    value_encrypted      TEXT        NOT NULL,
+    cipher_version       TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 1)) STORED,
+    cipher_algo          TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 2)) STORED,
+    cipher_key_id        TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 3)) STORED,
+    reencrypt_fail_count INT         NOT NULL DEFAULT 0,
+    reencrypt_failed_at  TIMESTAMPTZ,
+    is_secret            BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (app_id, key)
 );
+
+-- Supports efficient key-rotation sweep claims without repeated split_part scans.
+-- Partial predicate excludes permanently-failing rows from hot-path index scans.
+CREATE INDEX app_env_vars_cipher_claim_idx
+    ON app_env_vars (cipher_key_id, created_at)
+    WHERE cipher_version = 'v1'
+      AND cipher_algo = 'aesgcm'
+      AND reencrypt_fail_count < 5;
 
 
 CREATE TABLE registry_credentials

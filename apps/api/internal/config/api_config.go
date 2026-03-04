@@ -22,6 +22,9 @@ const (
 	defaultUserAgentMaxLength  = 100
 	defaultPanicValueMaxLength = 200
 	defaultIncludeStackTrace   = false
+
+	defaultEnvReencryptBatchSize   = 100
+	defaultEnvReencryptSweepPeriod = 30 * time.Second
 )
 
 // AuthConfig defines runtime settings used to verify incoming BFF-issued JWTs.
@@ -110,6 +113,15 @@ type LogPrivacyConfig struct {
 	IncludeStackTrace   bool
 }
 
+// EnvEncryptionConfig defines active and decrypt-capable key material used to
+// encrypt and decrypt app env vars.
+type EnvEncryptionConfig struct {
+	ActiveKeyID          string
+	Keys                 map[string][]byte
+	ReencryptBatchSize   int
+	ReencryptSweepPeriod time.Duration
+}
+
 // DefaultLogPrivacyConfig returns package default privacy settings.
 func DefaultLogPrivacyConfig() LogPrivacyConfig {
 	return LogPrivacyConfig{
@@ -147,6 +159,7 @@ type APIConfig struct {
 	InternalIdentityRateLimit RateLimitConfig
 	LogPrivacy                LogPrivacyConfig
 	InternalAuthSecret        string
+	EnvEncryption             EnvEncryptionConfig
 }
 
 // Normalized returns a safe runtime API config for server wiring.
@@ -156,5 +169,12 @@ func (c APIConfig) Normalized() APIConfig {
 	c.InternalIdentityRateLimit = c.InternalIdentityRateLimit.normalizedWith(DefaultInternalIdentityRateLimitConfig())
 	c.LogPrivacy = c.LogPrivacy.Normalized()
 	c.InternalAuthSecret = strings.TrimSpace(c.InternalAuthSecret)
+	c.EnvEncryption.ActiveKeyID = strings.TrimSpace(c.EnvEncryption.ActiveKeyID)
+	if c.EnvEncryption.ReencryptBatchSize <= 0 {
+		c.EnvEncryption.ReencryptBatchSize = defaultEnvReencryptBatchSize
+	}
+	if c.EnvEncryption.ReencryptSweepPeriod <= 0 {
+		c.EnvEncryption.ReencryptSweepPeriod = defaultEnvReencryptSweepPeriod
+	}
 	return c
 }

@@ -1,0 +1,101 @@
+type: http_request
+model: http_request
+id: rq_H9pTn4bLq2
+createdAt: 2026-03-02T12:00:00
+updatedAt: 2026-03-02T23:22:28.969016
+workspaceId: wk_KJF6oyHis3
+folderId: fl_da6TvdABY7
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {
+      "name": "api",
+      "imageRef": "ghcr.io/acme/spacescale-api:latest",
+      "runtimePort": 8080,
+      "isPublic": true,
+      "registryCredentialId": "",
+      "envVars": [
+        {
+          "key": "DATABASE_URL",
+          "value": "postgres://app:pass@db:5432/app",
+          "isSecret": true
+        }
+      ]
+    }
+bodyType: application/json
+description: |-
+  ## Create App
+
+  Create one app under a caller-owned workspace/project.
+
+  ### Endpoint
+  - **Method**: `POST`
+  - **Path**: `/v1/workspaces/{workspaceId}/projects/{projectId}/apps`
+
+  ### Authentication
+  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+  - token must be signed by trusted BFF secret (`BFF_JWT_SECRET`)
+  - caller identity must exist in API users table (seed via internal auth-sync)
+
+  ### Path Parameters
+  - `workspaceId` (required): workspace UUID owned by caller
+  - `projectId` (required): project UUID owned by caller and scoped to workspace
+
+  ### Body Contract
+  - `imageRef` (required): OCI image reference
+  - `name` (optional): display name; when omitted service derives from image ref
+  - `runtimePort` (optional): defaults to `8080`
+  - `isPublic` (optional): defaults to `false`
+  - `registryCredentialId` (optional): must belong to same project when supplied
+  - `envVars` (optional): list of env vars
+    - max items per request: `50`
+    - key format: shell-style uppercase identifier after normalization
+    - values are encrypted before DB write
+    - duplicate keys (after normalization) are rejected
+
+  ### Behavior Notes
+  - create operation is atomic in one DB transaction:
+    1) app row insert (`status=queued`)
+    2) queued deployment row insert
+    3) optional registry credential link
+    4) optional env var inserts
+  - app status is persisted as `queued` only when queued deployment insert succeeds
+
+  ### Success Response
+  - **Status**: `201 Created`
+  - **Headers**: `Location: /v1/workspaces/{workspaceId}/projects/{projectId}/apps/{appId}`
+  - **Body**:
+    - `id`
+    - `projectId`
+    - `name`
+    - `slug`
+    - `subdomain`
+    - `imageRef`
+    - `runtimePort`
+    - `status` (`queued` at creation)
+    - `isPublic`
+    - `createdAt`
+    - `updatedAt`
+
+  ### Error Responses
+  - `400 Bad Request`: invalid JSON or invalid input
+  - `401 Unauthorized`: token invalid, caller missing, or ownership violation
+  - `409 Conflict`: slug/subdomain collision or duplicate env key conflict
+  - `413 Request Entity Too Large`: body exceeds configured max bytes
+  - `429 Too Many Requests`: per-user API rate limit exceeded
+  - `500 Internal Server Error`: unexpected runtime error
+headers:
+  - enabled: true
+    name: Authorization
+    value: Bearer ${[ BFF_TOKEN ]}
+    id: hAppCrAuth01
+  - enabled: true
+    name: Content-Type
+    value: application/json
+    id: hAppCrType01
+method: POST
+name: Create App
+sortPriority: 0.0
+url: http://${[ BASE_URL ]}/v1/workspaces/${[ WORKSPACE_ID ]}/projects/${[ PROJECT_ID ]}/apps
+urlParameters: []
