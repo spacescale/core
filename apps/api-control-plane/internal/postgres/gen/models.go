@@ -10,6 +10,18 @@ import (
 	"github.com/google/uuid"
 )
 
+type Agent struct {
+	ID            uuid.UUID
+	AgentKey      string
+	Name          string
+	Status        string
+	Capabilities  []string
+	LastSessionID string
+	LastSeenAt    time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
 type App struct {
 	ID          uuid.UUID
 	ProjectID   uuid.UUID

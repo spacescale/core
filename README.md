@@ -118,4 +118,4 @@ Local infrastructure and migration workflows are handled from the root `Makefile
 
 ## API Operations
 
-- Env encryption rotation runbook: `apps/api/ops/env-encryption-rotation.md`
+- Env encryption rotation runbook: `apps/api-control-plane/ops/env-encryption-rotation.md`

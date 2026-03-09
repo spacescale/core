@@ -29,7 +29,7 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: opencode/gpt-5.2
+          model: opencode/gpt-5.4
           use_github_token: true
           prompt: |
             Review only the pull request diff.

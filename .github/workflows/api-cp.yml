@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "apps/api/**"
+      - "apps/api-control-plane/**"
       - "apps/db/migrations/**"
       - "Makefile"
       - "sqlc.yaml"
@@ -12,7 +12,7 @@ on:
   pull_request:
     branches: [main, dev]
     paths:
-      - "apps/api/**"
+      - "apps/api-control-plane/**"
       - "apps/db/migrations/**"
       - "Makefile"
       - "sqlc.yaml"
@@ -40,7 +40,7 @@ jobs:
           --health-retries=5
     defaults:
       run:
-        working-directory: apps/api
+        working-directory: apps/api-control-plane
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -48,7 +48,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: apps/api/go.mod
+          go-version-file: apps/api-control-plane/go.mod
           cache: "true"
 
       - name: Install goose
@@ -68,5 +68,5 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./apps/api/coverage.out
+          file: ./apps/api-control-plane/coverage.out
           flags: api # group and filter coverage by component

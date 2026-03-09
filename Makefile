@@ -8,14 +8,26 @@ db-start: db-build
 	docker run --name spacescale-db -e POSTGRES_PASSWORD=spacescale -p 5432:5432 -d spacescale-db:local
 	@bash -euo pipefail -c 'until docker exec spacescale-db test -f /tmp/migrations.done; do sleep 1; done; '
 
-run: db-start
-	@[ -f .env.local ] || { echo ".env.local not found in repo root"; exit 1; };
-	pid=$$(lsof -tiTCP:8080 -sTCP:LISTEN || true); [ -z "$$pid" ] || kill -TERM $$pid;
-	set -a && . ./.env.local && set +a && : "$${DATABASE_URL:?DATABASE_URL missing in .env.local}" && cd apps/api && go run .
 
-test: db-start
+run-api-cp: db-start
 	@[ -f .env.local ] || { echo ".env.local not found in repo root"; exit 1; };
-	set -a && . ./.env.local && set +a && cd apps/api && TEST_DATABASE_URL="$${TEST_DATABASE_URL:-postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable}" go test ./internal/http_api ./internal/service -race -cover
+	pid_api=$$(lsof -tiTCP:8080 -sTCP:LISTEN || true); [ -z "$$pid_api" ] || kill -TERM $$pid_api;
+	pid_cp=$$(lsof -tiTCP:9090 -sTCP:LISTEN || true); [ -z "$$pid_cp" ] || kill -TERM $$pid_cp;
+	@echo "Starting Control Plane..."
+	set -a && . ./.env.local && set +a && : "$${DATABASE_URL:?DATABASE_URL missing in .env.local}" && cd apps/api-control-plane && go run .
+
+run-scaled:
+	@[ -f .env.local ] || { echo ".env.local not found in repo root"; exit 1; };
+	@echo "Starting Scaled Agent..."
+	set -a && . ./.env.local && set +a && cd apps/scaled && go run .
+
+
+test-api-cp: db-start
+	@[ -f .env.local ] || { echo ".env.local not found in repo root"; exit 1; };
+	set -a && . ./.env.local && set +a && cd apps/api-control-plane && TEST_DATABASE_URL="$${TEST_DATABASE_URL:-postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable}" go test ./... -race -cover
+
+test-scaled:
+	cd apps/scaled && go test ./... -race -cover
 
 proto:
 	 protoc --proto_path=. --go_out=packages/proto-go --go_opt=module=github.com/t0gun/spacescale/packages/proto-go --go-grpc_out=packages/proto-go --go-grpc_opt=module=github.com/t0gun/spacescale/packages/proto-go $$(find contracts/proto -type f -name '*.proto' | sort)
