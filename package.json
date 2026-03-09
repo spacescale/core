@@ -21,7 +21,7 @@
   },
   "packageManager": "pnpm@9.15.4",
   "workspaces": [
-    "apps/api",
+    "apps/api-control-plane",
     "apps/marketing",
     "apps/web",
     "packages/*"

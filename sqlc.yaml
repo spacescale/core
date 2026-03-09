@@ -4,11 +4,11 @@ sql:
     schema:
       - "apps/db/migrations/*.sql"
     queries:
-      - "apps/api/internal/postgres/queries/*.sql"
+      - "apps/api-control-plane/internal/postgres/queries/*.sql"
     gen:
       go:
         package: "postgres"
-        out: "apps/api/internal/postgres/gen"
+        out: "apps/api-control-plane/internal/postgres/gen"
         sql_package: "pgx/v5"
         overrides:
           - db_type: "uuid"

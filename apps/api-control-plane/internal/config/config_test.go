@@ -26,6 +26,7 @@ func setBaselineEnv(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable")
 	t.Setenv("BFF_JWT_SECRET", "test-secret")
 	t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "test-internal-auth-secret")
+	t.Setenv("CONTROL_PLANE_AGENT_TOKEN", "test-control-plane-token")
 	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "test-key-v1")
 	t.Setenv("API_ENV_ENCRYPTION_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
 	// Use off mode by default so tests that do not care about hash mode are not
@@ -61,6 +62,16 @@ func TestLoadAppConfigMissingInternalAuthSecret(t *testing.T) {
 
 	_, err := LoadFromEnv()
 	require.EqualError(t, err, "missing required config INTERNAL_AUTH_SYNC_SECRET")
+}
+
+// TestLoadAppConfigMissingControlPlaneAgentToken verifies startup fails fast
+// when control-plane agent authentication token is missing.
+func TestLoadAppConfigMissingControlPlaneAgentToken(t *testing.T) {
+	setBaselineEnv(t)
+	t.Setenv("CONTROL_PLANE_AGENT_TOKEN", "")
+
+	_, err := LoadFromEnv()
+	require.EqualError(t, err, "missing required config CONTROL_PLANE_AGENT_TOKEN")
 }
 
 // TestLoadAppConfigMissingEnvEncryptionKeyID verifies startup fails fast when
@@ -162,11 +173,52 @@ func TestLoadAppConfigBuildsTypedDefaults(t *testing.T) {
 	require.Equal(t, "test-internal-auth-secret", cfg.API.InternalAuthSecret)
 	require.Equal(t, defaultEnvReencryptBatchSize, cfg.API.EnvEncryption.ReencryptBatchSize)
 	require.Equal(t, defaultEnvReencryptSweepPeriod, cfg.API.EnvEncryption.ReencryptSweepPeriod)
+	require.Equal(t, defaultControlPlaneAddr, cfg.ControlPlane.Addr)
+	require.Equal(t, "test-control-plane-token", cfg.ControlPlane.AgentToken)
+	require.Equal(t, defaultControlPlaneHeartbeatInterval, cfg.ControlPlane.HeartbeatInterval)
+	require.Equal(t, defaultControlPlaneLeaseTTL, cfg.ControlPlane.LeaseTTL)
+	require.Equal(t, defaultControlPlaneLastSeenFlush, cfg.ControlPlane.LastSeenFlush)
+	require.Equal(t, defaultControlPlaneMaxRecvMsgBytes, cfg.ControlPlane.MaxRecvMsgBytes)
+	require.Equal(t, defaultControlPlaneMaxSendMsgBytes, cfg.ControlPlane.MaxSendMsgBytes)
 	require.Equal(t, defaultHTTPServerConfig().MaxBodyBytes, cfg.HTTPServer.MaxBodyBytes)
 	require.Equal(t, defaultHTTPServerConfig().MaxHeaderBytes, cfg.HTTPServer.MaxHeaderBytes)
 	require.Equal(t, defaultHTTPServerConfig().ReadHeaderTimeout, cfg.HTTPServer.ReadHeaderTimeout)
 	require.Equal(t, defaultHTTPServerConfig().WriteTimeout, cfg.HTTPServer.WriteTimeout)
 	require.Equal(t, defaultHTTPServerConfig().IdleTimeout, cfg.HTTPServer.IdleTimeout)
+}
+
+// TestLoadAppConfigParsesControlPlaneSettings verifies control-plane env
+// overrides are loaded into typed config fields.
+func TestLoadAppConfigParsesControlPlaneSettings(t *testing.T) {
+	setBaselineEnv(t)
+	t.Setenv("CONTROL_PLANE_ADDR", ":9191")
+	t.Setenv("CONTROL_PLANE_HEARTBEAT_INTERVAL", "12s")
+	t.Setenv("CONTROL_PLANE_LEASE_TTL", "40s")
+	t.Setenv("CONTROL_PLANE_AGENT_LAST_SEEN_FLUSH_INTERVAL", "25s")
+	t.Setenv("CONTROL_PLANE_MAX_RECV_MSG_BYTES", "2097152")
+	t.Setenv("CONTROL_PLANE_MAX_SEND_MSG_BYTES", "3145728")
+
+	cfg, err := LoadFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, ":9191", cfg.ControlPlane.Addr)
+	require.Equal(t, 12*time.Second, cfg.ControlPlane.HeartbeatInterval)
+	require.Equal(t, 40*time.Second, cfg.ControlPlane.LeaseTTL)
+	require.Equal(t, 25*time.Second, cfg.ControlPlane.LastSeenFlush)
+	require.Equal(t, 2097152, cfg.ControlPlane.MaxRecvMsgBytes)
+	require.Equal(t, 3145728, cfg.ControlPlane.MaxSendMsgBytes)
+}
+
+// TestLoadAppConfigClampsControlPlaneLeaseTTL verifies lease duration invariants
+// remain enforced when configured lease is shorter than heartbeat cadence.
+func TestLoadAppConfigClampsControlPlaneLeaseTTL(t *testing.T) {
+	setBaselineEnv(t)
+	t.Setenv("CONTROL_PLANE_HEARTBEAT_INTERVAL", "20s")
+	t.Setenv("CONTROL_PLANE_LEASE_TTL", "10s")
+
+	cfg, err := LoadFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, 20*time.Second, cfg.ControlPlane.HeartbeatInterval)
+	require.Equal(t, 60*time.Second, cfg.ControlPlane.LeaseTTL)
 }
 
 // TestLoadAppConfigParsesEnvReencryptSettings verifies optional env re-encryption

@@ -38,10 +38,11 @@ var (
 
 // Config is the top-level startup configuration consumed by entrypoints.
 type Config struct {
-	Addr       string
-	Database   DatabaseConfig
-	API        APIConfig
-	HTTPServer HTTPServerConfig
+	Addr         string
+	Database     DatabaseConfig
+	API          APIConfig
+	ControlPlane ControlPlaneConfig
+	HTTPServer   HTTPServerConfig
 }
 
 // DatabaseConfig defines connection and pool settings used to initialize pgx.
@@ -81,12 +82,33 @@ func LoadFromEnv() (Config, error) {
 		return Config{}, err
 	}
 
+	controlPlaneCfg, err := readControlPlaneConfig()
+	if err != nil {
+		return Config{}, err
+	}
 	return Config{
-		Addr:       envStr("ADDR", defaultListenAddr),
-		Database:   databaseCfg,
-		API:        apiCfg,
-		HTTPServer: defaultHTTPServerConfig(),
+		Addr:         envStr("ADDR", defaultListenAddr),
+		Database:     databaseCfg,
+		API:          apiCfg,
+		ControlPlane: controlPlaneCfg,
+		HTTPServer:   defaultHTTPServerConfig(),
 	}, nil
+}
+
+func readControlPlaneConfig() (ControlPlaneConfig, error) {
+	cfg := ControlPlaneConfig{
+		Addr:              strings.TrimSpace(envStr("CONTROL_PLANE_ADDR", defaultControlPlaneAddr)),
+		AgentToken:        strings.TrimSpace(envStr("CONTROL_PLANE_AGENT_TOKEN", "")),
+		HeartbeatInterval: parseEnvDuration("CONTROL_PLANE_HEARTBEAT_INTERVAL", defaultControlPlaneHeartbeatInterval),
+		LeaseTTL:          parseEnvDuration("CONTROL_PLANE_LEASE_TTL", defaultControlPlaneLeaseTTL),
+		LastSeenFlush:     parseEnvDuration("CONTROL_PLANE_AGENT_LAST_SEEN_FLUSH_INTERVAL", defaultControlPlaneLastSeenFlush),
+		MaxRecvMsgBytes:   int(parseEnvInt32("CONTROL_PLANE_MAX_RECV_MSG_BYTES", int32(defaultControlPlaneMaxRecvMsgBytes))),
+		MaxSendMsgBytes:   int(parseEnvInt32("CONTROL_PLANE_MAX_SEND_MSG_BYTES", int32(defaultControlPlaneMaxSendMsgBytes))),
+	}
+	if cfg.AgentToken == "" {
+		return ControlPlaneConfig{}, errors.New("missing required config CONTROL_PLANE_AGENT_TOKEN")
+	}
+	return cfg.Normalized(), nil
 }
 
 // readAPIServerConfig loads API runtime settings used by server middleware and

@@ -8,8 +8,7 @@ CREATE
 CREATE TABLE users
 (
     id                   UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
-    identity_key         TEXT        NOT NULL UNIQUE CHECK (CHAR_LENGTH(BTRIM(identity_key)) > 0 AND
-                                                            CHAR_LENGTH(identity_key) <= 512),
+    identity_key         TEXT        NOT NULL UNIQUE CHECK (CHAR_LENGTH(BTRIM(identity_key)) > 0 AND CHAR_LENGTH(identity_key) <= 512),
     email                TEXT CHECK (email IS NULL OR CHAR_LENGTH(email) <= 320),
     name                 TEXT CHECK (name IS NULL OR CHAR_LENGTH(name) <= 255),
     avatar_url           TEXT CHECK (avatar_url IS NULL OR CHAR_LENGTH(avatar_url) <= 2048),
@@ -24,10 +23,7 @@ CREATE TABLE workspaces
 (
     id            UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
     owner_user_id UUID        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    name          TEXT        NOT NULL CHECK (
-        name = BTRIM(name)
-            AND CHAR_LENGTH(name) BETWEEN 1 AND 255
-        ),
+    name          TEXT        NOT NULL CHECK (name = BTRIM(name)AND CHAR_LENGTH(name) BETWEEN 1 AND 255),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (owner_user_id, name)
@@ -38,18 +34,9 @@ CREATE TABLE projects
 (
     id           UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
     workspace_id UUID        NOT NULL REFERENCES workspaces (id) ON DELETE CASCADE,
-    name         TEXT        NOT NULL CHECK (
-        CHAR_LENGTH(BTRIM(name)) > 0
-            AND CHAR_LENGTH(name) <= 120
-        ),
-    slug         TEXT        NOT NULL UNIQUE CHECK (
-        CHAR_LENGTH(slug) BETWEEN 1 AND 63
-            AND slug ~ '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$'
-        ),
-    region       TEXT        NOT NULL CHECK (
-        CHAR_LENGTH(region) BETWEEN 1 AND 32
-            AND region ~ '^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$'
-        ),
+    name         TEXT        NOT NULL CHECK (CHAR_LENGTH(BTRIM(name)) > 0 AND CHAR_LENGTH(name) <= 120),
+    slug         TEXT        NOT NULL UNIQUE CHECK (CHAR_LENGTH(slug) BETWEEN 1 AND 63 AND slug ~ '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$'),
+    region       TEXT        NOT NULL CHECK (CHAR_LENGTH(region) BETWEEN 1 AND 32 AND region ~ '^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$'),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -98,6 +85,27 @@ CREATE TABLE deployments
 -- Supports listing deployments newest-first per app.
 CREATE INDEX deployments_app_id_created_at_idx
     ON deployments (app_id, created_at DESC);
+
+
+-- Durable agent identity and latest known control-plane presence metadata.
+-- Heartbeat hot-path remains in memory; this table is updated on register,
+-- status transitions, disconnect/offline, and throttled last-seen flushes.
+CREATE TABLE agents
+(
+    id              UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
+    agent_key       TEXT        NOT NULL UNIQUE CHECK (agent_key = BTRIM(agent_key) AND CHAR_LENGTH(agent_key) BETWEEN 1 AND 255),-- unique agent stable identity
+    name            TEXT        NOT NULL CHECK (CHAR_LENGTH(BTRIM(name)) BETWEEN 1 AND 255),
+    status          TEXT        NOT NULL CHECK (status IN ('ready', 'draining', 'degraded', 'offline')),
+    capabilities    TEXT[]      NOT NULL DEFAULT '{}',
+    last_session_id TEXT        NOT NULL CHECK (last_session_id = BTRIM(last_session_id) AND CHAR_LENGTH(last_session_id) BETWEEN 1 AND 255),
+    last_seen_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Supports status dashboards and stale-agent sweep lookups.
+CREATE INDEX agents_status_last_seen_idx
+    ON agents (status, last_seen_at);
 
 
 CREATE TABLE app_env_vars
@@ -158,6 +166,7 @@ CREATE INDEX app_registry_credentials_registry_idx
 -- +goose Down
 DROP TABLE IF EXISTS app_registry_credentials;
 DROP TABLE IF EXISTS app_env_vars;
+DROP TABLE IF EXISTS agents;
 DROP TABLE IF EXISTS deployments;
 DROP TABLE IF EXISTS apps;
 DROP TABLE IF EXISTS registry_credentials;
