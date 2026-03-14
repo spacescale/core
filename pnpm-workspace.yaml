@@ -1,5 +1,0 @@
-packages:
-  - "apps/api-control-plane"
-  - "apps/marketing"
-  - "apps/web"
-  - "packages/*"
