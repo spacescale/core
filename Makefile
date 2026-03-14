@@ -1,4 +1,4 @@
-.PHONY: db-build db-start run test stop mint proto-go proto
+.PHONY: db-build db-start run test stop mint proto transfer secret
 
 db-build:
 	docker build -f apps/db/Dockerfile -t spacescale-db:local apps/db
@@ -21,20 +21,30 @@ run-scaled:
 	@echo "Starting Scaled Agent..."
 	set -a && . ./.env.local && set +a && cd apps/scaled && go run .
 
+transfer:
+	@mkdir -p ".build/scaled-linux-amd64"
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o ".build/scaled-linux-amd64/scaled" ./apps/scaled
+	scp ".build/scaled-linux-amd64/scaled" "root@65.109.67.102:/tmp/scaled.tmp"
+	ssh "root@65.109.67.102" "install -m 0755 '/tmp/scaled.tmp' '/usr/bin/scaled' && rm -f '/tmp/scaled.tmp'"
+	rm -f ".build/scaled-linux-amd64/scaled"
+
 
 test-api-cp: db-start
-	@[ -f .env.local ] || { echo ".env.local not found in repo root"; exit 1; };
-	set -a && . ./.env.local && set +a && cd apps/api-control-plane && TEST_DATABASE_URL="$${TEST_DATABASE_URL:-postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable}" go test ./... -race -cover
+	cd apps/api-control-plane && TEST_DATABASE_URL="$${TEST_DATABASE_URL:-postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable}" go test ./... -race -cover
 
 test-scaled:
 	cd apps/scaled && go test ./... -race -cover
 
 proto:
-	 protoc --proto_path=. --go_out=packages/proto-go --go_opt=module=github.com/t0gun/spacescale/packages/proto-go --go-grpc_out=packages/proto-go --go-grpc_opt=module=github.com/t0gun/spacescale/packages/proto-go $$(find contracts/proto -type f -name '*.proto' | sort)
+	 protoc --proto_path=. --go_out=packages/go --go_opt=module=github.com/t0gun/spacescale/packages/go --go-grpc_out=packages/go --go-grpc_opt=module=github.com/t0gun/spacescale/packages/go $$(find contracts/proto -type f -name '*.proto' | sort)
 
 
 stop:
 	@docker rm -f spacescale-db || true
+
+secret:
+	@openssl rand -hex 32
+
 
 ## Mint a BFF JWT for local API testing.
 ## Reads values from .env.local.

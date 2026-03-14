@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package control.v1;
+
+option go_package = "github.com/t0gun/spacescale/packages/go/pb/v1;controlpb";
+
+// TelemetryEvent is the envelope for bulk node/workload telemetry sent on the
+// dedicated telemetry RPC.
+message TelemetryEvent {
+  string request_id = 1; // request_id is optional and helps correlate ingest warnings.
+
+  oneof event {
+    NodeHealthReport node_health = 2; // node_health reports machine-level resource and health telemetry.
+    WorkloadsReport workloads_report = 3; // workloads_report reports per-workload runtime telemetry for scheduling and operations.
+  }
+}
+
+// TelemetryStreamSummary reports how many telemetry events were accepted before
+// the stream closed.
+message TelemetryStreamSummary {
+  uint64 accepted_events = 1; // accepted_events counts successfully read telemetry frames.
+  string message = 2; // message provides optional operator-readable ingest details.
+}
+
+// WorkloadsReport carries per-workload runtime telemetry for one sample window.
+message WorkloadsReport {
+  string session_id = 1; // session_id identifies the active control session emitting this report.
+  int64 sent_unix = 2; // sent_unix is when this report snapshot was sampled by the agent.
+  uint64 sequence = 3; // sequence is monotonic per session and helps detect dropped report frames.
+  repeated WorkloadRuntime workloads = 4; // workloads is the current set of workload runtime records observed on the node.
+}
+
+// WorkloadRuntime captures runtime state and resource usage for one workload instance.
+message WorkloadRuntime {
+  string project_id = 1; // project_id scopes the workload to its owning project.
+  string workload_id = 2; // workload_id is the stable control-plane workload identity.
+  string vm_id = 3; // vm_id identifies the firecracker microVM instance running this workload.
+  WorkloadRuntimeState state = 4; // state is the current lifecycle state for this workload instance.
+  double cpu_usage_percent = 5; // cpu_usage_percent is current workload CPU usage percentage.
+  uint64 memory_used_bytes = 6; // memory_used_bytes is current workload memory usage.
+  uint64 disk_used_bytes = 7; // disk_used_bytes is current writable disk usage for this workload.
+  uint64 network_rx_bytes = 8; // network_rx_bytes is cumulative inbound network traffic for this workload.
+  uint64 network_tx_bytes = 9; // network_tx_bytes is cumulative outbound network traffic for this workload.
+  uint32 restart_count = 10; // restart_count is the number of restarts observed for this workload instance.
+  int64 started_unix = 11; // started_unix is the workload instance start time in unix seconds.
+  string message = 12; // message provides optional operator-readable runtime context.
+}
+
+// WorkloadRuntimeState enumerates per-workload lifecycle states reported by the agent.
+enum WorkloadRuntimeState {
+  WORKLOAD_RUNTIME_STATE_UNSPECIFIED = 0;
+  WORKLOAD_RUNTIME_STATE_PENDING = 1; // WORKLOAD_RUNTIME_STATE_PENDING means workload resources are not ready yet.
+  WORKLOAD_RUNTIME_STATE_STARTING = 2; // WORKLOAD_RUNTIME_STATE_STARTING means workload startup is in progress.
+  WORKLOAD_RUNTIME_STATE_RUNNING = 3; // WORKLOAD_RUNTIME_STATE_RUNNING means workload is healthy and serving.
+  WORKLOAD_RUNTIME_STATE_DRAINING = 4; // WORKLOAD_RUNTIME_STATE_DRAINING means workload is finishing in-flight work.
+  WORKLOAD_RUNTIME_STATE_STOPPED = 5; // WORKLOAD_RUNTIME_STATE_STOPPED means workload is intentionally not running.
+  WORKLOAD_RUNTIME_STATE_FAILED = 6; // WORKLOAD_RUNTIME_STATE_FAILED means workload reached terminal failure.
+}
+
+// NodeHealthReport carries machine-level telemetry for scheduling and operations.
+message NodeHealthReport {
+  string session_id = 1; // session_id identifies the active control session emitting telemetry.
+  int64 sent_unix = 2; // sent_unix is when this telemetry snapshot was sampled by the agent.
+  string node_status = 3; // node_status is a compact label (for example: "ready", "draining", "degraded").
+  double cpu_usage_percent = 4; // cpu_usage_percent is total CPU usage percentage across all cores.
+  uint32 cpu_cores = 5; // cpu_cores is the number of logical CPU cores visible to the agent.
+  uint64 memory_total_bytes = 6; // memory_total_bytes is total node memory capacity.
+  uint64 memory_available_bytes = 7; // memory_available_bytes is currently available memory.
+  uint64 disk_total_bytes = 8; // disk_total_bytes is total disk capacity for the primary data volume.
+  uint64 disk_available_bytes = 9; // disk_available_bytes is currently available space on the primary data volume.
+  uint32 running_workloads = 10; // running_workloads is the number of active workloads currently running.
+  uint32 queued_workloads = 11; // queued_workloads is the number of pending workloads waiting to start.
+  uint64 uptime_seconds = 12; // uptime_seconds is host uptime since the last reboot.
+  string boot_id_hash = 13; // boot_id_hash is a privacy-safe hash used to detect host reboot cycles.
+}

@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.1
 // - protoc             v6.33.4
-// source: contracts/proto/control.proto
+// source: contracts/proto/control/service.proto
 
-package controlv1
+package controlpb
 
 import (
 	context "context"
@@ -19,8 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ControlPlane_Health_FullMethodName      = "/control.v1.ControlPlane/Health"
-	ControlPlane_OpenSession_FullMethodName = "/control.v1.ControlPlane/OpenSession"
+	ControlPlane_Health_FullMethodName          = "/control.v1.ControlPlane/Health"
+	ControlPlane_OpenSession_FullMethodName     = "/control.v1.ControlPlane/OpenSession"
+	ControlPlane_StreamTelemetry_FullMethodName = "/control.v1.ControlPlane/StreamTelemetry"
+	ControlPlane_StreamLogs_FullMethodName      = "/control.v1.ControlPlane/StreamLogs"
 )
 
 // ControlPlaneClient is the client API for ControlPlane service.
@@ -30,15 +32,17 @@ const (
 // ControlPlane is the server-side control API that agents dial.
 //
 // Architecture note:
-// - Agents initiate outbound connections to the control plane.
-// - OpenSession is intentionally long-lived.
-// - Registration, liveness, telemetry, and directives share one stream.
+//   - Agents initiate outbound connections to the control plane.
+//   - OpenSession carries ordered control traffic such as registration, heartbeats,
+//     directives, and directive lifecycle events.
+//   - Bulk telemetry and log traffic move over separate RPCs so noisy reporting
+//     does not interfere with directive delivery.
 type ControlPlaneClient interface {
 	// Health reports control-plane readiness to an agent.
 	//
 	// This unary method is a fast startup gate before opening OpenSession.
 	Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
-	// OpenSession establishes a long-lived bidirectional control stream.
+	// OpenSession establishes the long-lived bidirectional control stream.
 	//
 	// Protocol invariants:
 	// - Agent MUST send RegisterRequest first.
@@ -46,6 +50,12 @@ type ControlPlaneClient interface {
 	// - Agent MUST continue HeartbeatRequest on the negotiated interval.
 	// - Agent SHOULD report directive ack/progress/result on the same stream.
 	OpenSession(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AgentSessionRequest, AgentSessionResponse], error)
+	// StreamTelemetry ingests bulk node/workload telemetry outside the control
+	// session so large reports cannot block heartbeats or directives.
+	StreamTelemetry(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[TelemetryEvent, TelemetryStreamSummary], error)
+	// StreamLogs ingests batched workload or node logs outside the control
+	// session so high-volume log traffic cannot interfere with control messages.
+	StreamLogs(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LogBatch, LogStreamSummary], error)
 }
 
 type controlPlaneClient struct {
@@ -79,6 +89,32 @@ func (c *controlPlaneClient) OpenSession(ctx context.Context, opts ...grpc.CallO
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ControlPlane_OpenSessionClient = grpc.BidiStreamingClient[AgentSessionRequest, AgentSessionResponse]
 
+func (c *controlPlaneClient) StreamTelemetry(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[TelemetryEvent, TelemetryStreamSummary], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ControlPlane_ServiceDesc.Streams[1], ControlPlane_StreamTelemetry_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[TelemetryEvent, TelemetryStreamSummary]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ControlPlane_StreamTelemetryClient = grpc.ClientStreamingClient[TelemetryEvent, TelemetryStreamSummary]
+
+func (c *controlPlaneClient) StreamLogs(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LogBatch, LogStreamSummary], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ControlPlane_ServiceDesc.Streams[2], ControlPlane_StreamLogs_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[LogBatch, LogStreamSummary]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ControlPlane_StreamLogsClient = grpc.ClientStreamingClient[LogBatch, LogStreamSummary]
+
 // ControlPlaneServer is the server API for ControlPlane service.
 // All implementations must embed UnimplementedControlPlaneServer
 // for forward compatibility.
@@ -86,15 +122,17 @@ type ControlPlane_OpenSessionClient = grpc.BidiStreamingClient[AgentSessionReque
 // ControlPlane is the server-side control API that agents dial.
 //
 // Architecture note:
-// - Agents initiate outbound connections to the control plane.
-// - OpenSession is intentionally long-lived.
-// - Registration, liveness, telemetry, and directives share one stream.
+//   - Agents initiate outbound connections to the control plane.
+//   - OpenSession carries ordered control traffic such as registration, heartbeats,
+//     directives, and directive lifecycle events.
+//   - Bulk telemetry and log traffic move over separate RPCs so noisy reporting
+//     does not interfere with directive delivery.
 type ControlPlaneServer interface {
 	// Health reports control-plane readiness to an agent.
 	//
 	// This unary method is a fast startup gate before opening OpenSession.
 	Health(context.Context, *HealthRequest) (*HealthResponse, error)
-	// OpenSession establishes a long-lived bidirectional control stream.
+	// OpenSession establishes the long-lived bidirectional control stream.
 	//
 	// Protocol invariants:
 	// - Agent MUST send RegisterRequest first.
@@ -102,6 +140,12 @@ type ControlPlaneServer interface {
 	// - Agent MUST continue HeartbeatRequest on the negotiated interval.
 	// - Agent SHOULD report directive ack/progress/result on the same stream.
 	OpenSession(grpc.BidiStreamingServer[AgentSessionRequest, AgentSessionResponse]) error
+	// StreamTelemetry ingests bulk node/workload telemetry outside the control
+	// session so large reports cannot block heartbeats or directives.
+	StreamTelemetry(grpc.ClientStreamingServer[TelemetryEvent, TelemetryStreamSummary]) error
+	// StreamLogs ingests batched workload or node logs outside the control
+	// session so high-volume log traffic cannot interfere with control messages.
+	StreamLogs(grpc.ClientStreamingServer[LogBatch, LogStreamSummary]) error
 	mustEmbedUnimplementedControlPlaneServer()
 }
 
@@ -117,6 +161,12 @@ func (UnimplementedControlPlaneServer) Health(context.Context, *HealthRequest) (
 }
 func (UnimplementedControlPlaneServer) OpenSession(grpc.BidiStreamingServer[AgentSessionRequest, AgentSessionResponse]) error {
 	return status.Error(codes.Unimplemented, "method OpenSession not implemented")
+}
+func (UnimplementedControlPlaneServer) StreamTelemetry(grpc.ClientStreamingServer[TelemetryEvent, TelemetryStreamSummary]) error {
+	return status.Error(codes.Unimplemented, "method StreamTelemetry not implemented")
+}
+func (UnimplementedControlPlaneServer) StreamLogs(grpc.ClientStreamingServer[LogBatch, LogStreamSummary]) error {
+	return status.Error(codes.Unimplemented, "method StreamLogs not implemented")
 }
 func (UnimplementedControlPlaneServer) mustEmbedUnimplementedControlPlaneServer() {}
 func (UnimplementedControlPlaneServer) testEmbeddedByValue()                      {}
@@ -164,6 +214,20 @@ func _ControlPlane_OpenSession_Handler(srv interface{}, stream grpc.ServerStream
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ControlPlane_OpenSessionServer = grpc.BidiStreamingServer[AgentSessionRequest, AgentSessionResponse]
 
+func _ControlPlane_StreamTelemetry_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ControlPlaneServer).StreamTelemetry(&grpc.GenericServerStream[TelemetryEvent, TelemetryStreamSummary]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ControlPlane_StreamTelemetryServer = grpc.ClientStreamingServer[TelemetryEvent, TelemetryStreamSummary]
+
+func _ControlPlane_StreamLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ControlPlaneServer).StreamLogs(&grpc.GenericServerStream[LogBatch, LogStreamSummary]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ControlPlane_StreamLogsServer = grpc.ClientStreamingServer[LogBatch, LogStreamSummary]
+
 // ControlPlane_ServiceDesc is the grpc.ServiceDesc for ControlPlane service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -183,6 +247,16 @@ var ControlPlane_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 			ClientStreams: true,
 		},
+		{
+			StreamName:    "StreamTelemetry",
+			Handler:       _ControlPlane_StreamTelemetry_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "StreamLogs",
+			Handler:       _ControlPlane_StreamLogs_Handler,
+			ClientStreams: true,
+		},
 	},
-	Metadata: "contracts/proto/control.proto",
+	Metadata: "contracts/proto/control/service.proto",
 }

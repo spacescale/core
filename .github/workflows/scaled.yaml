@@ -5,14 +5,14 @@ on:
     branches: [main]
     paths:
       - "apps/scaled/**"
-      - "packages/proto-go/**"
+      - "packages/go/**"
       - "contracts/proto/**"
       - ".github/workflows/scaled.yaml"
   pull_request:
     branches: [main, dev]
     paths:
       - "apps/scaled/**"
-      - "packages/proto-go/**"
+      - "packages/go/**"
       - "contracts/proto/**"
       - ".github/workflows/scaled.yaml"
 

@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package control.v1;
+
+option go_package = "github.com/t0gun/spacescale/packages/go/pb/v1;controlpb";
+
+// LogBatch carries a batch of log lines on the dedicated log-ingest RPC.
+message LogBatch {
+  string request_id = 1; // request_id is optional and helps correlate ingest warnings.
+  string session_id = 2; // session_id identifies the active control session that produced these logs.
+  int64 sent_unix = 3; // sent_unix is when this batch was emitted by the agent.
+  uint64 sequence = 4; // sequence is monotonic per session and helps detect dropped batches.
+  repeated LogEntry entries = 5; // entries are the log lines carried in this batch.
+}
+
+// LogEntry is one emitted log line or structured message from a node or workload.
+message LogEntry {
+  string workload_id = 1; // workload_id identifies the owning workload when available.
+  string vm_id = 2; // vm_id identifies the firecracker microVM instance when available.
+  LogStream stream = 3; // stream identifies the logical source such as stdout or stderr.
+  string message = 4; // message is the emitted log line or structured payload.
+  int64 emitted_unix = 5; // emitted_unix is when this log entry was produced.
+}
+
+// LogStream identifies the logical source of a log entry.
+enum LogStream {
+  LOG_STREAM_UNSPECIFIED = 0;
+  LOG_STREAM_STDOUT = 1;
+  LOG_STREAM_STDERR = 2;
+  LOG_STREAM_SYSTEM = 3;
+}
+
+// LogStreamSummary reports how many log batches and entries were accepted before
+// the stream closed.
+message LogStreamSummary {
+  uint64 accepted_batches = 1; // accepted_batches counts successfully read log batches.
+  uint64 accepted_entries = 2; // accepted_entries counts successfully read log entries.
+  string message = 3; // message provides optional operator-readable ingest details.
+}
