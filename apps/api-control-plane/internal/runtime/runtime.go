@@ -173,6 +173,24 @@ func startAgentLeaseSweeper(agentStore *state.PersistingAgentStore, interval, le
 	return cancel, done
 }
 
+func startScheduler(engine *scheduler.Engine, logger *slog.Logger) (context.CancelFunc, <-chan struct{}) {
+	if engine == nil {
+		done := make(chan struct{})
+		close(done)
+		return func() {}, done
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if err := engine.Run(ctx); err != nil && ctx.Err() == nil {
+			logger.Error("scheduler stopped with error", "error", err)
+		}
+	}()
+
+	return cancel, done
+}
+
 func startHTTPServer(srv *http.Server, addr string, logger *slog.Logger, errCh chan<- error) {
 	if srv == nil {
 		return

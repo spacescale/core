@@ -1,4 +1,4 @@
-module github.com/t0gun/spacescale/packages/proto-go
+module github.com/t0gun/spacescale/packages/go
 
 go 1.26
 

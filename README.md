@@ -71,7 +71,7 @@ This starts every app in parallel:
 make proto
 ```
 
-This regenerates Go protobuf and gRPC stubs in `packages/proto-go` from files in `contracts/proto`.
+This regenerates Go protobuf and gRPC stubs in `packages/go/pb` from files in `contracts/proto`.
 
 ### Run a single app
 
