@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package spacescale.v1;
+
+option go_package = "github.com/spacescale/core/pkg/pb/v1;spacescalepb";
+
+
+// Sent every 5-10 seconds to keep the "Map" updated.
+message NodeHeartbeat {
+  string node_id = 1;
+  string status = 2;          // "ready", "draining", "offline"
+  uint64 memory_available = 3; // In Bytes
+  double cpu_usage = 4;        // 0.0 to 1.0
+  uint32 running_vms = 5;
+}
+
+
+// Deploy Command is sent to deploy a new application
+message DeployCommand {
+  string lease_id = 1;
+  string vm_id = 2;
+  string image_url = 3;
+  uint32 cpu_cores = 4;
+  uint32 memory_mb = 5;
+  map<string, string> env = 6;
+}
