@@ -1,15 +1,15 @@
-## The core repo contains two go programs:
+## Core:
 
 scalecp: the Control Plane managing global state, the public API, and multi-tenant scheduling.   
 scaled: the system daemon that manages lifecycle of its node, tenant workloads on vms and telemetry
 
-# Dependencies
+### Dependencies
 - Go 1.26
 - protobuf
 - docker compose
 - goose
 
-## Quick start
+### Quick start
 > Some endpoints may not work due to limitations on macOS for firecracker. A dev environment will be created for this.
 ```shell
 make run # starts api server
