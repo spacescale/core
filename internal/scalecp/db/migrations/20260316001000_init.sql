@@ -98,6 +98,7 @@ CREATE TABLE scaled
     memory_available BIGINT           NOT NULL DEFAULT 0,
     cpu_usage        DOUBLE PRECISION NOT NULL DEFAULT 0,
     disk_available   BIGINT           NOT NULL DEFAULT 0,
+    running_vms      BIGINT           NOT NULL DEFAULT 0,
     created_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW()
 );
