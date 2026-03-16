@@ -2,16 +2,18 @@ syntax = "proto3";
 
 package spacescale.v1;
 
-option go_package = "github.com/spacescale/core/pkg/pb/v1;spacescalepb";
+option go_package = "github.com/spacescale/core/internal/shared/pb/v1;spacescalepb";
 
 
 // Sent every 5-10 seconds to keep the "Map" updated.
 message NodeHeartbeat {
   string node_id = 1;
   string status = 2;          // "ready", "draining", "offline"
-  uint64 memory_available = 3; // In Bytes
-  double cpu_usage = 4;        // 0.0 to 1.0
-  uint32 running_vms = 5;
+  string region = 3;
+  uint64 memory_available = 4; // In Bytes
+  double cpu_usage = 5;        // 0.0 to 1.0
+  uint64 disk_available = 6;   // Overall node disk available in bytes
+  uint32 running_vms = 7;
 }
 
 

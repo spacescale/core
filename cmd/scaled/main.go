@@ -2,23 +2,45 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/t0gun/spacescale/apps/scaled/internal/runtime"
+	"github.com/spacescale/core/internal/shared/config"
+	"github.com/spacescale/core/internal/shared/logger"
 )
 
-// main boots the scaled runtime and blocks until shutdown.
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(logger)
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	if err := runtime.Run(ctx, logger); err != nil {
-		logger.Error("scaled process exited with error", "event", "process_exit_error", "error", err)
+	cfg, err := config.Load()
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
 		os.Exit(1)
 	}
+
+	appLogger := logger.Init(cfg.Environment)
+	if err := run(context.Background(), cfg, appLogger); err != nil {
+		appLogger.Error("scaled exited with error", "component", "scaled", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run(parent context.Context, cfg config.Config, logger *slog.Logger) error {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	cfg = cfg.Normalized()
+	if err := cfg.ValidateScaled(); err != nil {
+		return fmt.Errorf("invalid scaled config: %w", err)
+	}
+
+	ctx, stop := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	logger.Info("scaled ready", "component", "scaled", "node_id", cfg.NodeID)
+	<-ctx.Done()
+	logger.Info("scaled stopped", "component", "scaled", "node_id", cfg.NodeID)
+	return nil
 }

@@ -1,0 +1,54 @@
+version: 2
+
+project_name: core
+
+builds:
+  - id: scalecp
+    main: ./cmd/scalecp
+    binary: scalecp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+  - id: scaled
+    main: ./cmd/scaled
+    binary: scaled
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+archives:
+  - id: scalecp
+    ids:
+      - scalecp
+    formats:
+      - binary
+    name_template: "{{ .Binary }}"
+
+  - id: scaled
+    ids:
+      - scaled
+    formats:
+      - binary
+    name_template: "{{ .Binary }}"
+
+
+source:
+  enabled: false
+
+release:
+  name_template: "{{ .Tag }}"

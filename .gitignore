@@ -1,14 +1,8 @@
-# Dependencies
-node_modules/
-.pnpm-store/
-
 # Build outputs
 dist/
 .next/
 out/
 
-# Turbo
-.turbo/
 
 # Go
 *.out
@@ -17,10 +11,6 @@ coverage.*
 profile.cov
 go.work
 go.work.sum
-
-# Rust
-target/
-**/target/
 
 # Environment
 .env
@@ -38,16 +28,6 @@ target/
 DS_STORE
 Thumbs.db
 
-# Logs
-*.log
-npm-debug.log*
-package-lock.json
-pnpm-debug.log*
 
 # Testing
 coverage/
-
-# Misc
-*.tsbuildinfo
-stitch_spacescale
-.claude
