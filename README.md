@@ -1,5 +1,3 @@
-## High performance baremetal MicroVM Orchestration
-
 > The core repo contains two go programs:
 
 scalecp: the Control Plane managing global state, the public API, and multi-tenant scheduling.   
