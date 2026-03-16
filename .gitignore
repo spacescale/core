@@ -1,9 +1,3 @@
-# Build outputs
-dist/
-.next/
-out/
-
-
 # Go
 *.out
 coverage.*
@@ -19,7 +13,6 @@ go.work.sum
 
 # IDE
 .idea/
-.vscode/
 *.swp
 *.swo
 
@@ -27,7 +20,6 @@ go.work.sum
 .DS_Store
 DS_STORE
 Thumbs.db
-
 
 # Testing
 coverage/
