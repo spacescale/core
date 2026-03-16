@@ -19,9 +19,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	appLogger := logger.Init(cfg.Environment)
-	if err := run(context.Background(), cfg, appLogger); err != nil {
-		appLogger.Error("scaled exited with error", "component", "scaled", "error", err)
+	Logger := logger.Init(cfg.Environment)
+	if err := run(context.Background(), cfg, Logger); err != nil {
+		Logger.Error("scaled exited with error", "component", "scaled", "error", err)
 		os.Exit(1)
 	}
 }
