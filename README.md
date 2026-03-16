@@ -1,4 +1,4 @@
-## Core:
+## Core
 
 scalecp: the Control Plane managing global state, the public API, and multi-tenant scheduling.   
 scaled: the system daemon that manages lifecycle of its node, tenant workloads on vms and telemetry
@@ -10,7 +10,7 @@ scaled: the system daemon that manages lifecycle of its node, tenant workloads o
 - goose
 
 ### Quick start
-> Some endpoints may not work due to limitations on macOS for firecracker. A dev environment will be created for this.
+> ![WARNING] Some endpoints may not work due to limitations on macOS for firecracker. A dev environment will be created for this.
 ```shell
 make run # starts api server
 ```       
