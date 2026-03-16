@@ -10,7 +10,8 @@ scaled: the system daemon that manages lifecycle of its node, tenant workloads o
 - goose
 
 ### Quick start
-> [!WARNING] Some endpoints may not work due to limitations on macOS for firecracker. A dev environment will be created for this.
+> [!WARNING]   
+> Some endpoints may not work due to limitations on macOS for firecracker. A dev environment will be created for this.
 ```shell
 make run # starts api server
 ```       
