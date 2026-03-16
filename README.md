@@ -1,10 +1,10 @@
-## The core repo contains two go programs:
+#### The core repo contains two go programs:
 
 scalecp: the Control Plane managing global state, the public API, and multi-tenant scheduling.   
 scaled: the system daemon that manages lifecycle of its node, tenant workloads on vms and telemetry
 
-### Architecture
+#### Architecture
 
-The architecture is asynchronous and event driven. NATS is used as a message bus. This design allows the scalecp brain
+The architecture is asynchronous and event driven. NATS is used as a message bus. This design allows the scalecp 
 to issue non-blocking commands and receive telemetry while the distributed scaled
 daemons manage microVM lifecycles independently on bare-metal nodes. 
