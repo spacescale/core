@@ -15,4 +15,4 @@ scaled: the system daemon that manages lifecycle of its node, tenant workloads o
 ```shell
 make run # starts api server
 ```       
-The entry point each program is found in `cmd` and the `makefile` exposes other build targets.
+The entry point to each program is found in `cmd` and the `makefile` exposes other build and run  targets.
