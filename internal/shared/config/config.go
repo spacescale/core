@@ -23,8 +23,8 @@ type Config struct {
 	NATSURL     string
 
 	DatabaseURL    string
-	Port           string
-	NodeID         string
+	Port           string // api server runtime port
+	NodeID         string // used by scale daemon
 	FirecrackerBin string
 
 	Auth               AuthConfig
