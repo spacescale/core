@@ -1,10 +1,17 @@
-#### The core repo contains two go programs:
+## The core repo contains two go programs:
 
 scalecp: the Control Plane managing global state, the public API, and multi-tenant scheduling.   
 scaled: the system daemon that manages lifecycle of its node, tenant workloads on vms and telemetry
 
-#### Architecture
+# Dependencies
+- Go 1.26
+- protobuf
+- docker compose
+- goose
 
-The architecture is asynchronous and event driven. NATS is used as a message bus. This design allows the scalecp 
-to issue non-blocking commands and receive telemetry while the distributed scaled
-daemons manage microVM lifecycles independently on bare-metal nodes. 
+## Quick start
+> Some endpoints may not work due to limitations on macOS for firecracker. A dev environment will be created for this.
+```shell
+make run # starts api server
+```       
+The entry point each program is found in `cmd` and the `makefile` exposes other build targets.
