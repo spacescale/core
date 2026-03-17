@@ -110,20 +110,19 @@ CREATE INDEX scaled_region_status_last_seen_idx
     ON scaled (region, status, last_seen_at);
 
 
-CREATE TABLE app_env_vars
-(
-    -- app_id ties env vars to apps; cascade removes them on app deletion.
-    id              UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
-    app_id          UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
-    key             TEXT        NOT NULL,
-    value_encrypted TEXT        NOT NULL,
-    cipher_version  TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 1)) STORED,
-    cipher_algo     TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 2)) STORED,
-    cipher_key_id   TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 3)) STORED,
-    is_secret       BOOLEAN     NOT NULL DEFAULT TRUE,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (app_id, key)
+-- Table of all Baremetal servers managed by scalecp
+CREATE TABLE metals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    provider_id UUID NOT NULL REFERENCES providers(id) ON DELETE RESTRICT, -- we restrict on delete so it wont delete provider
+    provider_server_id TEXT NOT  NULL, -- every server always as an id
+    primary_ipv4 TEXT UNIQUE NOT NULL,
+    region TEXT NOT NULL,
+    total_cpu_cores INT NOT NULL CHECK (total_cpu_cores > 0),
+    total_memory_mb BIGINT NOT NULL CHECK (total_memory_mb > 0),
+    status TEXT NOT NULL DEFAULT 'provisioning' CHECK (status IN ('provisioning', 'active', 'retired')),
+    bootstrap_token_hash TEXT UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 );
 
 CREATE INDEX app_env_vars_cipher_claim_idx
