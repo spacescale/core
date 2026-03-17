@@ -125,10 +125,20 @@ CREATE TABLE metals (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 );
 
-CREATE INDEX app_env_vars_cipher_claim_idx
-    ON app_env_vars (cipher_key_id, created_at)
-    WHERE cipher_version = 'v1'
-	  AND cipher_algo = 'aesgcm';
+-- Index to instantly find a specific server when a provider sends an API webhook/event
+CREATE INDEX metals_provider_server_idx ON metals (provider_id, provider_server_id);
+
+-- this
+CREATE TABLE providers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT UNIQUE NOT NULL, -- e.g., 'hetzner', 'ovh', 'aws-baremetal'
+    api_token_encrypted TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ      NOT NULL DEFAULT NOW()
+);
+
+
 
 
 CREATE TABLE registry_credentials
