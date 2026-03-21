@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/spacescale/core/internal/scalecp/service"
+	"github.com/spacescale/core/internal/scalecp/service/tenant"
 )
 
 type createAppEnvVarRequest struct {
@@ -77,16 +77,16 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	envVars := make([]service.AppEnvVarInput, 0, len(req.EnvVars))
+	envVars := make([]tenant.AppEnvVarInput, 0, len(req.EnvVars))
 	for _, item := range req.EnvVars {
-		envVars = append(envVars, service.AppEnvVarInput{
+		envVars = append(envVars, tenant.AppEnvVarInput{
 			Key:      item.Key,
 			Value:    item.Value,
 			IsSecret: item.IsSecret,
 		})
 	}
 
-	app, err := s.services.Apps.CreateApp(r.Context(), user.ID, workspaceID, projectID, service.CreateAppParams{
+	app, err := s.apps.CreateApp(r.Context(), user.ID, workspaceID, projectID, tenant.CreateAppParams{
 		Name:                 req.Name,
 		ImageRef:             req.ImageRef,
 		RuntimePort:          req.RuntimePort,
@@ -96,11 +96,11 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		switch {
-		case errors.Is(err, service.ErrInvalidInput):
+		case errors.Is(err, tenant.ErrInvalidInput):
 			writeErr(w, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, service.ErrUnauthorized):
+		case errors.Is(err, tenant.ErrUnauthorized):
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
-		case errors.Is(err, service.ErrConflict):
+		case errors.Is(err, tenant.ErrConflict):
 			writeErr(w, http.StatusConflict, "conflict")
 		default:
 			writeErr(w, http.StatusInternalServerError, "internal error")

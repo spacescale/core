@@ -6,7 +6,7 @@
 // - ProjectService consumes resolved user IDs and focuses only on projects.
 
 // Package service defines core models for service workflows.
-package service
+package tenant
 
 import (
 	"context"

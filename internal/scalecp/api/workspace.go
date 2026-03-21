@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/spacescale/core/internal/scalecp/service"
+	"github.com/spacescale/core/internal/scalecp/service/tenant"
 )
 
 type createWorkspaceRequest struct {
@@ -48,14 +48,14 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err := s.services.Workspaces.CreateWorkspace(r.Context(), user.ID, service.CreateWorkspaceParams{Name: req.Name})
+	out, err := s.workspaces.CreateWorkspace(r.Context(), user.ID, tenant.CreateWorkspaceParams{Name: req.Name})
 	if err != nil {
 		switch {
-		case errors.Is(err, service.ErrInvalidInput):
+		case errors.Is(err, tenant.ErrInvalidInput):
 			writeErr(w, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, service.ErrUnauthorized):
+		case errors.Is(err, tenant.ErrUnauthorized):
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
-		case errors.Is(err, service.ErrConflict):
+		case errors.Is(err, tenant.ErrConflict):
 			writeErr(w, http.StatusConflict, "conflict")
 		default:
 			writeErr(w, http.StatusInternalServerError, "internal error")
@@ -76,12 +76,12 @@ func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	workspaces, err := s.services.Workspaces.ListWorkspaces(r.Context(), user.ID)
+	workspaces, err := s.workspaces.ListWorkspaces(r.Context(), user.ID)
 	if err != nil {
 		switch {
-		case errors.Is(err, service.ErrInvalidInput):
+		case errors.Is(err, tenant.ErrInvalidInput):
 			writeErr(w, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, service.ErrUnauthorized):
+		case errors.Is(err, tenant.ErrUnauthorized):
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 		default:
 			writeErr(w, http.StatusInternalServerError, "internal error")
@@ -110,12 +110,12 @@ func (s *Server) handleGetWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid input")
 		return
 	}
-	ws, err := s.services.Workspaces.GetWorkspace(r.Context(), user.ID, workspaceID)
+	ws, err := s.workspaces.GetWorkspace(r.Context(), user.ID, workspaceID)
 	if err != nil {
 		switch {
-		case errors.Is(err, service.ErrInvalidInput):
+		case errors.Is(err, tenant.ErrInvalidInput):
 			writeErr(w, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, service.ErrUnauthorized):
+		case errors.Is(err, tenant.ErrUnauthorized):
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 		default:
 			writeErr(w, http.StatusInternalServerError, "internal error")
@@ -150,16 +150,16 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	ws, err := s.services.Workspaces.UpdateWorkspace(r.Context(), user.ID, workspaceID, service.UpdateWorkspaceParams{
+	ws, err := s.workspaces.UpdateWorkspace(r.Context(), user.ID, workspaceID, tenant.UpdateWorkspaceParams{
 		Name: req.Name,
 	})
 	if err != nil {
 		switch {
-		case errors.Is(err, service.ErrInvalidInput):
+		case errors.Is(err, tenant.ErrInvalidInput):
 			writeErr(w, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, service.ErrUnauthorized):
+		case errors.Is(err, tenant.ErrUnauthorized):
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
-		case errors.Is(err, service.ErrConflict):
+		case errors.Is(err, tenant.ErrConflict):
 			writeErr(w, http.StatusConflict, "conflict")
 		default:
 			writeErr(w, http.StatusInternalServerError, "internal error")
@@ -183,11 +183,11 @@ func (s *Server) handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid input")
 		return
 	}
-	if err := s.services.Workspaces.DeleteWorkspace(r.Context(), user.ID, workspaceID); err != nil {
+	if err := s.workspaces.DeleteWorkspace(r.Context(), user.ID, workspaceID); err != nil {
 		switch {
-		case errors.Is(err, service.ErrInvalidInput):
+		case errors.Is(err, tenant.ErrInvalidInput):
 			writeErr(w, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, service.ErrUnauthorized):
+		case errors.Is(err, tenant.ErrUnauthorized):
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 		default:
 			writeErr(w, http.StatusInternalServerError, "internal error")

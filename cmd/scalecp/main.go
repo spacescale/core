@@ -15,6 +15,7 @@ import (
 	"github.com/spacescale/core/internal/scalecp/api"
 	"github.com/spacescale/core/internal/scalecp/db/sqlc"
 	"github.com/spacescale/core/internal/scalecp/service"
+	"github.com/spacescale/core/internal/scalecp/service/tenant"
 	"github.com/spacescale/core/internal/shared/config"
 	"github.com/spacescale/core/internal/shared/logger"
 )
@@ -53,7 +54,7 @@ func run(parent context.Context, cfg config.Config, logger *slog.Logger) error {
 	defer dbPool.Close()
 
 	queries := sqlc.New(dbPool)
-	envCipher, err := service.NewEnvValueCipher(cfg.EnvEncryptionKeyID, cfg.EnvEncryptionKey)
+	envCipher, err := tenant.NewEnvValueCipher(cfg.EnvEncryptionKeyID, cfg.EnvEncryptionKey)
 	if err != nil {
 		return fmt.Errorf("env encryption init failed: %w", err)
 	}

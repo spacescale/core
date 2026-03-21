@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type App struct {
@@ -56,6 +57,28 @@ type Deployment struct {
 	UpdatedAt    time.Time
 }
 
+type Metal struct {
+	ID                 uuid.UUID
+	ProviderID         string
+	ProviderServerID   string
+	PrimaryIpv4        string
+	PrimaryIpv6        *string
+	HostOsFamily       *string
+	HostOsVersion      *string
+	HostImageRef       *string
+	Region             string
+	ProviderLocation   string
+	TierTarget         string
+	TotalCpuCore       int32
+	TotalThreads       int32
+	TotalRamMb         int64
+	TotalDiskMb        int64
+	Status             string
+	BootstrapTokenHash *string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
 type NameWord struct {
 	ID        uuid.UUID
 	Word      string
@@ -75,6 +98,15 @@ type Project struct {
 	UpdatedAt   time.Time
 }
 
+type Provider struct {
+	ID                string
+	Name              string
+	ApiTokenEncrypted string
+	IsActive          pgtype.Bool
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
 type RegistryCredential struct {
 	ID             uuid.UUID
 	ProjectID      uuid.UUID
@@ -88,16 +120,27 @@ type RegistryCredential struct {
 }
 
 type Scaled struct {
-	ID              string
-	Name            string
-	Region          string
-	Status          string
-	LastSeenAt      time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	MemoryAvailable int64
-	CpuUsage        float64
-	DiskAvailable   int64
+	ID                       string
+	Version                  string
+	BootID                   string
+	Status                   string
+	StatusReason             *string
+	TotalAllocatedVmsThreads int32
+	TotalAllocatedVmsRamMb   int64
+	TotalAllocatedVmDiskMb   int64
+	TotalRunningVms          int32
+	MetalID                  uuid.UUID
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+}
+
+type SystemsConfig struct {
+	Key         string
+	Value       string
+	IsSecret    bool
+	Description *string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type User struct {

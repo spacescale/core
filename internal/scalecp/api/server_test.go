@@ -17,6 +17,7 @@ import (
 	"github.com/spacescale/core/internal/scalecp/api"
 	"github.com/spacescale/core/internal/scalecp/db/sqlc"
 	"github.com/spacescale/core/internal/scalecp/service"
+	"github.com/spacescale/core/internal/scalecp/service/tenant"
 	"github.com/spacescale/core/internal/shared/config"
 	"github.com/stretchr/testify/require"
 )
@@ -64,7 +65,7 @@ func newTestServer(t *testing.T) *testServer {
 	}
 
 	queries := sqlc.New(pool)
-	envCipher, err := service.NewEnvValueCipher(testEnvEncryptionKeyID, []byte(testEnvEncryptionKey))
+	envCipher, err := tenant.NewEnvValueCipher(testEnvEncryptionKeyID, []byte(testEnvEncryptionKey))
 	if err != nil {
 		pool.Close()
 		t.Fatalf("env cipher: %v", err)
@@ -86,11 +87,13 @@ func TestNewServerRequiresNonEmptyInternalSecret(t *testing.T) {
 	require.PanicsWithValue(t, "http_api.NewServer requires non-empty internal auth secret", func() {
 		api.NewServer(api.ServerDeps{
 			Services: &service.Services{
-				Projects:   &service.ProjectService{},
-				Users:      &service.UserService{},
-				Workspaces: &service.WorkspaceService{},
-				Bootstrap:  &service.BootstrapService{},
-				Apps:       &service.AppService{},
+				Tenant: service.TenantServices{
+					Projects:   &tenant.ProjectService{},
+					Users:      &tenant.UserService{},
+					Workspaces: &tenant.WorkspaceService{},
+					Bootstrap:  &tenant.BootstrapService{},
+					Apps:       &tenant.AppService{},
+				},
 			},
 			DBPool: &pgxpool.Pool{},
 			Config: config.Config{InternalAuthSecret: "   "},

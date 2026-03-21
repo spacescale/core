@@ -1,16 +1,3 @@
-// This file builds the API router and middleware stack.
-// It defines the Server wrapper that receives service dependencies and exposes
-// one Router method used by main and integration tests.
-// Route registration for health checks and versioned endpoints is centralized
-// here so application wiring is discoverable in one place.
-// In addition to routing, this file owns composition wiring for server-level
-// runtime configuration (for example rate limits and log privacy). Config model
-// definitions live in focused files, while this file stays responsible for
-// assembling middleware and route behavior.
-// When adding new endpoints or middleware-level wiring, changes should begin
-// here so composition remains discoverable in one place.
-
-// Package http_api provides routing and middleware wiring.
 package api
 
 import (
@@ -24,12 +11,17 @@ import (
 	"github.com/go-chi/httprate"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/internal/scalecp/service"
+	"github.com/spacescale/core/internal/scalecp/service/tenant"
 	"github.com/spacescale/core/internal/shared/config"
 )
 
 // Server wires HTTP handlers to service dependencies and auth configuration.
 type Server struct {
-	services                *service.Services
+	users                   *tenant.UserService
+	projects                *tenant.ProjectService
+	workspaces              *tenant.WorkspaceService
+	bootstrap               *tenant.BootstrapService
+	apps                    *tenant.AppService
 	dbPool                  *pgxpool.Pool
 	config                  config.Config
 	internalIdentityLimiter *httprate.RateLimiter
@@ -58,19 +50,19 @@ func NewServer(deps ServerDeps) *Server {
 	if deps.Services == nil {
 		panic("http_api.NewServer requires non-nil services")
 	}
-	if deps.Services.Projects == nil {
+	if deps.Services.Tenant.Projects == nil {
 		panic("http_api.NewServer requires non-nil project service")
 	}
-	if deps.Services.Workspaces == nil {
+	if deps.Services.Tenant.Workspaces == nil {
 		panic("http_api.NewServer requires non-nil workspace service")
 	}
-	if deps.Services.Bootstrap == nil {
+	if deps.Services.Tenant.Bootstrap == nil {
 		panic("http_api.NewServer requires non-nil bootstrap service")
 	}
-	if deps.Services.Apps == nil {
+	if deps.Services.Tenant.Apps == nil {
 		panic("http_api.NewServer requires non-nil app service")
 	}
-	if deps.Services.Users == nil {
+	if deps.Services.Tenant.Users == nil {
 		panic("http_api.NewServer requires non-nil user service")
 	}
 	if deps.DBPool == nil {
@@ -81,9 +73,14 @@ func NewServer(deps ServerDeps) *Server {
 	if normalizedConfig.InternalAuthSecret == "" {
 		panic("http_api.NewServer requires non-empty internal auth secret")
 	}
+	tenantServices := deps.Services.Tenant
 
 	return &Server{
-		services:                deps.Services,
+		users:                   tenantServices.Users,
+		projects:                tenantServices.Projects,
+		workspaces:              tenantServices.Workspaces,
+		bootstrap:               tenantServices.Bootstrap,
+		apps:                    tenantServices.Apps,
 		dbPool:                  deps.DBPool,
 		config:                  normalizedConfig,
 		internalIdentityLimiter: newInternalIdentityLimiter(),

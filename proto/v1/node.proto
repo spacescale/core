@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package spacescale.v1;
+
+option go_package = "github.com/spacescale/core/internal/shared/pb/v1;scalepb";
+
+
+// NodeBootstrapRequest is sent by the 'scaled' daemon on first boot.
+// It reports the "Physical Truth" discovered by the hardware probe.
+message NodeBootstrapRequest {
+  string bootstrap_token = 1; // one time bootstrap secret baked onto the host
+  string version = 2;  // daemon version
+  string boot_id = 3; // boot id to stores ths initial also, if system boots it changes
+  uint32 total_threads = 4;   // e.g. 96 From /proc/cpuinfo
+  uint64 total_ram_mb = 5;    // e.g. 262144 From /proc/meminfo
+  uint64 total_disk_mb = 6;  // Total NVMe space
+}
+
+
+// BootstrapResponse is returned by scalecp after bootstrap to assign identity.
+message NodeBootstrapResponse {
+  string node_id = 1; // permanent daemon identity used in heartbeats
+  string region = 2;  // region assigned by the control plane
+  string error = 3;   // optional human readable failure message
+}
+
+
+message NodeHeartbeat {
+  // --- IDENTITY & SEQUENCING ---
+  string node_id = 1;           // Primary key; maps this pulse to the Postgres inventory.
+  uint64 seq_no = 2;            // Gap detection; if 10 follows 8, you lost a packet.
+  string boot_id = 3;           // if changed without purposeful restart, its probably dead
+  int64 sent_at_unix_nano = 4;  // Staleness check; discards heartbeats delayed by network jitter.
+
+  uint32 shared_vcpu_available = 8; // Starter tier capacity; tracks over-provisioned slots.
+  uint32 pinned_cpus_free = 9;      // Growth/Scale capacity; ensures dedicated performance.
+  uint64 allocatable_mem_mb = 10;   // Policy-aware RAM; the "True North" for scheduling room.
+  uint64 allocatable_disk_mb = 11;  // Local SSD budget; prevents "Disk Full" deployment failures.
+  uint32 active_vms = 12;           // Zombie detection; verifies physical reality vs DB records.
+
+  // --- HEALTH & CONTENTION  ---
+  double cpu_psi_some_10s = 13;     // The "Suffering" metric; skips nodes where CPU is stalling.
+  double io_psi_some_10s = 14;      // The "NVMe Watcher"; detects failing drives or I/O abuse.
+  float cpu_temp_max_c = 15;        // Thermal safety; prevents scheduling on melting hardware.
+  uint32 oom_kills_since_boot = 16; // Stability audit; increments mean the node is leaking/unstable.
+
+  // --- INTENT & CONNECTIVITY ---
+  string status = 17;               //one of: ready, draining, offline, cordoned, overheated
+  string status_reason = 18; // Only populated when status != 'ready'
+  bool network_ok = 19;             // External reachability; node is useless if it's "islanded".
+  uint32 net_utilization_pct = 20;  // recent max(TX,RX) utilization percent of known link capacity
+}

@@ -1,40 +1,52 @@
--- name: UpsertScaled :exec
-INSERT INTO scaled (id, name, region, status, last_seen_at, memory_available, cpu_usage, disk_available, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now())
-ON CONFLICT (id) DO UPDATE
-    SET name = EXCLUDED.name,
-        region = EXCLUDED.region,
-        status = EXCLUDED.status,
-        last_seen_at = EXCLUDED.last_seen_at,
-        memory_available = EXCLUDED.memory_available,
-        cpu_usage = EXCLUDED.cpu_usage,
-        disk_available = EXCLUDED.disk_available,
-        updated_at = now();
-
-
--- name: UpdateScaledLastSeenAndStatus :execrows
-UPDATE scaled
-SET region = $2,
-    status = $3,
-    last_seen_at = $4,
-    memory_available = $5,
-    cpu_usage = $6,
-    disk_available = $7,
-    updated_at = now()
+-- name: GetScaledByID :one
+SELECT *
+FROM scaled
 WHERE id = $1;
+-- name: GetScaledByMetalID :one
+SELECT *
+FROM scaled
+WHERE metal_id = $1;
+-- name: UpsertScaledBootstrap :one
+INSERT INTO scaled (
+    id,
+    version,
+    boot_id,
+    status,
+    status_reason,
+    metal_id,
+    created_at,
+    updated_at
+)
+VALUES (
+           sqlc.arg(id),
+           sqlc.arg(version),
+           sqlc.arg(boot_id),
+           'offline',
+           NULL,
+           sqlc.arg(metal_id),
+           now(),
+           now()
+       )
+ON CONFLICT (metal_id) DO UPDATE
+    SET version = EXCLUDED.version,
+        boot_id = EXCLUDED.boot_id,
+        updated_at = now()
+RETURNING *;
+
+
+-- name: UpdateScaledPresence :execrows
+UPDATE scaled
+SET boot_id = sqlc.arg(boot_id),
+    status = sqlc.arg(status),
+    status_reason = sqlc.narg(status_reason),
+    total_running_vms = sqlc.arg(total_running_vms),
+    updated_at = now()
+WHERE id = sqlc.arg(id);
 
 
 -- name: MarkScaledOffline :execrows
 UPDATE scaled
 SET status = 'offline',
-    last_seen_at = $2,
+    status_reason = sqlc.narg(status_reason),
     updated_at = now()
-WHERE id = $1;
-
-
--- name: MarkStaleScaledOffline :execrows
-UPDATE scaled
-SET status = 'offline',
-    updated_at = now()
-WHERE status <> 'offline'
-  AND last_seen_at <= $1;
+WHERE id = sqlc.arg(id);

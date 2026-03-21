@@ -39,8 +39,8 @@ func run(parent context.Context, cfg config.Config, logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	logger.Info("scaled ready", "component", "scaled", "node_id", cfg.NodeID)
+	logger.Info("scaled ready", "component", "scaled")
 	<-ctx.Done()
-	logger.Info("scaled stopped", "component", "scaled", "node_id", cfg.NodeID)
+	logger.Info("scaled stopped", "component", "scaled")
 	return nil
 }

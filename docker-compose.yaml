@@ -19,9 +19,11 @@ services:
 
   nats:
     image: nats:2.12.5-alpine
+    command: [ "-js", "-m", "8222", "-sd", "/data" ]
     ports:
       - "4222:4222"
       - "8222:8222"
 
 volumes:
   pgdata:
+  natsdata:

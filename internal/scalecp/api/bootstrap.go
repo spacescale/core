@@ -9,7 +9,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/spacescale/core/internal/scalecp/service"
+	"github.com/spacescale/core/internal/scalecp/service/tenant"
 )
 
 // bootstrapDefaultsResponse is the response shape for default bootstrap calls.
@@ -42,14 +42,14 @@ func (s *Server) handleBootstrapDefaults(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	out, err := s.services.Bootstrap.BootstrapDefaults(r.Context(), user.ID)
+	out, err := s.bootstrap.BootstrapDefaults(r.Context(), user.ID)
 	if err != nil {
 		switch {
-		case errors.Is(err, service.ErrInvalidInput):
+		case errors.Is(err, tenant.ErrInvalidInput):
 			writeErr(w, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, service.ErrUnauthorized):
+		case errors.Is(err, tenant.ErrUnauthorized):
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
-		case errors.Is(err, service.ErrConflict):
+		case errors.Is(err, tenant.ErrConflict):
 			writeErr(w, http.StatusConflict, "conflict")
 		default:
 			writeErr(w, http.StatusInternalServerError, "internal error")
