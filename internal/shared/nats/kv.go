@@ -159,6 +159,32 @@ func PutProtoKV(ctx context.Context, kv KeyValue, key string, msg proto.Message)
 	return revision, nil
 }
 
+func GetProtoKV(ctx context.Context, kv KeyValue, key string, dst proto.Message) (bool, uint64, error) {
+	if ctx == nil {
+		return false, 0, errors.New("context is required")
+	}
+	if kv == nil {
+		return false, 0, errors.New("key value store required")
+	}
+
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return false, 0, errors.New("key value key is required")
+	}
+
+	entry, err := kv.Get(ctx, key)
+	if err != nil {
+		if errors.Is(err, jetstream.ErrKeyNotFound) {
+			return false, 0, nil
+		}
+		return false, 0, fmt.Errorf("get key %q: %w", key, err)
+	}
+	if err := UnmarshalEntryProto(entry, dst); err != nil {
+		return false, 0, err
+	}
+	return true, entry.Revision(), nil
+}
+
 func UnmarshalEntryProto(entry KeyValueEntry, dst proto.Message) error {
 	if entry == nil {
 		return errors.New("key value entry is required")
