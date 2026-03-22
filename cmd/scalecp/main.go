@@ -60,6 +60,24 @@ func run(parent context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 
 	services := service.NewServices(queries, dbPool, envCipher)
+
+	// Start Nats
+	natsClient, err := nats.New(cfg.NATSURL, "scalecp", logger)
+	if err != nil {
+		return fmt.Errorf("nats init failed: %w", err)
+	}
+
+	defer func() {
+		if err := natsClient.Drain(); err != nil {
+			logger.Warn("nats drain failed", "component", "scalecp", "error", err)
+		}
+	}()
+
+	nodeBroker := broker.NewNodeBroker(services.Node, logger)
+	if err := nodeBroker.Start(ctx, natsClient); err != nil {
+		return fmt.Errorf("node broker start failed: %w", err)
+	}
+
 	server := api.NewServer(api.ServerDeps{
 		Services: services,
 		DBPool:   dbPool,
