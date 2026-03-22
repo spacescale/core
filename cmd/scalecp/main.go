@@ -13,11 +13,13 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/internal/scalecp/api"
+	"github.com/spacescale/core/internal/scalecp/broker"
 	"github.com/spacescale/core/internal/scalecp/db/sqlc"
 	"github.com/spacescale/core/internal/scalecp/service"
 	"github.com/spacescale/core/internal/scalecp/service/tenant"
 	"github.com/spacescale/core/internal/shared/config"
 	"github.com/spacescale/core/internal/shared/logger"
+	"github.com/spacescale/core/internal/shared/nats"
 )
 
 func main() {
@@ -111,6 +113,7 @@ func run(parent context.Context, cfg config.Config, logger *slog.Logger) error {
 		return errors.Join(err, shutdown())
 	}
 }
+
 func openDB(ctx context.Context, cfg config.Config) (*pgxpool.Pool, error) {
 	poolCfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
 	if err != nil {

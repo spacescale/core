@@ -1,0 +1,8 @@
+# Enforce GitHub Linguist language stats for custom files
+*.sql linguist-detectable=true linguist-language=SQL
+*.proto linguist-detectable=true
+
+# Prevent Linguist from flagging hand-written schema as auto-generated
+internal/scalecp/db/queries/*.sql linguist-generated=false
+internal/scalecp/db/migrations/*.sql linguist-generated=false
+proto/**/*.proto linguist-generated=false

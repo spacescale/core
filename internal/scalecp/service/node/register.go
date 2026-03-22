@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/internal/scalecp/db/sqlc"
 	scalepb "github.com/spacescale/core/internal/shared/pb/v1"
@@ -46,16 +45,6 @@ func NewRegistrar(queries *sqlc.Queries, pool *pgxpool.Pool) *Registrar {
 // Register handles the "Secret Zero" bootstrap process for a new node.
 // It validates the hardware's physical truth (CPU, RAM, Disk) reported by the
 // scaled daemon against the one-time bootstrap token stored in the database.
-//
-// The process is strictly atomic:
-//  1. It validates and hashes the provided bootstrap token.
-//  2. It updates the 'metals' record, transitioning it from 'provisioning' to 'active'
-//     while recording the discovered hardware specs.
-//  3. It initializes the 'scaled' ledger entry, assigning a permanent NodeID.
-//  4. It returns the assigned NodeID and Region to the daemon for future heartbeats.
-//
-// If the token hash does not match an existing 'provisioning' node, it returns
-// ErrBootstrapRejected, effectively islanding the rogue hardware.
 func (r *Registrar) Register(ctx context.Context, req *scalepb.NodeBootstrapRequest) (RegisterResult, error) {
 	token, version, bootID, totalThreads, totalRamMB, totalDiskMB, err := validateBootstrapRequest(req)
 	if err != nil {
@@ -148,9 +137,4 @@ func uint64ToInt64(v uint64) (int64, bool) {
 		return 0, false
 	}
 	return int64(v), true
-}
-
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

@@ -72,75 +72,40 @@ func (c *Client) EnsureKeyValue(ctx context.Context, cfg KeyValueConfig) (KeyVal
 // workloads on nodes that have silently gone dark.
 func (c *Client) EnsureNodeHeartbeatKV(ctx context.Context) (KeyValue, error) {
 	return c.EnsureKeyValue(ctx, KeyValueConfig{
-		Bucket:  NodeHeartbeatBucket,     // namespace where heartbeats live
-		TTL:     NodeHeartbeatTTL,        // 15s: Pulse must be fresh
-		History: 1,                       // Only care about the *latest* reality
-		Storage: jetstream.MemoryStorage, // High performance, zero disk I/O
+		Bucket:      NodeHeartbeatBucket, // namespace where heartbeats live
+		Description: "Live state of all scaled daemon nodes",
+		TTL:         NodeHeartbeatTTL,        // 15s: Pulse must be fresh
+		History:     1,                       // Only care about the *latest* reality
+		Storage:     jetstream.MemoryStorage, // High performance, zero disk I/O
 	})
 }
 
-// NodeHeartbeatKey constructs a standardized, hierarchical NATS Key-Value key for
-// a node's heartbeat. It follows the format: "nodes.<region>.<node_id>".
-//
-// This structure is intentional: it allows the Control Plane to use NATS wildcards
-// to watch for updates across the entire fleet ("nodes.>") or restricted to a
-// specific region ("nodes.us-east-1.>"). It returns an error if the region or
-// nodeID contains invalid characters (dots, spaces, or wildcards) that would
-// corrupt the NATS subject routing.
-func NodeHeartbeatKey(region, nodeID string) (string, error) {
-	region, err := normalizeKeyToken(region, "region")
+func NodeHeartbeatKey(nodeID string) (string, error) {
+	nodeID, err := normalizeKeyToken(nodeID, "node id")
 	if err != nil {
 		return "", err
 	}
-
-	nodeID, err = normalizeKeyToken(nodeID, "node id")
-	if err != nil {
-		return "", err
-	}
-
-	return NodeHeartbeatKeyPrefix + "." + region + "." + nodeID, nil
+	return NodeHeartbeatKeyPrefix + "." + nodeID, nil
 }
 
 // NodeHeartbeatWatchAll returns the NATS full-wildcard pattern used to observe
 // every heartbeat across the entire global fleet.
-//
-// It appends the NATS full-wildcard symbol (">") to the heartbeat prefix,
-// instructing the Key-Watcher to deliver updates from every region and every
-// node (e.g., "nodes.us-east-1.node-a" and "nodes.eu-central-1.node-b"). This
-// is the primary pattern used by the central scheduler to maintain a real-time
-// inventory of the "Physical Truth" in memory.
 func NodeHeartbeatWatchAll() string {
 	return NodeHeartbeatKeyPrefix + ".>"
 }
 
-// NodeHeartbeatWatchRegion returns the NATS wildcard pattern used to observe
-// heartbeats exclusively within a specific geographic or logical region.
-//
-// It constructs a pattern like "nodes.us-east-1.>" which captures every node
-// heartbeat belonging to that specific region prefix. This is the primary
-// mechanism for "Regional Sharding," allowing a localized scheduler or
-// monitoring agent to ignore global traffic and focus only on the hardware
-// it directly manages. It returns an error if the region name is invalid.
-func NodeHeartbeatWatchRegion(region string) (string, error) {
-	region, err := normalizeKeyToken(region, "region")
-	if err != nil {
-		return "", err
-	}
-	return NodeHeartbeatKeyPrefix + "." + region + ".>", nil
-}
-
 // PutProtoKV marshals a Protobuf message and stores it in the provided NATS Key-Value bucket.
-// It performs validation checks for nil inputs before serializing the message into binary
-// format. On a successful write, it returns the NATS revision number (the atomic version
-// count for that specific key) which can be used for optimistic concurrency control
-// (compare-and-swap operations). Returns an error if marshaling fails or the KV
-// write is rejected by the NATS server.
 func PutProtoKV(ctx context.Context, kv KeyValue, key string, msg proto.Message) (uint64, error) {
 	if ctx == nil {
 		return 0, errors.New("context is required")
 	}
 	if kv == nil {
 		return 0, errors.New("key value store is required")
+	}
+
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return 0, errors.New("key value key is required")
 	}
 
 	if msg == nil {
@@ -183,6 +148,10 @@ func GetProtoKV(ctx context.Context, kv KeyValue, key string, dst proto.Message)
 		return false, 0, err
 	}
 	return true, entry.Revision(), nil
+}
+
+func IsKeyNotFound(err error) bool {
+	return errors.Is(err, jetstream.ErrKeyNotFound)
 }
 
 func UnmarshalEntryProto(entry KeyValueEntry, dst proto.Message) error {
