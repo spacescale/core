@@ -61,7 +61,7 @@ func SaveIdentity(identity Identity) error {
 	if identity.NodeID == "" || identity.Region == "" {
 		return ErrInvalidIdentity
 	}
-	if err := os.Mkdir(defaultStateDir, 0o755); err != nil {
+	if err := os.MkdirAll(defaultStateDir, 0o755); err != nil {
 		return fmt.Errorf("create node state dir: %w", err)
 	}
 
