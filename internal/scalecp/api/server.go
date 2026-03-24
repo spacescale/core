@@ -95,6 +95,29 @@ func NewServer(deps ServerDeps) *Server {
 	return s
 }
 
+func (s *Server) Start() error {
+	if s == nil || s.server == nil {
+		return errors.New("http server is not initialized")
+	}
+	if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("http serve failed: %w", err)
+	}
+	return nil
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	if s == nil || s.server == nil {
+		return nil
+	}
+	if ctx == nil {
+		return errors.New("shutdown context is required")
+	}
+	if err := s.server.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("http shutdown failed: %w", err)
+	}
+	return nil
+}
+
 // Router builds the full HTTP router and middleware stack.
 // It registers health and versioned API routes, then applies request-level
 // middleware for traceability, logging, panic recovery, and authentication.
