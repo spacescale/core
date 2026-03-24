@@ -85,6 +85,14 @@ func NewServer(deps ServerDeps) *Server {
 		config:                  normalizedConfig,
 		internalIdentityLimiter: newInternalIdentityLimiter(),
 	}
+	s.server = &http.Server{
+		Addr:              normalizedConfig.ListenAddr(),
+		Handler:           http.MaxBytesHandler(s.Router(), 1<<20),
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	return s
 }
 
 // Router builds the full HTTP router and middleware stack.
