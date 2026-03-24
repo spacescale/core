@@ -1,7 +1,10 @@
 package api
 
 import (
+	"context"
 	"crypto/subtle"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -25,6 +28,7 @@ type Server struct {
 	dbPool                  *pgxpool.Pool
 	config                  config.Config
 	internalIdentityLimiter *httprate.RateLimiter
+	server                  *http.Server
 }
 
 const (
@@ -68,14 +72,12 @@ func NewServer(deps ServerDeps) *Server {
 	if deps.DBPool == nil {
 		panic("http_api.NewServer requires non-nil db pool")
 	}
-
 	normalizedConfig := deps.Config.Normalized()
 	if normalizedConfig.InternalAuthSecret == "" {
 		panic("http_api.NewServer requires non-empty internal auth secret")
 	}
 	tenantServices := deps.Services.Tenant
-
-	return &Server{
+	s := &Server{
 		users:                   tenantServices.Users,
 		projects:                tenantServices.Projects,
 		workspaces:              tenantServices.Workspaces,

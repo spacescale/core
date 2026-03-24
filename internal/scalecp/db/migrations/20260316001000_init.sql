@@ -157,13 +157,9 @@ CREATE TABLE scaled
 (
     id               TEXT PRIMARY KEY CHECK (id = BTRIM(id) AND CHAR_LENGTH(id) BETWEEN 1 AND 255),
     version TEXT NOT NULL, -- running daemon version
-    boot_id TEXT NOT NULL, --- we use this to know  if server rebooted
-    status           TEXT             NOT NULL CHECK (status IN ('ready', 'draining', 'offline', 'cordoned', 'overheated')),
-    status_reason TEXT CHECK (status_reason IS NULL OR CHAR_LENGTH(status_reason) <= 255),
     total_allocated_vms_threads INT NOT NULL DEFAULT 0 CHECK (total_allocated_vms_threads >= 0),
     total_allocated_vms_ram_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_allocated_vms_ram_mb >= 0),
     total_allocated_vm_disk_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_allocated_vm_disk_mb >= 0),
-    total_running_vms INT NOT NULL DEFAULT 0 CHECK (total_running_vms >= 0),
     metal_id UUID NOT NULL UNIQUE REFERENCES metals(id) ON DELETE CASCADE,
     created_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW()

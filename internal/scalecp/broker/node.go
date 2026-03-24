@@ -13,8 +13,7 @@ import (
 )
 
 type NodeBroker struct {
-	registrar  *nodesvc.Registrar       // Manages node registration and hardware specs from the database
-	presence   *nodesvc.PresenceManager // Tracks real time node liveness and heartbeat state via NATS
+	registrar  *nodesvc.Registrar // Manages node registration and hardware specs from the database
 	logger     *slog.Logger
 	heartbeats nats.KeyValue
 }
@@ -23,16 +22,13 @@ func NewNodeBroker(services service.NodeServices, logger *slog.Logger) *NodeBrok
 	if services.Registrar == nil {
 		panic("broker.NewNodeBroker requires non-nil registrar")
 	}
-	if services.Presence == nil {
-		panic("broker.NewNodeBroker requires non-nil presence manager")
-	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &NodeBroker{registrar: services.Registrar, presence: services.Presence, logger: logger}
+	return &NodeBroker{registrar: services.Registrar, logger: logger}
 }
 
-func (b *NodeBroker) Start(ctx context.Context, client *nats.Client) error {
+func (b *NodeBroker) Register(ctx context.Context, client *nats.Client) error {
 	if client == nil {
 		return errors.New("nats client is required")
 	}
@@ -116,17 +112,6 @@ func (b *NodeBroker) handleHeartbeat(ctx context.Context, msg *nats.Msg) error {
 	if found && isStaleHeartbeat(prev, hb) {
 		return nil
 	}
-	// if the durable fields we need do not change push hb to kv
-	if found && !durableHeartbeatChanged(prev, hb) {
-		_, err = nats.PutProtoKV(ctx, b.heartbeats, key, hb)
-		return err
-	}
-
-	// if we get here something has changed we can apply durable transition to postgres
-	if err := b.presence.ApplyHeartbeat(ctx, hb); err != nil {
-		return err
-	}
-
 	_, err = nats.PutProtoKV(ctx, b.heartbeats, key, hb)
 	return err
 }
@@ -171,32 +156,4 @@ func isStaleHeartbeat(prev, next *scalepb.NodeHeartbeat) bool {
 		return false
 	}
 	return next.GetSeqNo() <= prev.GetSeqNo()
-}
-
-func durableHeartbeatChanged(prev, next *scalepb.NodeHeartbeat) bool {
-	if prev == nil || next == nil {
-		return true
-	}
-	// if this fields change in the heartbeat return true so upper caller can make decision
-	return strings.TrimSpace(prev.GetBootId()) != strings.TrimSpace(next.GetBootId()) ||
-		normalizeHeartbeatStatus(prev.GetStatus()) != normalizeHeartbeatStatus(next.GetStatus()) ||
-		normalizeHeartbeatReason(prev.GetStatus(), prev.GetStatusReason()) != normalizeHeartbeatReason(next.GetStatus(), next.GetStatusReason()) ||
-		prev.GetActiveVms() != next.GetActiveVms()
-
-}
-
-func normalizeHeartbeatReason(status string, reason string) string {
-	status = normalizeHeartbeatStatus(status)
-	if status == "ready" {
-		return ""
-	}
-	reason = strings.TrimSpace(reason)
-	if len(reason) > 255 {
-		return reason[:255]
-	}
-	return reason
-}
-
-func normalizeHeartbeatStatus(raw string) string {
-	return strings.ToLower(strings.TrimSpace(raw))
 }

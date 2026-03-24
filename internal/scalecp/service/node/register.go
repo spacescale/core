@@ -46,7 +46,7 @@ func NewRegistrar(queries *sqlc.Queries, pool *pgxpool.Pool) *Registrar {
 // It validates the hardware's physical truth (CPU, RAM, Disk) reported by the
 // scaled daemon against the one-time bootstrap token stored in the database.
 func (r *Registrar) Register(ctx context.Context, req *scalepb.NodeBootstrapRequest) (RegisterResult, error) {
-	token, version, bootID, totalThreads, totalRamMB, totalDiskMB, err := validateBootstrapRequest(req)
+	token, version, totalThreads, totalRamMB, totalDiskMB, err := validateBootstrapRequest(req)
 	if err != nil {
 		return RegisterResult{}, err
 	}
@@ -74,7 +74,6 @@ func (r *Registrar) Register(ctx context.Context, req *scalepb.NodeBootstrapRequ
 	scaled, err := qtx.UpsertScaledBootstrap(ctx, sqlc.UpsertScaledBootstrapParams{
 		ID:      uuid.NewString(),
 		Version: version,
-		BootID:  bootID,
 		MetalID: metal.ID,
 	})
 	if err != nil {
@@ -89,35 +88,35 @@ func (r *Registrar) Register(ctx context.Context, req *scalepb.NodeBootstrapRequ
 	}, nil
 }
 
-func validateBootstrapRequest(req *scalepb.NodeBootstrapRequest) (string, string, string, int32, int64, int64, error) {
+func validateBootstrapRequest(req *scalepb.NodeBootstrapRequest) (string, string, int32, int64, int64, error) {
 	if req == nil {
-		return "", "", "", 0, 0, 0, ErrInvalidBootstrapRequest
+		return "", "", 0, 0, 0, ErrInvalidBootstrapRequest
 	}
 	token := strings.TrimSpace(req.GetBootstrapToken())
 	if token == "" {
-		return "", "", "", 0, 0, 0, ErrInvalidBootstrapRequest
+		return "", "", 0, 0, 0, ErrInvalidBootstrapRequest
 	}
 	version := strings.TrimSpace(req.GetVersion())
 	if version == "" {
-		return "", "", "", 0, 0, 0, ErrInvalidBootstrapRequest
+		return "", "", 0, 0, 0, ErrInvalidBootstrapRequest
 	}
 	bootID := strings.TrimSpace(req.GetBootId())
 	if bootID == "" {
-		return "", "", "", 0, 0, 0, ErrInvalidBootstrapRequest
+		return "", "", 0, 0, 0, ErrInvalidBootstrapRequest
 	}
 	totalThreads, ok := uint32ToInt32(req.GetTotalThreads())
 	if !ok {
-		return "", "", "", 0, 0, 0, ErrInvalidBootstrapRequest
+		return "", "", 0, 0, 0, ErrInvalidBootstrapRequest
 	}
 	totalRamMB, ok := uint64ToInt64(req.GetTotalRamMb())
 	if !ok {
-		return "", "", "", 0, 0, 0, ErrInvalidBootstrapRequest
+		return "", "", 0, 0, 0, ErrInvalidBootstrapRequest
 	}
 	totalDiskMB, ok := uint64ToInt64(req.GetTotalDiskMb())
 	if !ok {
-		return "", "", "", 0, 0, 0, ErrInvalidBootstrapRequest
+		return "", "", 0, 0, 0, ErrInvalidBootstrapRequest
 	}
-	return token, version, bootID, totalThreads, totalRamMB, totalDiskMB, nil
+	return token, version, totalThreads, totalRamMB, totalDiskMB, nil
 }
 
 func hashBootstrapToken(raw string) string {

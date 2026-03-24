@@ -25,7 +25,6 @@ type TenantServices struct {
 // NodeServices groups control plane business logic for node lifecycle
 type NodeServices struct {
 	Registrar *nodesvc.Registrar
-	Presence  *nodesvc.PresenceManager
 }
 
 // NewServices builds all service dependencies from one shared dependency set.
@@ -40,7 +39,6 @@ func NewServices(queries *sqlc.Queries, dbPool *pgxpool.Pool, envCipher *tenant.
 		},
 		Node: NodeServices{
 			Registrar: nodesvc.NewRegistrar(queries, dbPool),
-			Presence:  nodesvc.NewPresenceManager(queries),
 		},
 	}
 }

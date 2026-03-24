@@ -12,7 +12,7 @@ import (
 )
 
 const getScaledByID = `-- name: GetScaledByID :one
-SELECT id, version, boot_id, status, status_reason, total_allocated_vms_threads, total_allocated_vms_ram_mb, total_allocated_vm_disk_mb, total_running_vms, metal_id, created_at, updated_at
+SELECT id, version, total_allocated_vms_threads, total_allocated_vms_ram_mb, total_allocated_vm_disk_mb, metal_id, created_at, updated_at
 FROM scaled
 WHERE id = $1
 `
@@ -23,13 +23,9 @@ func (q *Queries) GetScaledByID(ctx context.Context, id string) (Scaled, error) 
 	err := row.Scan(
 		&i.ID,
 		&i.Version,
-		&i.BootID,
-		&i.Status,
-		&i.StatusReason,
 		&i.TotalAllocatedVmsThreads,
 		&i.TotalAllocatedVmsRamMb,
 		&i.TotalAllocatedVmDiskMb,
-		&i.TotalRunningVms,
 		&i.MetalID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -38,7 +34,7 @@ func (q *Queries) GetScaledByID(ctx context.Context, id string) (Scaled, error) 
 }
 
 const getScaledByMetalID = `-- name: GetScaledByMetalID :one
-SELECT id, version, boot_id, status, status_reason, total_allocated_vms_threads, total_allocated_vms_ram_mb, total_allocated_vm_disk_mb, total_running_vms, metal_id, created_at, updated_at
+SELECT id, version, total_allocated_vms_threads, total_allocated_vms_ram_mb, total_allocated_vm_disk_mb, metal_id, created_at, updated_at
 FROM scaled
 WHERE metal_id = $1
 `
@@ -49,13 +45,9 @@ func (q *Queries) GetScaledByMetalID(ctx context.Context, metalID uuid.UUID) (Sc
 	err := row.Scan(
 		&i.ID,
 		&i.Version,
-		&i.BootID,
-		&i.Status,
-		&i.StatusReason,
 		&i.TotalAllocatedVmsThreads,
 		&i.TotalAllocatedVmsRamMb,
 		&i.TotalAllocatedVmDiskMb,
-		&i.TotalRunningVms,
 		&i.MetalID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -63,66 +55,10 @@ func (q *Queries) GetScaledByMetalID(ctx context.Context, metalID uuid.UUID) (Sc
 	return i, err
 }
 
-const markScaledOffline = `-- name: MarkScaledOffline :execrows
-UPDATE scaled
-SET status = 'offline',
-    status_reason = $1,
-    updated_at = now()
-WHERE id = $2
-`
-
-type MarkScaledOfflineParams struct {
-	StatusReason *string
-	ID           string
-}
-
-func (q *Queries) MarkScaledOffline(ctx context.Context, arg MarkScaledOfflineParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markScaledOffline, arg.StatusReason, arg.ID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const updateScaledPresence = `-- name: UpdateScaledPresence :execrows
-UPDATE scaled
-SET boot_id = $1,
-    status = $2,
-    status_reason = $3,
-    total_running_vms = $4,
-    updated_at = now()
-WHERE id = $5
-`
-
-type UpdateScaledPresenceParams struct {
-	BootID          string
-	Status          string
-	StatusReason    *string
-	TotalRunningVms int32
-	ID              string
-}
-
-func (q *Queries) UpdateScaledPresence(ctx context.Context, arg UpdateScaledPresenceParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateScaledPresence,
-		arg.BootID,
-		arg.Status,
-		arg.StatusReason,
-		arg.TotalRunningVms,
-		arg.ID,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const upsertScaledBootstrap = `-- name: UpsertScaledBootstrap :one
 INSERT INTO scaled (
     id,
     version,
-    boot_id,
-    status,
-    status_reason,
     metal_id,
     created_at,
     updated_at
@@ -131,44 +67,30 @@ VALUES (
            $1,
            $2,
            $3,
-           'offline',
-           NULL,
-           $4,
            now(),
            now()
        )
 ON CONFLICT (metal_id) DO UPDATE
     SET version = EXCLUDED.version,
-        boot_id = EXCLUDED.boot_id,
         updated_at = now()
-RETURNING id, version, boot_id, status, status_reason, total_allocated_vms_threads, total_allocated_vms_ram_mb, total_allocated_vm_disk_mb, total_running_vms, metal_id, created_at, updated_at
+RETURNING id, version, total_allocated_vms_threads, total_allocated_vms_ram_mb, total_allocated_vm_disk_mb, metal_id, created_at, updated_at
 `
 
 type UpsertScaledBootstrapParams struct {
 	ID      string
 	Version string
-	BootID  string
 	MetalID uuid.UUID
 }
 
 func (q *Queries) UpsertScaledBootstrap(ctx context.Context, arg UpsertScaledBootstrapParams) (Scaled, error) {
-	row := q.db.QueryRow(ctx, upsertScaledBootstrap,
-		arg.ID,
-		arg.Version,
-		arg.BootID,
-		arg.MetalID,
-	)
+	row := q.db.QueryRow(ctx, upsertScaledBootstrap, arg.ID, arg.Version, arg.MetalID)
 	var i Scaled
 	err := row.Scan(
 		&i.ID,
 		&i.Version,
-		&i.BootID,
-		&i.Status,
-		&i.StatusReason,
 		&i.TotalAllocatedVmsThreads,
 		&i.TotalAllocatedVmsRamMb,
 		&i.TotalAllocatedVmDiskMb,
-		&i.TotalRunningVms,
 		&i.MetalID,
 		&i.CreatedAt,
 		&i.UpdatedAt,

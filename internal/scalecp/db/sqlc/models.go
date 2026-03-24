@@ -122,13 +122,9 @@ type RegistryCredential struct {
 type Scaled struct {
 	ID                       string
 	Version                  string
-	BootID                   string
-	Status                   string
-	StatusReason             *string
 	TotalAllocatedVmsThreads int32
 	TotalAllocatedVmsRamMb   int64
 	TotalAllocatedVmDiskMb   int64
-	TotalRunningVms          int32
 	MetalID                  uuid.UUID
 	CreatedAt                time.Time
 	UpdatedAt                time.Time

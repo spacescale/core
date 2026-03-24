@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
+	scaled "github.com/spacescale/core/internal/scaled"
 	"github.com/spacescale/core/internal/shared/config"
 	"github.com/spacescale/core/internal/shared/logger"
 )
@@ -19,28 +19,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	Logger := logger.Init(cfg.Environment)
-	if err := run(context.Background(), cfg, Logger); err != nil {
-		Logger.Error("scaled exited with error", "component", "scaled", "error", err)
-		os.Exit(1)
-	}
-}
+	log := logger.Init(cfg.Environment)
 
-func run(parent context.Context, cfg config.Config, logger *slog.Logger) error {
-	if logger == nil {
-		logger = slog.Default()
-	}
-
-	cfg = cfg.Normalized()
-	if err := cfg.ValidateScaled(); err != nil {
-		return fmt.Errorf("invalid scaled config: %w", err)
-	}
-
-	ctx, stop := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	logger.Info("scaled ready", "component", "scaled")
-	<-ctx.Done()
-	logger.Info("scaled stopped", "component", "scaled")
-	return nil
+	d, err := scaled.New(ctx, cfg, log)
+	if err != nil {
+		log.Error("failed to initialize scaled", "component", "scaled", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := d.Close(); err != nil {
+			log.Warn("scaled close failed", "component", "scaled", "error", err)
+		}
+	}()
+
+	if err := d.Run(ctx); err != nil {
+		log.Error("scaled exited with error", "component", "scaled", "error", err)
+		os.Exit(1)
+	}
 }
