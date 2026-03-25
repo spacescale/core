@@ -88,6 +88,16 @@ func (r *Registrar) Register(ctx context.Context, req *scalepb.NodeBootstrapRequ
 	}, nil
 }
 
+func (r *Registrar) MarkMetalActive(ctx context.Context, nodeID string) error {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return ErrInvalidBootstrapRequest
+	}
+
+	_, err := r.queries.MarkMetalActiveByNodeID(ctx, nodeID)
+	return err
+}
+
 func validateBootstrapRequest(req *scalepb.NodeBootstrapRequest) (string, string, int32, int64, int64, error) {
 	if req == nil {
 		return "", "", 0, 0, 0, ErrInvalidBootstrapRequest

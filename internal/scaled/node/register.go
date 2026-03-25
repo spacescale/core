@@ -26,28 +26,28 @@ type BootstrapInfo struct {
 	TotalDiskMb  uint64
 }
 
-func LoadOrRegisterIdentity(ctx context.Context, client *nats.Client, info BootstrapInfo) (Identity, error) {
+func LoadOrRegisterIdentity(ctx context.Context, client *nats.Client, info BootstrapInfo) (Identity, bool, error) {
 	if client == nil {
-		return Identity{}, errors.New("nats client is required")
+		return Identity{}, false, errors.New("nats client is required")
 	}
 
 	info, err := normalizeBootstrapInfo(info)
 	if err != nil {
-		return Identity{}, err
+		return Identity{}, false, err
 	}
 
 	identity, err := LoadIdentity()
 	switch {
 	case err == nil:
-		return identity, nil
+		return identity, false, nil
 
 	case !errors.Is(err, ErrIdentityNotFound):
-		return Identity{}, err
+		return Identity{}, false, err
 	}
 
 	token, err := LoadBootstrapToken()
 	if err != nil {
-		return Identity{}, err
+		return Identity{}, false, err
 	}
 
 	req := &scalepb.NodeBootstrapRequest{
@@ -60,11 +60,11 @@ func LoadOrRegisterIdentity(ctx context.Context, client *nats.Client, info Boots
 	}
 	resp := &scalepb.NodeBootstrapResponse{}
 	if err := client.RequestProto(nats.SubjectNodeBootstrap, req, resp, bootstrapRequestTimeout); err != nil {
-		return Identity{}, fmt.Errorf("bootstrap request failed: %w", err)
+		return Identity{}, false, fmt.Errorf("bootstrap request failed: %w", err)
 	}
 
 	if bootstrapErr := strings.TrimSpace(resp.GetError()); bootstrapErr != "" {
-		return Identity{}, fmt.Errorf("bootstrap rejected: %s", bootstrapErr)
+		return Identity{}, false, fmt.Errorf("bootstrap rejected: %s", bootstrapErr)
 	}
 
 	identity = Identity{
@@ -72,18 +72,18 @@ func LoadOrRegisterIdentity(ctx context.Context, client *nats.Client, info Boots
 		Region: strings.TrimSpace(resp.GetRegion()),
 	}
 	if identity.NodeID == "" || identity.Region == "" {
-		return Identity{}, ErrInvalidBootstrapResponse
+		return Identity{}, false, ErrInvalidBootstrapResponse
 	}
 
 	if err := SaveIdentity(identity); err != nil {
-		return Identity{}, err
+		return Identity{}, false, err
 	}
 
 	if err := DeleteBootstrapToken(); err != nil {
-		return Identity{}, err
+		return Identity{}, false, err
 	}
 
-	return identity, nil
+	return identity, true, nil
 }
 
 func normalizeBootstrapInfo(info BootstrapInfo) (BootstrapInfo, error) {

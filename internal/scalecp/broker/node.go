@@ -79,6 +79,7 @@ func (b *NodeBroker) handleBootstrap(ctx context.Context, client *nats.Client, m
 		}
 		return b.replyBootstrap(client, reply, bootstrapErrorResponse(err))
 	}
+	b.logger.Info("node bootstrap acknowledged", "component", "scalecp", "node_id", out.NodeID, "region", out.Region)
 	return b.replyBootstrap(client, reply, &scalepb.NodeBootstrapResponse{NodeId: out.NodeID, Region: out.Region})
 }
 
@@ -113,7 +114,18 @@ func (b *NodeBroker) handleHeartbeat(ctx context.Context, msg *nats.Msg) error {
 		return nil
 	}
 	_, err = nats.PutProtoKV(ctx, b.heartbeats, key, hb)
-	return err
+	if err != nil {
+		return err
+	}
+
+	if !found {
+		if err := b.registrar.MarkMetalActive(ctx, hb.GetNodeId()); err != nil {
+			return err
+		}
+		b.logger.Info("node activated", "component", "scalecp", "node_id", hb.GetNodeId(), "region", hb.GetRegion())
+	}
+
+	return nil
 }
 
 func bootstrapErrorResponse(err error) *scalepb.NodeBootstrapResponse {

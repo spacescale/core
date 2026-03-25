@@ -59,9 +59,14 @@ func (d *Daemon) Run(ctx context.Context) error {
 		TotalDiskMb:  disk.TotalMB,
 	}
 
-	identity, err := node.LoadOrRegisterIdentity(ctx, d.nats, bootstrapInfo)
+	identity, registered, err := node.LoadOrRegisterIdentity(ctx, d.nats, bootstrapInfo)
 	if err != nil {
 		return fmt.Errorf("load or register identity: %w", err)
+	}
+	if registered {
+		d.logger.Info("node identity registered", "component", "scaled", "node_id", identity.NodeID, "region", identity.Region)
+	} else {
+		d.logger.Info("node identity loaded", "component", "scaled", "node_id", identity.NodeID, "region", identity.Region)
 	}
 	d.logger.Info("scaled ready", "component", "scaled", "node_id", identity.NodeID, "region", identity.Region)
 
