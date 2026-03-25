@@ -12,7 +12,7 @@
 // - An app row with status=queued is persisted only when its initial queued
 //   deployment row is persisted in the same transaction.
 
-package service
+package tenant
 
 import (
 	"context"

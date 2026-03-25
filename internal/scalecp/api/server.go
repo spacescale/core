@@ -1,20 +1,10 @@
-// This file builds the API router and middleware stack.
-// It defines the Server wrapper that receives service dependencies and exposes
-// one Router method used by main and integration tests.
-// Route registration for health checks and versioned endpoints is centralized
-// here so application wiring is discoverable in one place.
-// In addition to routing, this file owns composition wiring for server-level
-// runtime configuration (for example rate limits and log privacy). Config model
-// definitions live in focused files, while this file stays responsible for
-// assembling middleware and route behavior.
-// When adding new endpoints or middleware-level wiring, changes should begin
-// here so composition remains discoverable in one place.
-
-// Package http_api provides routing and middleware wiring.
 package api
 
 import (
+	"context"
 	"crypto/subtle"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -24,15 +14,21 @@ import (
 	"github.com/go-chi/httprate"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/internal/scalecp/service"
+	"github.com/spacescale/core/internal/scalecp/service/tenant"
 	"github.com/spacescale/core/internal/shared/config"
 )
 
 // Server wires HTTP handlers to service dependencies and auth configuration.
 type Server struct {
-	services                *service.Services
+	users                   *tenant.UserService
+	projects                *tenant.ProjectService
+	workspaces              *tenant.WorkspaceService
+	bootstrap               *tenant.BootstrapService
+	apps                    *tenant.AppService
 	dbPool                  *pgxpool.Pool
 	config                  config.Config
 	internalIdentityLimiter *httprate.RateLimiter
+	server                  *http.Server
 }
 
 const (
@@ -58,36 +54,70 @@ func NewServer(deps ServerDeps) *Server {
 	if deps.Services == nil {
 		panic("http_api.NewServer requires non-nil services")
 	}
-	if deps.Services.Projects == nil {
+	if deps.Services.Tenant.Projects == nil {
 		panic("http_api.NewServer requires non-nil project service")
 	}
-	if deps.Services.Workspaces == nil {
+	if deps.Services.Tenant.Workspaces == nil {
 		panic("http_api.NewServer requires non-nil workspace service")
 	}
-	if deps.Services.Bootstrap == nil {
+	if deps.Services.Tenant.Bootstrap == nil {
 		panic("http_api.NewServer requires non-nil bootstrap service")
 	}
-	if deps.Services.Apps == nil {
+	if deps.Services.Tenant.Apps == nil {
 		panic("http_api.NewServer requires non-nil app service")
 	}
-	if deps.Services.Users == nil {
+	if deps.Services.Tenant.Users == nil {
 		panic("http_api.NewServer requires non-nil user service")
 	}
 	if deps.DBPool == nil {
 		panic("http_api.NewServer requires non-nil db pool")
 	}
-
 	normalizedConfig := deps.Config.Normalized()
 	if normalizedConfig.InternalAuthSecret == "" {
 		panic("http_api.NewServer requires non-empty internal auth secret")
 	}
-
-	return &Server{
-		services:                deps.Services,
+	tenantServices := deps.Services.Tenant
+	s := &Server{
+		users:                   tenantServices.Users,
+		projects:                tenantServices.Projects,
+		workspaces:              tenantServices.Workspaces,
+		bootstrap:               tenantServices.Bootstrap,
+		apps:                    tenantServices.Apps,
 		dbPool:                  deps.DBPool,
 		config:                  normalizedConfig,
 		internalIdentityLimiter: newInternalIdentityLimiter(),
 	}
+	s.server = &http.Server{
+		Addr:              normalizedConfig.ListenAddr(),
+		Handler:           http.MaxBytesHandler(s.Router(), 1<<20),
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	return s
+}
+
+func (s *Server) Start() error {
+	if s == nil || s.server == nil {
+		return errors.New("http server is not initialized")
+	}
+	if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("http serve failed: %w", err)
+	}
+	return nil
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	if s == nil || s.server == nil {
+		return nil
+	}
+	if ctx == nil {
+		return errors.New("shutdown context is required")
+	}
+	if err := s.server.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("http shutdown failed: %w", err)
+	}
+	return nil
 }
 
 // Router builds the full HTTP router and middleware stack.

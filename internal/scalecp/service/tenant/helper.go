@@ -2,7 +2,7 @@
 // Centralizing these utilities keeps cross-service behavior consistent and makes
 // common validation/normalization logic easier to evolve safely.
 
-package service
+package tenant
 
 import (
 	"crypto/rand"

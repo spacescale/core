@@ -15,7 +15,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/spacescale/core/internal/scalecp/service"
+	"github.com/spacescale/core/internal/scalecp/service/tenant"
 )
 
 // syncAuthUserRequest is the request payload accepted by POST /v1/internal/auth-sync.
@@ -53,14 +53,14 @@ func (s *Server) handleSyncAuthUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.services.Users.SyncAuthUser(r.Context(), service.SyncAuthUserParams{
+	user, err := s.users.SyncAuthUser(r.Context(), tenant.SyncAuthUserParams{
 		IdentityKey: req.IdentityKey,
 		Email:       req.Email,
 		Name:        req.Name,
 		AvatarURL:   req.AvatarURL,
 	})
 	if err != nil {
-		if errors.Is(err, service.ErrInvalidInput) {
+		if errors.Is(err, tenant.ErrInvalidInput) {
 			writeErr(w, http.StatusBadRequest, "invalid input")
 			return
 		}

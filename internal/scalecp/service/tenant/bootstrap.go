@@ -4,7 +4,7 @@
 // Testing note: bootstrap workflows in this file are DB-first operations, so
 // behavior is validated by HTTP integration tests instead of service unit tests.
 
-package service
+package tenant
 
 import (
 	"context"

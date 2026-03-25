@@ -1,5 +1,4 @@
 -- +goose Up
--- V0 schema for apps-only control plane.
 -- pgcrypto enables gen_random_uuid() for DB-side UUIDs.
 CREATE
     EXTENSION IF NOT EXISTS pgcrypto;
@@ -83,30 +82,7 @@ CREATE TABLE deployments
 );
 
 -- Supports listing deployments newest-first per app.
-CREATE INDEX deployments_app_id_created_at_idx
-    ON deployments (app_id, created_at DESC);
-
-
--- Durable scaled identity and latest known presence metadata.
-CREATE TABLE scaled
-(
-    id               TEXT PRIMARY KEY CHECK (id = BTRIM(id) AND CHAR_LENGTH(id) BETWEEN 1 AND 255),
-    name             TEXT             NOT NULL CHECK (CHAR_LENGTH(BTRIM(name)) BETWEEN 1 AND 255),
-    region           TEXT             NOT NULL CHECK (region = BTRIM(region) AND CHAR_LENGTH(region) BETWEEN 1 AND 64),
-    status           TEXT             NOT NULL CHECK (status IN ('ready', 'draining', 'offline')),
-    last_seen_at     TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
-    memory_available BIGINT           NOT NULL DEFAULT 0,
-    cpu_usage        DOUBLE PRECISION NOT NULL DEFAULT 0,
-    disk_available   BIGINT           NOT NULL DEFAULT 0,
-    created_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
-    updated_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX scaled_status_last_seen_idx
-    ON scaled (status, last_seen_at);
-
-CREATE INDEX scaled_region_status_last_seen_idx
-    ON scaled (region, status, last_seen_at);
+CREATE INDEX deployments_app_id_created_at_idx ON deployments (app_id, created_at DESC);
 
 
 CREATE TABLE app_env_vars
@@ -125,10 +101,69 @@ CREATE TABLE app_env_vars
     UNIQUE (app_id, key)
 );
 
-CREATE INDEX app_env_vars_cipher_claim_idx
-    ON app_env_vars (cipher_key_id, created_at)
-    WHERE cipher_version = 'v1'
-	  AND cipher_algo = 'aesgcm';
+CREATE INDEX app_env_vars_cipher_claim_idx ON app_env_vars (cipher_key_id, created_at) WHERE cipher_version = 'v1' AND cipher_algo = 'aesgcm';
+
+
+-- PURPOSE: The globally shared memory for the SpaceScale Control Plane.
+CREATE TABLE systems_configs (
+    key TEXT PRIMARY KEY CHECK (CHAR_LENGTH(BTRIM(key)) > 0),
+    value TEXT NOT NULL, -- actual config value, might also be encrypted if secret is true
+    is_secret BOOLEAN NOT NULL DEFAULT FALSE,
+    description TEXT,-- human readable desc
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    -- expected day 0 data might be ssh public and private key pair used to boostrap nodes automatically
+    -- after purchase from IaaS provider
+);
+
+-- list of IaaS providers and their api token spacescale depends on, metal only
+CREATE TABLE providers (
+        id TEXT PRIMARY KEY CHECK (CHAR_LENGTH(BTRIM(id)) > 0), --no uuid provider basically less than 10
+        name TEXT UNIQUE NOT NULL, --  'hetzner' europe and us', 'ovh for canada ', 'vultr' and soon spacescale colo
+        api_token_encrypted TEXT NOT NULL,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ      NOT NULL DEFAULT NOW()
+);
+
+-- Table of all Baremetal servers managed by scalecp
+CREATE TABLE metals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE RESTRICT,
+    provider_server_id TEXT NOT NULL,
+    primary_ipv4 TEXT UNIQUE NOT NULL,
+    primary_ipv6 TEXT UNIQUE,
+    host_os_family TEXT,         -- ubuntu, debian, rocky, etc
+    host_os_version TEXT,        -- 24.04, 12, 9.4
+    host_image_ref TEXT,         -- provider image slug / internal image version
+    region TEXT NOT NULL, --normalized region
+    provider_location TEXT NOT NULL,  -- raw provider location code like FSN1-DC10 or gra1
+    tier_target TEXT NOT NULL CHECK (tier_target IN ('shared', 'dedicated')), --- for isolating shared/dedicated
+    total_cpu_core INT NOT NULL CHECK (total_cpu_core > 0), -- cores are not threads we can get that directly from iaas provider
+    total_threads INT NOT NULL DEFAULT 0 CHECK (total_threads >= 0), -- updated by scaled once node becomes active
+    total_ram_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_ram_mb >= 0), -- updated by scaled once node becomes active
+    total_disk_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_disk_mb >= 0), --updated by scaled once node becomes active
+    status TEXT NOT NULL DEFAULT 'provisioning' CHECK (status IN ('provisioning', 'active', 'retired', 'faulty', 'maintenance')), -- node becomes active if daemon connects as well
+    bootstrap_token_hash TEXT UNIQUE, -- inject  token at init bootstrap, used by daemon to prove identity
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Index to instantly find a specific server when a provider sends an API webhook/event
+CREATE INDEX metals_provider_server_idx ON metals (provider_id, provider_server_id);
+
+-- Durable scaled daemon, and allocation ledger
+CREATE TABLE scaled
+(
+    id               TEXT PRIMARY KEY CHECK (id = BTRIM(id) AND CHAR_LENGTH(id) BETWEEN 1 AND 255),
+    version TEXT NOT NULL, -- running daemon version
+    total_allocated_vms_threads INT NOT NULL DEFAULT 0 CHECK (total_allocated_vms_threads >= 0),
+    total_allocated_vms_ram_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_allocated_vms_ram_mb >= 0),
+    total_allocated_vm_disk_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_allocated_vm_disk_mb >= 0),
+    metal_id UUID NOT NULL UNIQUE REFERENCES metals(id) ON DELETE CASCADE,
+    created_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW()
+);
 
 
 CREATE TABLE registry_credentials
@@ -156,13 +191,15 @@ CREATE TABLE app_registry_credentials
 );
 
 -- Supports lookup by registry credential (audit/cleanup).
-CREATE INDEX app_registry_credentials_registry_idx
-    ON app_registry_credentials (registry_credential_id);
+CREATE INDEX app_registry_credentials_registry_idx ON app_registry_credentials (registry_credential_id);
 
 -- +goose Down
 DROP TABLE IF EXISTS app_registry_credentials;
 DROP TABLE IF EXISTS app_env_vars;
 DROP TABLE IF EXISTS scaled;
+DROP TABLE IF EXISTS metals;
+DROP TABLE IF EXISTS providers;
+DROP TABLE IF EXISTS systems_configs;
 DROP TABLE IF EXISTS deployments;
 DROP TABLE IF EXISTS apps;
 DROP TABLE IF EXISTS registry_credentials;

@@ -24,7 +24,6 @@ type Config struct {
 
 	DatabaseURL    string
 	Port           string // api server runtime port
-	NodeID         string // used by scale daemon
 	FirecrackerBin string
 
 	Auth               AuthConfig
@@ -51,7 +50,6 @@ func Load() (Config, error) {
 
 		DatabaseURL:    strings.TrimSpace(os.Getenv("DATABASE_URL")),
 		Port:           envStr("PORT", defaultPort),
-		NodeID:         firstNonEmptyEnv("NODE_ID", "SCALED_NODE_ID"),
 		FirecrackerBin: envStr("FIRECRACKER_BIN", defaultFirecrackerBin),
 
 		Auth: AuthConfig{
@@ -70,7 +68,6 @@ func (c Config) Normalized() Config {
 	c.NATSURL = envOrDefault(strings.TrimSpace(c.NATSURL), defaultNATSURL)
 	c.DatabaseURL = strings.TrimSpace(c.DatabaseURL)
 	c.Port = envOrDefault(strings.TrimSpace(c.Port), defaultPort)
-	c.NodeID = strings.TrimSpace(c.NodeID)
 	c.FirecrackerBin = envOrDefault(strings.TrimSpace(c.FirecrackerBin), defaultFirecrackerBin)
 	c.Auth = c.Auth.Normalized()
 	c.InternalAuthSecret = strings.TrimSpace(c.InternalAuthSecret)
@@ -107,8 +104,9 @@ func (c Config) ValidateScalecp() error {
 }
 
 func (c Config) ValidateScaled() error {
-	if c.NodeID == "" {
-		return nil
+	c = c.Normalized()
+	if c.NATSURL == "" {
+		return errors.New("missing required config NATS_URL")
 	}
 	return nil
 }

@@ -6,7 +6,7 @@
 // Keep domain rules here so transport code stays thin and persistence details
 // remain isolated behind a single business workflow boundary.
 
-package service
+package tenant
 
 import (
 	"context"
