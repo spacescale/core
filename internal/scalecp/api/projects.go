@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/spacescale/core/internal/scalecp/service"
+	"github.com/spacescale/core/internal/scalecp/service/tenant"
 )
 
 // createProjectRequest is the optional request payload for project creation.
@@ -115,7 +115,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Delegate business behavior to service layer.
-	project, err := s.services.Projects.CreateProject(r.Context(), user.ID, workspaceID, service.CreateProjectParams{
+	project, err := s.projects.CreateProject(r.Context(), user.ID, workspaceID, tenant.CreateProjectParams{
 		Name:   req.Name,
 		Region: req.Region,
 	})
@@ -123,13 +123,13 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	// Convert service errors into stable HTTP API responses.
 	if err != nil {
 		switch {
-		case errors.Is(err, service.ErrInvalidInput):
+		case errors.Is(err, tenant.ErrInvalidInput):
 			writeErr(w, http.StatusBadRequest, "invalid input")
 			return
-		case errors.Is(err, service.ErrUnauthorized):
+		case errors.Is(err, tenant.ErrUnauthorized):
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 			return
-		case errors.Is(err, service.ErrConflict):
+		case errors.Is(err, tenant.ErrConflict):
 			writeErr(w, http.StatusConflict, "conflict")
 			return
 		default:
@@ -174,13 +174,13 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projects, err := s.services.Projects.ListProjects(r.Context(), user.ID, workspaceID)
+	projects, err := s.projects.ListProjects(r.Context(), user.ID, workspaceID)
 	if err != nil {
 		switch {
-		case errors.Is(err, service.ErrInvalidInput):
+		case errors.Is(err, tenant.ErrInvalidInput):
 			writeErr(w, http.StatusBadRequest, "invalid input")
 			return
-		case errors.Is(err, service.ErrUnauthorized):
+		case errors.Is(err, tenant.ErrUnauthorized):
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 			return
 		default:
@@ -219,13 +219,13 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	project, err := s.services.Projects.GetProject(r.Context(), user.ID, workspaceID, projectID)
+	project, err := s.projects.GetProject(r.Context(), user.ID, workspaceID, projectID)
 	if err != nil {
 		switch {
-		case errors.Is(err, service.ErrInvalidInput):
+		case errors.Is(err, tenant.ErrInvalidInput):
 			writeErr(w, http.StatusBadRequest, "invalid input")
 			return
-		case errors.Is(err, service.ErrUnauthorized):
+		case errors.Is(err, tenant.ErrUnauthorized):
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 			return
 		default:
@@ -275,19 +275,19 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	project, err := s.services.Projects.UpdateProject(r.Context(), user.ID, workspaceID, projectID, service.UpdateProjectParams{
+	project, err := s.projects.UpdateProject(r.Context(), user.ID, workspaceID, projectID, tenant.UpdateProjectParams{
 		Name:   req.Name,
 		Region: req.Region,
 	})
 	if err != nil {
 		switch {
-		case errors.Is(err, service.ErrInvalidInput):
+		case errors.Is(err, tenant.ErrInvalidInput):
 			writeErr(w, http.StatusBadRequest, "invalid input")
 			return
-		case errors.Is(err, service.ErrUnauthorized):
+		case errors.Is(err, tenant.ErrUnauthorized):
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 			return
-		case errors.Is(err, service.ErrConflict):
+		case errors.Is(err, tenant.ErrConflict):
 			writeErr(w, http.StatusConflict, "conflict")
 			return
 		default:
@@ -325,13 +325,13 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := s.services.Projects.DeleteProject(r.Context(), user.ID, workspaceID, projectID)
+	err := s.projects.DeleteProject(r.Context(), user.ID, workspaceID, projectID)
 	if err != nil {
 		switch {
-		case errors.Is(err, service.ErrInvalidInput):
+		case errors.Is(err, tenant.ErrInvalidInput):
 			writeErr(w, http.StatusBadRequest, "invalid input")
 			return
-		case errors.Is(err, service.ErrUnauthorized):
+		case errors.Is(err, tenant.ErrUnauthorized):
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 			return
 		default:

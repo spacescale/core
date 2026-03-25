@@ -7,30 +7,30 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/spacescale/core/internal/scalecp/service"
+	"github.com/spacescale/core/internal/scalecp/service/tenant"
 )
 
 // requireCallerUser resolves the authenticated principal and loads the
 // corresponding user row. It writes a normalized HTTP error response and
 // returns ok=false when resolution fails.
-func (s *Server) requireCallerUser(w http.ResponseWriter, r *http.Request) (service.User, bool) {
+func (s *Server) requireCallerUser(w http.ResponseWriter, r *http.Request) (tenant.User, bool) {
 	principal, ok := principalFromContext(r.Context())
 	if !ok {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
-		return service.User{}, false
+		return tenant.User{}, false
 	}
 
-	user, err := s.services.Users.GetUserByIdentityKey(r.Context(), principal.IdentityKey)
+	user, err := s.users.GetUserByIdentityKey(r.Context(), principal.IdentityKey)
 	if err != nil {
 		switch {
-		case errors.Is(err, service.ErrInvalidInput):
+		case errors.Is(err, tenant.ErrInvalidInput):
 			writeErr(w, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, service.ErrUnauthorized):
+		case errors.Is(err, tenant.ErrUnauthorized):
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 		default:
 			writeErr(w, http.StatusInternalServerError, "internal error")
 		}
-		return service.User{}, false
+		return tenant.User{}, false
 	}
 
 	return user, true

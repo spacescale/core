@@ -5,7 +5,7 @@
 // makes cross-layer error handling easier to reason about during maintenance.
 
 // Package service contains business error definitions.
-package service
+package tenant
 
 import "errors"
 

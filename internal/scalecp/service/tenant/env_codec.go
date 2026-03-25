@@ -1,6 +1,6 @@
 // This file implements env-value encryption.
 
-package service
+package tenant
 
 import (
 	"crypto/aes"

@@ -2,7 +2,7 @@
 // It validates input, enforces ownership-scoped operations, maps DB rows into
 // service models, and normalizes persistence errors into service sentinel errors.
 
-package service
+package tenant
 
 import (
 	"context"
