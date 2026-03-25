@@ -1,5 +1,5 @@
 # Core                      
->[!NOTE] SpaceScale currently has two binaries:     
+> [!NOTE] SpaceScale currently has two binaries:     
 - `scalecp`: control plane that serves the API, owns durable state, and consumes events over NATS
 - `scaled`:  the node daemon that bootstraps itself with `scalecp`, reports node state and health over NATS, and
   manages VM lifecycle and workload execution, and telemetry on a host
