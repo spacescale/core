@@ -1,7 +1,7 @@
 # Core                      
 > SpaceScale currently has two binaries:
 - `scalecp`: control plane that serves the API, owns durable state, and consumes events over NATS
-- `scaled`:  daemon that bootstraps itself with `scalecp`, reports node state,  manage VMs and node lifecycle
+- `scaled`:  daemon that bootstraps itself with `scalecp`, reports node state, manage VMs and node cycle
 
 ## Communication                      
 NATS keeps node-to-control-plane communication simple across multiple servers by handling routing, reconnects, and
