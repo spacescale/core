@@ -26,25 +26,8 @@ message NodeBootstrapResponse {
 
 
 message NodeHeartbeat {
-  // --- IDENTITY and SEQUENCING ---
-  string node_id = 1;           // Primary key; maps this pulse to the Postgres inventory.
-  uint64 seq_no = 2;            // Gap detection; if 10 follows 8, i lost a packet.
-  string boot_id = 3;           // if changed without purposeful restart, its probably dead
-  int64 sent_at_unix_nano = 4;  // Staleness check; discards heartbeats delayed by network jitter.
-  string region = 5;            // Assigned control plane region; keeps scheduling decisions in KV fast.
-  uint32 shared_vcpu_available = 6; // Starter tier capacity; tracks over-provisioned slots.
-  uint32 pinned_cpus_free = 7;      // Growth/Scale capacity; ensures dedicated performance.
-  uint64 allocatable_mem_mb = 8;    // Policy-aware RAM; the "True North" for scheduling room.
-  uint64 allocatable_disk_mb = 9;   // Local SSD budget; prevents "Disk Full" deployment failures.
-  uint32 active_vms = 10;           // Zombie detection; verifies physical reality vs scheduling records
-  // --- HEALTH and CONTENTION  ---
-  double cpu_psi_some_10s = 11;     // The "Suffering" metric; skips nodes where CPU is stalling.
-  double io_psi_some_10s = 12;      // The "NVMe Watcher"; detects failing drives or I/O abuse.
-  float cpu_temp_max_c = 13;        // Thermal safety; prevents scheduling on melting hardware.
-  uint32 oom_kills_since_boot = 14; // Stability audit; increments mean the node is leaking or unstable.
-  // --- INTENT & CONNECTIVITY ---
-  string status = 15;               // one of ready, draining, offline, cordoned, overheated
-  string status_reason = 16;        // Only populated when status != ready
-  bool network_ok = 17;             // External reachability; node is useless if it's islanded.
-  uint32 net_utilization_pct = 18;  // recent max TX or RX utilization percent of known link capacity
+  string node_id = 1;           // Who am I?
+  uint64 seq_no = 2;            // Am I dropping packets?
+  string boot_id = 3;           // Did I suddenly reboot?
+  int64 sent_at_unix_nano = 4;  // Is there network lag?
 }

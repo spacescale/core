@@ -28,6 +28,7 @@ import (
 )
 
 const (
+	appPrimaryRegionMaxLen = 32
 	defaultAppRuntimePort  = 8080 // fallback when create input omits runtime port.
 	appNameMaxChars        = 63   // maximum app display-name length.
 	appImageRefMaxChars    = 1024 // maximum accepted image reference length.
@@ -38,17 +39,19 @@ const (
 
 // App is the service-layer model returned to HTTP handlers.
 type App struct {
-	ID          string    // app UUID as string.
-	ProjectID   string    // owning project UUID as string.
-	Name        string    // user-facing app name.
-	Slug        string    // URL-safe app identifier.
-	Subdomain   string    // DNS label used for routing.
-	ImageRef    string    // OCI image reference used for deployment.
-	RuntimePort int32     // container port exposed by the app.
-	Status      string    // app lifecycle state.
-	IsPublic    bool      // whether public ingress is enabled.
-	CreatedAt   time.Time // record creation timestamp.
-	UpdatedAt   time.Time // record last-update timestamp.
+	ID            string    // app UUID as string.
+	ProjectID     string    // owning project UUID as string.
+	Name          string    // user-facing app name.
+	Slug          string    // URL-safe app identifier.
+	Subdomain     string    // DNS label used for routing.
+	ImageRef      string    // OCI image reference used for deployment.
+	Tier          string    // requested compute tier.
+	PrimaryRegion string    // requested home region.
+	RuntimePort   int32     // container port exposed by the app.
+	Status        string    // app lifecycle state.
+	IsPublic      bool      // whether public ingress is enabled.
+	CreatedAt     time.Time // record creation timestamp.
+	UpdatedAt     time.Time // record last-update timestamp.
 }
 
 // AppEnvVarInput defines one env var in create requests.
@@ -62,6 +65,8 @@ type AppEnvVarInput struct {
 type CreateAppParams struct {
 	Name                 string           // optional; derived from ImageRef when empty.
 	ImageRef             string           // required OCI image reference.
+	Tier                 string           // required compute tier.
+	PrimaryRegion        string           // required placement region.
 	RuntimePort          *int             // optional; nil uses defaultAppRuntimePort.
 	IsPublic             *bool            // optional; nil defaults to false.
 	RegistryCredentialID string           // optional; must belong to same project.
@@ -107,6 +112,14 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 	if !ok {
 		return App{}, ErrInvalidInput
 	}
+	tier, ok := normalizeAppTier(p.Tier)
+	if !ok {
+		return App{}, ErrInvalidInput
+	}
+	primaryRegion, ok := normalizeAppPrimaryRegion(p.PrimaryRegion)
+	if !ok {
+		return App{}, ErrInvalidInput
+	}
 	name, ok := normalizeOrDeriveAppName(p.Name, imageRef)
 	if !ok {
 		return App{}, ErrInvalidInput
@@ -149,13 +162,15 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 		txQueries := s.queries.WithTx(tx)
 
 		row, createErr := txQueries.CreateApp(ctx, sqlc.CreateAppParams{
-			ProjectID:   projectUUID,
-			Name:        name,
-			Slug:        slug,
-			Subdomain:   slug,
-			ImageRef:    imageRef,
-			RuntimePort: runtimePort,
-			IsPublic:    isPublic,
+			ProjectID:     projectUUID,
+			Name:          name,
+			Slug:          slug,
+			Subdomain:     slug,
+			ImageRef:      imageRef,
+			Tier:          tier,
+			PrimaryRegion: primaryRegion,
+			RuntimePort:   runtimePort,
+			IsPublic:      isPublic,
 		})
 		if createErr != nil {
 			_ = tx.Rollback(ctx)
@@ -165,10 +180,21 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 			return App{}, createErr
 		}
 
-		if err := txQueries.CreateQueuedDeployment(ctx, sqlc.CreateQueuedDeploymentParams{
+		deployment, err := txQueries.CreateQueuedDeployment(ctx, sqlc.CreateQueuedDeploymentParams{
 			AppID:       row.ID,
 			ImageRef:    imageRef,
 			RuntimePort: runtimePort,
+		})
+		if err != nil {
+			_ = tx.Rollback(ctx)
+			return App{}, err
+		}
+
+		if _, err := txQueries.CreateQueuedMachine(ctx, sqlc.CreateQueuedMachineParams{
+			AppID:        row.ID,
+			DeploymentID: deployment.ID,
+			Region:       row.PrimaryRegion,
+			Tier:         row.Tier,
 		}); err != nil {
 			_ = tx.Rollback(ctx)
 			return App{}, err
@@ -298,6 +324,36 @@ func normalizeImageRef(raw string) (string, bool) {
 		return "", false
 	}
 	return ref, true
+}
+
+func normalizeAppTier(raw string) (string, bool) {
+	tier := strings.ToLower(strings.TrimSpace(raw))
+	switch tier {
+	case "starter", "growth", "scale":
+		return tier, true
+	default:
+		return "", false
+	}
+}
+
+func normalizeAppPrimaryRegion(raw string) (string, bool) {
+	region := strings.ToLower(strings.TrimSpace(raw))
+	if region == "" || len(region) > appPrimaryRegionMaxLen {
+		return "", false
+	}
+	if region[0] == '-' || region[len(region)-1] == '-' {
+		return "", false
+	}
+	for i := 0; i < len(region); i++ {
+		ch := region[i]
+		if ch == '-' {
+			continue
+		}
+		if !isASCIIAlphaNum(ch) {
+			return "", false
+		}
+	}
+	return region, true
 }
 
 // normalizeOrDeriveAppName returns a validated app name.
@@ -430,16 +486,18 @@ func isASCIIDigit(ch byte) bool {
 // appFromRow maps a SQLC app row into the service App model.
 func appFromRow(r sqlc.App) App {
 	return App{
-		ID:          r.ID.String(),
-		ProjectID:   r.ProjectID.String(),
-		Name:        r.Name,
-		Slug:        r.Slug,
-		Subdomain:   r.Subdomain,
-		ImageRef:    r.ImageRef,
-		RuntimePort: r.RuntimePort,
-		Status:      r.Status,
-		IsPublic:    r.IsPublic,
-		CreatedAt:   r.CreatedAt,
-		UpdatedAt:   r.UpdatedAt,
+		ID:            r.ID.String(),
+		ProjectID:     r.ProjectID.String(),
+		Name:          r.Name,
+		Slug:          r.Slug,
+		Subdomain:     r.Subdomain,
+		ImageRef:      r.ImageRef,
+		Tier:          r.Tier,
+		PrimaryRegion: r.PrimaryRegion,
+		RuntimePort:   r.RuntimePort,
+		Status:        r.Status,
+		IsPublic:      r.IsPublic,
+		CreatedAt:     r.CreatedAt,
+		UpdatedAt:     r.UpdatedAt,
 	}
 }

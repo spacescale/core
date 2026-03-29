@@ -32,6 +32,8 @@ type createAppEnvVarRequest struct {
 type createAppRequest struct {
 	Name                 string                   `json:"name"`
 	ImageRef             string                   `json:"imageRef"`
+	Tier                 string                   `json:"tier"`
+	PrimaryRegion        string                   `json:"primaryRegion"`
 	RuntimePort          *int                     `json:"runtimePort"`
 	IsPublic             *bool                    `json:"isPublic"`
 	RegistryCredentialID string                   `json:"registryCredentialId"`
@@ -39,17 +41,19 @@ type createAppRequest struct {
 }
 
 type appResponse struct {
-	ID          string `json:"id"`
-	ProjectID   string `json:"projectId"`
-	Name        string `json:"name"`
-	Slug        string `json:"slug"`
-	Subdomain   string `json:"subdomain"`
-	ImageRef    string `json:"imageRef"`
-	RuntimePort int32  `json:"runtimePort"`
-	Status      string `json:"status"`
-	IsPublic    bool   `json:"isPublic"`
-	CreatedAt   string `json:"createdAt"`
-	UpdatedAt   string `json:"updatedAt"`
+	ID            string `json:"id"`
+	ProjectID     string `json:"projectId"`
+	Name          string `json:"name"`
+	Slug          string `json:"slug"`
+	Subdomain     string `json:"subdomain"`
+	ImageRef      string `json:"imageRef"`
+	Tier          string `json:"tier"`
+	PrimaryRegion string `json:"primaryRegion"`
+	RuntimePort   int32  `json:"runtimePort"`
+	Status        string `json:"status"`
+	IsPublic      bool   `json:"isPublic"`
+	CreatedAt     string `json:"createdAt"`
+	UpdatedAt     string `json:"updatedAt"`
 }
 
 // handleCreateApp creates one app in an owned workspace/project.
@@ -89,6 +93,8 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 	app, err := s.apps.CreateApp(r.Context(), user.ID, workspaceID, projectID, tenant.CreateAppParams{
 		Name:                 req.Name,
 		ImageRef:             req.ImageRef,
+		Tier:                 req.Tier,
+		PrimaryRegion:        req.PrimaryRegion,
 		RuntimePort:          req.RuntimePort,
 		IsPublic:             req.IsPublic,
 		RegistryCredentialID: req.RegistryCredentialID,
@@ -118,16 +124,18 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		"/v1/workspaces/"+url.PathEscape(workspaceID)+"/projects/"+url.PathEscape(projectID)+"/apps/"+url.PathEscape(app.ID),
 	)
 	writeJSON(w, http.StatusCreated, appResponse{
-		ID:          app.ID,
-		ProjectID:   app.ProjectID,
-		Name:        app.Name,
-		Slug:        app.Slug,
-		Subdomain:   app.Subdomain,
-		ImageRef:    app.ImageRef,
-		RuntimePort: app.RuntimePort,
-		Status:      app.Status,
-		IsPublic:    app.IsPublic,
-		CreatedAt:   app.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   app.UpdatedAt.Format(time.RFC3339),
+		ID:            app.ID,
+		ProjectID:     app.ProjectID,
+		Name:          app.Name,
+		Slug:          app.Slug,
+		Subdomain:     app.Subdomain,
+		ImageRef:      app.ImageRef,
+		Tier:          app.Tier,
+		PrimaryRegion: app.PrimaryRegion,
+		RuntimePort:   app.RuntimePort,
+		Status:        app.Status,
+		IsPublic:      app.IsPublic,
+		CreatedAt:     app.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:     app.UpdatedAt.Format(time.RFC3339),
 	})
 }

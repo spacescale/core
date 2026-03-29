@@ -1,14 +1,13 @@
 -- name: BootstrapDefaults :one
 -- Use named args here so sqlc generates readable parameter names
--- (OwnerUserID, WorkspaceName, ProjectName, ProjectSlug, ProjectRegion)
--- instead of generic Column1..Column5 in this multi-CTE query.
+-- (OwnerUserID, WorkspaceName, ProjectName, ProjectSlug)
+-- instead of generic Column1..Column4 in this multi-CTE query.
 WITH input AS (
     SELECT
         sqlc.arg(owner_user_id)::uuid AS owner_user_id,
         sqlc.arg(workspace_name)::text AS workspace_name,
         sqlc.arg(project_name)::text AS project_name,
-        sqlc.arg(project_slug)::text AS project_slug,
-        sqlc.arg(project_region)::text AS project_region
+        sqlc.arg(project_slug)::text AS project_slug
 ),
      has_workspace AS (
          SELECT EXISTS (
@@ -26,8 +25,8 @@ WITH input AS (
              RETURNING id
      ),
 inserted_project AS (
-    INSERT INTO projects (workspace_id, name, slug, region, created_at, updated_at)
-    SELECT iw.id, i.project_name, i.project_slug, i.project_region, now(), now()
+    INSERT INTO projects (workspace_id, name, slug, created_at, updated_at)
+    SELECT iw.id, i.project_name, i.project_slug, now(), now()
     FROM inserted_workspace iw
     CROSS JOIN input i
     RETURNING id

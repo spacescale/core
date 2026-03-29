@@ -26,7 +26,6 @@ type Project struct {
 	WorkspaceID string
 	Name        string
 	Slug        string
-	Region      string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
@@ -38,13 +37,11 @@ type ProjectService struct {
 
 // CreateProjectParams contains optional overrides for project creation.
 type CreateProjectParams struct {
-	Name   string
-	Region string
+	Name string
 }
 
 type UpdateProjectParams struct {
-	Name   string
-	Region string
+	Name string
 }
 
 // NewProjectService creates a ProjectService bound to the provided query set.
@@ -75,7 +72,7 @@ func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID, workspa
 		}
 	}
 
-	project, err := buildProject(workspaceID, name, p.Region)
+	project, err := buildProject(workspaceID, name)
 	if err != nil {
 		return Project{}, ErrInvalidInput
 	}
@@ -86,7 +83,6 @@ func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID, workspa
 			WorkspaceID: workspaceUUID,
 			Name:        project.Name,
 			Slug:        project.Slug,
-			Region:      project.Region,
 		})
 		if err == nil {
 			return projectFromRow(row), nil
@@ -152,38 +148,21 @@ func (s *ProjectService) UpdateProject(
 	if !ok {
 		return Project{}, ErrInvalidInput
 	}
-	existing, err := s.getOwnedProjectInWorkspace(ctx, ownerUUID, workspaceUUID, projectUUID)
-	if err != nil {
+	if _, err := s.getOwnedProjectInWorkspace(ctx, ownerUUID, workspaceUUID, projectUUID); err != nil {
 		return Project{}, err
 	}
 	nextName := strings.TrimSpace(p.Name)
-	nextRegion := strings.TrimSpace(p.Region)
-	if nextName == "" && nextRegion == "" {
+	if nextName == "" {
 		return Project{}, ErrInvalidInput
 	}
-	if nextName == "" {
-		nextName = existing.Name
-	} else {
-		normalizedName, ok := normalizeProjectName(nextName)
-		if !ok {
-			return Project{}, ErrInvalidInput
-		}
-		nextName = normalizedName
-	}
-	if nextRegion == "" {
-		nextRegion = existing.Region
-	} else {
-		normalizedRegion, ok := normalizeProjectRegion(nextRegion)
-		if !ok {
-			return Project{}, ErrInvalidInput
-		}
-		nextRegion = normalizedRegion
+	normalizedName, ok := normalizeProjectName(nextName)
+	if !ok {
+		return Project{}, ErrInvalidInput
 	}
 	row, err := s.queries.UpdateProjectByIDAndOwnerUserID(ctx, sqlc.UpdateProjectByIDAndOwnerUserIDParams{
 		ID:          projectUUID,
 		OwnerUserID: ownerUUID,
-		Name:        nextName,
-		Region:      nextRegion,
+		Name:        normalizedName,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -262,12 +241,11 @@ func (s *ProjectService) getOwnedProjectInWorkspace(
 	return row, nil
 }
 
-// buildProject validates raw project fields and applies service defaults.
-// It requires non-empty workspace and name fields, assigns the default region when
-// omitted, and derives a normalized slug from the display name.
+// buildProject validates raw project fields and derives a normalized slug.
+// It requires non-empty workspace and name fields.
 // Names that cannot produce a usable slug are rejected as invalid input.
 // CreatedAt and UpdatedAt are set in UTC to keep serialization consistent.
-func buildProject(workspaceID, name, region string) (Project, error) {
+func buildProject(workspaceID, name string) (Project, error) {
 	workspace := strings.TrimSpace(workspaceID)
 	if workspace == "" {
 		return Project{}, errors.New("workspace id is required")
@@ -276,11 +254,6 @@ func buildProject(workspaceID, name, region string) (Project, error) {
 	normalizedName, ok := normalizeProjectName(name)
 	if !ok {
 		return Project{}, errors.New("project name is required")
-	}
-
-	normalizedRegion, ok := normalizeProjectRegion(region)
-	if !ok {
-		return Project{}, errors.New("project region is invalid")
 	}
 
 	slug := slugifyProjectName(normalizedName)
@@ -294,7 +267,6 @@ func buildProject(workspaceID, name, region string) (Project, error) {
 		WorkspaceID: workspace,
 		Name:        normalizedName,
 		Slug:        slug,
-		Region:      normalizedRegion,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}, nil
@@ -326,7 +298,6 @@ func projectFromRow(r sqlc.Project) Project {
 		WorkspaceID: r.WorkspaceID.String(),
 		Name:        r.Name,
 		Slug:        r.Slug,
-		Region:      r.Region,
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,
 	}

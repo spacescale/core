@@ -12,7 +12,7 @@ import (
 )
 
 const getScaledByID = `-- name: GetScaledByID :one
-SELECT id, version, total_allocated_vms_threads, total_allocated_vms_ram_mb, total_allocated_vm_disk_mb, metal_id, created_at, updated_at
+SELECT id, version, metal_id, created_at, updated_at
 FROM scaled
 WHERE id = $1
 `
@@ -23,9 +23,6 @@ func (q *Queries) GetScaledByID(ctx context.Context, id string) (Scaled, error) 
 	err := row.Scan(
 		&i.ID,
 		&i.Version,
-		&i.TotalAllocatedVmsThreads,
-		&i.TotalAllocatedVmsRamMb,
-		&i.TotalAllocatedVmDiskMb,
 		&i.MetalID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -34,7 +31,7 @@ func (q *Queries) GetScaledByID(ctx context.Context, id string) (Scaled, error) 
 }
 
 const getScaledByMetalID = `-- name: GetScaledByMetalID :one
-SELECT id, version, total_allocated_vms_threads, total_allocated_vms_ram_mb, total_allocated_vm_disk_mb, metal_id, created_at, updated_at
+SELECT id, version, metal_id, created_at, updated_at
 FROM scaled
 WHERE metal_id = $1
 `
@@ -45,9 +42,6 @@ func (q *Queries) GetScaledByMetalID(ctx context.Context, metalID uuid.UUID) (Sc
 	err := row.Scan(
 		&i.ID,
 		&i.Version,
-		&i.TotalAllocatedVmsThreads,
-		&i.TotalAllocatedVmsRamMb,
-		&i.TotalAllocatedVmDiskMb,
 		&i.MetalID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -73,7 +67,7 @@ VALUES (
 ON CONFLICT (metal_id) DO UPDATE
     SET version = EXCLUDED.version,
         updated_at = now()
-RETURNING id, version, total_allocated_vms_threads, total_allocated_vms_ram_mb, total_allocated_vm_disk_mb, metal_id, created_at, updated_at
+RETURNING id, version, metal_id, created_at, updated_at
 `
 
 type UpsertScaledBootstrapParams struct {
@@ -88,9 +82,6 @@ func (q *Queries) UpsertScaledBootstrap(ctx context.Context, arg UpsertScaledBoo
 	err := row.Scan(
 		&i.ID,
 		&i.Version,
-		&i.TotalAllocatedVmsThreads,
-		&i.TotalAllocatedVmsRamMb,
-		&i.TotalAllocatedVmDiskMb,
 		&i.MetalID,
 		&i.CreatedAt,
 		&i.UpdatedAt,

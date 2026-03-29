@@ -122,7 +122,7 @@ func (b *NodeBroker) handleHeartbeat(ctx context.Context, msg *nats.Msg) error {
 		if err := b.registrar.MarkMetalActive(ctx, hb.GetNodeId()); err != nil {
 			return err
 		}
-		b.logger.Info("node activated", "component", "scalecp", "node_id", hb.GetNodeId(), "region", hb.GetRegion())
+		b.logger.Info("node activated", "component", "scalecp", "node_id", hb.GetNodeId())
 	}
 
 	return nil

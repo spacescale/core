@@ -16,11 +16,9 @@ import (
 )
 
 const (
-	defaultRegion        = "global"
 	maxSlugRetries       = 8
 	suffixLength         = 6
 	projectNameMaxLength = 120
-	projectRegionMaxLen  = 32
 	projectSlugMaxLength = 63
 )
 
@@ -82,31 +80,6 @@ func normalizeProjectName(raw string) (string, bool) {
 		return "", false
 	}
 	return name, true
-}
-
-// normalizeProjectRegion trims, lowercases, and validates region format.
-// Regions are restricted to lowercase ASCII DNS-label-safe bytes for stability.
-func normalizeProjectRegion(raw string) (string, bool) {
-	region := strings.ToLower(strings.TrimSpace(raw))
-	if region == "" {
-		region = defaultRegion
-	}
-	if len(region) == 0 || len(region) > projectRegionMaxLen {
-		return "", false
-	}
-	if region[0] == '-' || region[len(region)-1] == '-' {
-		return "", false
-	}
-	for i := 0; i < len(region); i++ {
-		ch := region[i]
-		if ch == '-' {
-			continue
-		}
-		if !isASCIIAlphaNum(ch) {
-			return "", false
-		}
-	}
-	return region, true
 }
 
 // slugWithSuffix appends a random suffix while keeping total slug length bounded.

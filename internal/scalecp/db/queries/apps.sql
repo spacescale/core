@@ -1,11 +1,28 @@
 -- name: CreateApp :one
-INSERT INTO apps (project_id, name, slug, subdomain, image_ref, runtime_port, status, is_public, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, 'queued', $7, now(), now())
+INSERT INTO apps (project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, status, is_public, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', $9, now(), now())
 RETURNING *;
 
--- name: CreateQueuedDeployment :exec
-INSERT INTO deployments (app_id, status, image_ref, runtime_port, public_url, created_at, updated_at)
-VALUES ($1, 'queued', $2, $3, NULL, now(), now());
+-- name: MarkAppDeploying :one
+UPDATE apps
+SET status = 'deploying',
+    updated_at = now()
+WHERE id = $1
+RETURNING *;
+
+-- name: MarkAppRunning :one
+UPDATE apps
+SET status = 'running',
+    updated_at = now()
+WHERE id = $1
+RETURNING *;
+
+-- name: MarkAppFailed :one
+UPDATE apps
+SET status = 'failed',
+    updated_at = now()
+WHERE id = $1
+RETURNING *;
 
 -- name: CreateAppEnvVar :exec
 INSERT INTO app_env_vars (app_id, key, value_encrypted, is_secret, created_at, updated_at)

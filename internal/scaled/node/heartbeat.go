@@ -24,9 +24,8 @@ func RunHeartbeatLoop(ctx context.Context, client *nats.Client, identity Identit
 	}
 
 	identity.NodeID = strings.TrimSpace(identity.NodeID)
-	identity.Region = strings.TrimSpace(identity.Region)
 	bootID = strings.TrimSpace(bootID)
-	if identity.NodeID == "" || identity.Region == "" || bootID == "" {
+	if identity.NodeID == "" || bootID == "" {
 		return errInvalidHeartbeat
 	}
 
@@ -53,24 +52,10 @@ func RunHeartbeatLoop(ctx context.Context, client *nats.Client, identity Identit
 
 func publishHeartbeat(client *nats.Client, identity Identity, bootID string, seqNo uint64) error {
 	hb := &scalepb.NodeHeartbeat{
-		NodeId:              identity.NodeID,
-		Region:              identity.Region,
-		SeqNo:               seqNo,
-		BootId:              bootID,
-		SentAtUnixNano:      time.Now().UTC().UnixNano(),
-		SharedVcpuAvailable: 0,
-		PinnedCpusFree:      0,
-		AllocatableMemMb:    0,
-		AllocatableDiskMb:   0,
-		ActiveVms:           0,
-		CpuPsiSome_10S:      0,
-		IoPsiSome_10S:       0,
-		CpuTempMaxC:         0,
-		OomKillsSinceBoot:   0,
-		Status:              "ready",
-		StatusReason:        "",
-		NetworkOk:           true,
-		NetUtilizationPct:   0,
+		NodeId:         identity.NodeID,
+		SeqNo:          seqNo,
+		BootId:         bootID,
+		SentAtUnixNano: time.Now().UTC().UnixNano(),
 	}
 
 	return client.PublishProto(nats.SubjectNodeHeartbeat, hb)
