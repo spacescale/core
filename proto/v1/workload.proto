@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package spacescale.v1;
+
+option go_package = "github.com/spacescale/core/internal/shared/pb/v1;scalepb";
+
+// The abstract service tiers
+enum Tier {
+  TIER_UNSPECIFIED = 0;
+  TIER_STARTER = 1;     // 2 vCPU / 4 GB (Shared)
+  TIER_GROWTH = 2;      // 4 vCPU / 8 GB (Dedicated/Pinned)
+  TIER_SCALE = 3;       // 8 vCPU / 16 GB (Dedicated/Pinned)
+}
+
+
+// Broadcast by the CP to all nodes in a region.
+// Subject: node.auction.<region>.machine
+message AuctionRequest {
+  string machine_id = 1;
+  Tier tier = 2;
+}
+
+// Fired back by eligible scaled daemons if they have physical capacity.
+// NATS Request-Reply handles the routing back to the CP.
+message AuctionReply {
+  string machine_id = 1;      // Correlates the bid to the exact request
+  string node_id = 2;         // Permanent daemon identity
+  string boot_id = 3;         // Target ID for the subsequent launch command
+  uint64 free_ram_mb = 4;     // The Tie-Breaker: CP picks the emptiest node
+}
+
+// Sent directly to the winning node's personal inbox.
+// Subject: node.cmd.<boot_id>.machine.launch
+message MachineLaunchRequest {
+  string machine_id = 1;
+  Tier tier = 2;
+  string image_ref = 3;
+  map<string, string> env = 4;
+}
+
+// Returned by the scaled daemon to acknowledge the launch intent.
+message MachineLaunchResponse {
+  string machine_id = 1;
+  bool accepted = 2;          // True if the Ghost Reservation was successful
+  string status = 3;          // e.g., "starting", "failed"
+  string error_message = 4;
+}
