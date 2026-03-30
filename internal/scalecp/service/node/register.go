@@ -33,12 +33,6 @@ type Registrar struct {
 }
 
 func NewRegistrar(queries *sqlc.Queries, pool *pgxpool.Pool) *Registrar {
-	if queries == nil {
-		panic("node.NewRegistrar requires non-nil queries")
-	}
-	if pool == nil {
-		panic("node.NewRegistrar requires non-nil db pool")
-	}
 	return &Registrar{queries: queries, pool: pool}
 }
 
@@ -89,11 +83,6 @@ func (r *Registrar) Register(ctx context.Context, req *scalepb.NodeBootstrapRequ
 }
 
 func (r *Registrar) MarkMetalActive(ctx context.Context, nodeID string) error {
-	nodeID = strings.TrimSpace(nodeID)
-	if nodeID == "" {
-		return ErrInvalidBootstrapRequest
-	}
-
 	_, err := r.queries.MarkMetalActiveByNodeID(ctx, nodeID)
 	return err
 }

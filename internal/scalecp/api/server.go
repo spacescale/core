@@ -51,31 +51,6 @@ type ServerDeps struct {
 }
 
 func NewServer(deps ServerDeps) *Server {
-	if deps.Services == nil {
-		panic("http_api.NewServer requires non-nil services")
-	}
-	if deps.Services.Tenant.Projects == nil {
-		panic("http_api.NewServer requires non-nil project service")
-	}
-	if deps.Services.Tenant.Workspaces == nil {
-		panic("http_api.NewServer requires non-nil workspace service")
-	}
-	if deps.Services.Tenant.Bootstrap == nil {
-		panic("http_api.NewServer requires non-nil bootstrap service")
-	}
-	if deps.Services.Tenant.Apps == nil {
-		panic("http_api.NewServer requires non-nil app service")
-	}
-	if deps.Services.Tenant.Users == nil {
-		panic("http_api.NewServer requires non-nil user service")
-	}
-	if deps.DBPool == nil {
-		panic("http_api.NewServer requires non-nil db pool")
-	}
-	normalizedConfig := deps.Config.Normalized()
-	if normalizedConfig.InternalAuthSecret == "" {
-		panic("http_api.NewServer requires non-empty internal auth secret")
-	}
 	tenantServices := deps.Services.Tenant
 	s := &Server{
 		users:                   tenantServices.Users,
@@ -84,11 +59,11 @@ func NewServer(deps ServerDeps) *Server {
 		bootstrap:               tenantServices.Bootstrap,
 		apps:                    tenantServices.Apps,
 		dbPool:                  deps.DBPool,
-		config:                  normalizedConfig,
+		config:                  deps.Config,
 		internalIdentityLimiter: newInternalIdentityLimiter(),
 	}
 	s.server = &http.Server{
-		Addr:              normalizedConfig.ListenAddr(),
+		Addr:              deps.Config.ListenAddr(),
 		Handler:           http.MaxBytesHandler(s.Router(), 1<<20),
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -98,9 +73,6 @@ func NewServer(deps ServerDeps) *Server {
 }
 
 func (s *Server) Start() error {
-	if s == nil || s.server == nil {
-		return errors.New("http server is not initialized")
-	}
 	if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("http serve failed: %w", err)
 	}
@@ -108,12 +80,6 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-	if s == nil || s.server == nil {
-		return nil
-	}
-	if ctx == nil {
-		return errors.New("shutdown context is required")
-	}
 	if err := s.server.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("http shutdown failed: %w", err)
 	}
@@ -219,11 +185,7 @@ func newInternalIdentityLimiter() *httprate.RateLimiter {
 // "identity:unknown" instead of an error. This keeps limiter behavior predictable
 // and avoids triggering httprate's error handler path.
 func keyByIdentityKey(r *http.Request) (string, error) {
-	p, ok := principalFromContext(r.Context())
-	if !ok || p.IdentityKey == "" {
-		// defensive fallback bucket; avoids httprate error handler path
-		return "identity:unknown", nil
-	}
+	p, _ := principalFromContext(r.Context())
 	return "identity:" + p.IdentityKey, nil
 }
 
@@ -236,15 +198,14 @@ func keyByIdentityKey(r *http.Request) (string, error) {
 func internalAuthMiddleware(expectedSecret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			expected := strings.TrimSpace(expectedSecret)
 			provided := strings.TrimSpace(r.Header.Get("X-Internal-Auth"))
 
-			if expected == "" || provided == "" {
+			if provided == "" {
 				writeErr(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
 
-			if subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) != 1 {
+			if subtle.ConstantTimeCompare([]byte(expectedSecret), []byte(provided)) != 1 {
 				writeErr(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}

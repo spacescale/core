@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -64,8 +63,11 @@ func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID, workspa
 		return Project{}, err
 	}
 
-	name := strings.TrimSpace(p.Name)
-	if name == "" {
+	name, ok := normalizeProjectName(p.Name)
+	if !ok {
+		if p.Name != "" {
+			return Project{}, ErrInvalidInput
+		}
 		name, err = s.generateName(ctx)
 		if err != nil {
 			return Project{}, err
@@ -151,11 +153,7 @@ func (s *ProjectService) UpdateProject(
 	if _, err := s.getOwnedProjectInWorkspace(ctx, ownerUUID, workspaceUUID, projectUUID); err != nil {
 		return Project{}, err
 	}
-	nextName := strings.TrimSpace(p.Name)
-	if nextName == "" {
-		return Project{}, ErrInvalidInput
-	}
-	normalizedName, ok := normalizeProjectName(nextName)
+	normalizedName, ok := normalizeProjectName(p.Name)
 	if !ok {
 		return Project{}, ErrInvalidInput
 	}
@@ -246,17 +244,11 @@ func (s *ProjectService) getOwnedProjectInWorkspace(
 // Names that cannot produce a usable slug are rejected as invalid input.
 // CreatedAt and UpdatedAt are set in UTC to keep serialization consistent.
 func buildProject(workspaceID, name string) (Project, error) {
-	workspace := strings.TrimSpace(workspaceID)
-	if workspace == "" {
-		return Project{}, errors.New("workspace id is required")
-	}
-
-	normalizedName, ok := normalizeProjectName(name)
-	if !ok {
+	if name == "" {
 		return Project{}, errors.New("project name is required")
 	}
 
-	slug := slugifyProjectName(normalizedName)
+	slug := slugifyProjectName(name)
 	if slug == "" {
 		return Project{}, errors.New("project name is invalid")
 	}
@@ -264,8 +256,8 @@ func buildProject(workspaceID, name string) (Project, error) {
 	now := time.Now().UTC()
 	return Project{
 		ID:          "",
-		WorkspaceID: workspace,
-		Name:        normalizedName,
+		WorkspaceID: workspaceID,
+		Name:        name,
 		Slug:        slug,
 		CreatedAt:   now,
 		UpdatedAt:   now,

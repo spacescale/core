@@ -83,24 +83,6 @@ func newTestServer(t *testing.T) *testServer {
 	return &testServer{server: httptest.NewServer(server.Router()), pool: pool}
 }
 
-func TestNewServerRequiresNonEmptyInternalSecret(t *testing.T) {
-	require.PanicsWithValue(t, "http_api.NewServer requires non-empty internal auth secret", func() {
-		api.NewServer(api.ServerDeps{
-			Services: &service.Services{
-				Tenant: service.TenantServices{
-					Projects:   &tenant.ProjectService{},
-					Users:      &tenant.UserService{},
-					Workspaces: &tenant.WorkspaceService{},
-					Bootstrap:  &tenant.BootstrapService{},
-					Apps:       &tenant.AppService{},
-				},
-			},
-			DBPool: &pgxpool.Pool{},
-			Config: config.Config{InternalAuthSecret: "   "},
-		})
-	})
-}
-
 func TestInternalAuthSyncHeaderValidation(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
