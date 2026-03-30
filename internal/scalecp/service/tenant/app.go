@@ -82,15 +82,6 @@ type AppService struct {
 
 // NewAppService constructs an AppService with shared query and crypto deps.
 func NewAppService(queries *sqlc.Queries, pool *pgxpool.Pool, envCipher *EnvValueCipher) *AppService {
-	if queries == nil {
-		panic("service.NewAppService requires non-nil queries")
-	}
-	if pool == nil {
-		panic("service.NewAppService requires non-nil db pool")
-	}
-	if envCipher == nil {
-		panic("service.NewAppService requires non-nil env cipher")
-	}
 	return &AppService{queries: queries, pool: pool, envCipher: envCipher}
 }
 
@@ -210,6 +201,7 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 			}
 		}
 
+		bulkEnvVars := make([]sqlc.CreateAppEnvVarsParams, 0, len(envVars))
 		for _, env := range envVars {
 			valueEncrypted, encErr := s.envCipher.EncryptForStorage(env.Value, EnvValueRowContext{
 				AppID: row.ID,
@@ -219,12 +211,16 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 				_ = tx.Rollback(ctx)
 				return App{}, encErr
 			}
-			if err := txQueries.CreateAppEnvVar(ctx, sqlc.CreateAppEnvVarParams{
+			bulkEnvVars = append(bulkEnvVars, sqlc.CreateAppEnvVarsParams{
 				AppID:          row.ID,
 				Key:            env.Key,
 				ValueEncrypted: valueEncrypted,
 				IsSecret:       env.IsSecret,
-			}); err != nil {
+			})
+		}
+
+		if len(bulkEnvVars) > 0 {
+			if _, err := txQueries.CreateAppEnvVars(ctx, bulkEnvVars); err != nil {
 				_ = tx.Rollback(ctx)
 				if isUniqueViolation(err) {
 					return App{}, ErrConflict
@@ -259,8 +255,9 @@ func (s *AppService) authorizeOwnedProject(ctx context.Context, ownerUserID, wor
 		return uuid.Nil, ErrInvalidInput
 	}
 
-	_, err := s.queries.GetWorkspaceByIDAndOwnerUserID(ctx, sqlc.GetWorkspaceByIDAndOwnerUserIDParams{
-		ID:          workspaceUUID,
+	_, err := s.queries.CheckProjectOwnership(ctx, sqlc.CheckProjectOwnershipParams{
+		ProjectID:   projectUUID,
+		WorkspaceID: workspaceUUID,
 		OwnerUserID: ownerUUID,
 	})
 	if err != nil {
@@ -268,20 +265,6 @@ func (s *AppService) authorizeOwnedProject(ctx context.Context, ownerUserID, wor
 			return uuid.Nil, ErrUnauthorized
 		}
 		return uuid.Nil, err
-	}
-
-	projectRow, err := s.queries.GetProjectByIDAndOwnerUserID(ctx, sqlc.GetProjectByIDAndOwnerUserIDParams{
-		ID:          projectUUID,
-		OwnerUserID: ownerUUID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return uuid.Nil, ErrUnauthorized
-		}
-		return uuid.Nil, err
-	}
-	if projectRow.WorkspaceID != workspaceUUID {
-		return uuid.Nil, ErrUnauthorized
 	}
 
 	return projectUUID, nil
@@ -290,12 +273,11 @@ func (s *AppService) authorizeOwnedProject(ctx context.Context, ownerUserID, wor
 // resolveRegistryCredential validates an optional registry credential id and
 // enforces project ownership for that credential.
 func (s *AppService) resolveRegistryCredential(ctx context.Context, projectID uuid.UUID, rawCredentialID string) (uuid.UUID, bool, error) {
-	trimmed := strings.TrimSpace(rawCredentialID)
-	if trimmed == "" {
+	if rawCredentialID == "" {
 		return uuid.Nil, false, nil
 	}
 
-	credentialID, ok := parseUUID(trimmed)
+	credentialID, ok := parseUUID(rawCredentialID)
 	if !ok {
 		return uuid.Nil, false, ErrInvalidInput
 	}
@@ -375,12 +357,7 @@ func normalizeOrDeriveAppName(rawName, imageRef string) (string, bool) {
 // deriveAppNameFromImageRef extracts a display name candidate from an image
 // reference by dropping optional digest and tag components.
 func deriveAppNameFromImageRef(imageRef string) (string, bool) {
-	ref := strings.TrimSpace(imageRef)
-	if ref == "" {
-		return "", false
-	}
-
-	withoutDigest := ref
+	withoutDigest := imageRef
 	if at := strings.IndexByte(withoutDigest, '@'); at >= 0 {
 		withoutDigest = withoutDigest[:at]
 	}
@@ -397,8 +374,7 @@ func deriveAppNameFromImageRef(imageRef string) (string, bool) {
 		lastSegment = lastSegment[:colon]
 	}
 
-	name := strings.TrimSpace(lastSegment)
-	return name, name != ""
+	return lastSegment, lastSegment != ""
 }
 
 // normalizeRuntimePort returns a validated runtime port.

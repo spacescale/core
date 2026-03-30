@@ -60,26 +60,11 @@ func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, erro
 	return i, err
 }
 
-const createAppEnvVar = `-- name: CreateAppEnvVar :exec
-INSERT INTO app_env_vars (app_id, key, value_encrypted, is_secret, created_at, updated_at)
-VALUES ($1, $2, $3, $4, now(), now())
-`
-
-type CreateAppEnvVarParams struct {
+type CreateAppEnvVarsParams struct {
 	AppID          uuid.UUID
 	Key            string
 	ValueEncrypted string
 	IsSecret       bool
-}
-
-func (q *Queries) CreateAppEnvVar(ctx context.Context, arg CreateAppEnvVarParams) error {
-	_, err := q.db.Exec(ctx, createAppEnvVar,
-		arg.AppID,
-		arg.Key,
-		arg.ValueEncrypted,
-		arg.IsSecret,
-	)
-	return err
 }
 
 const getRegistryCredentialByIDAndProjectID = `-- name: GetRegistryCredentialByIDAndProjectID :one

@@ -11,6 +11,28 @@ import (
 	"github.com/google/uuid"
 )
 
+const checkProjectOwnership = `-- name: CheckProjectOwnership :one
+SELECT p.id
+FROM projects AS p
+         JOIN workspaces AS w ON w.id = p.workspace_id
+WHERE p.id = $1::uuid
+  AND w.id = $2::uuid
+  AND w.owner_user_id = $3::uuid
+`
+
+type CheckProjectOwnershipParams struct {
+	ProjectID   uuid.UUID
+	WorkspaceID uuid.UUID
+	OwnerUserID uuid.UUID
+}
+
+func (q *Queries) CheckProjectOwnership(ctx context.Context, arg CheckProjectOwnershipParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, checkProjectOwnership, arg.ProjectID, arg.WorkspaceID, arg.OwnerUserID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (workspace_id, name, slug, created_at, updated_at)
 VALUES ($1, $2, $3, now(), now()) RETURNING id, workspace_id, name, slug, created_at, updated_at

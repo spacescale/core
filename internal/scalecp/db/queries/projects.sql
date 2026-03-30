@@ -28,6 +28,15 @@ WHERE p.id = $1
   AND w.owner_user_id = $2;
 
 
+-- name: CheckProjectOwnership :one
+SELECT p.id
+FROM projects AS p
+         JOIN workspaces AS w ON w.id = p.workspace_id
+WHERE p.id = sqlc.arg(project_id)::uuid
+  AND w.id = sqlc.arg(workspace_id)::uuid
+  AND w.owner_user_id = sqlc.arg(owner_user_id)::uuid;
+
+
 -- name: GetProjectBySlug :one
 SELECT *
 FROM projects

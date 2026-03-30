@@ -24,9 +24,9 @@ SET status = 'failed',
 WHERE id = $1
 RETURNING *;
 
--- name: CreateAppEnvVar :exec
-INSERT INTO app_env_vars (app_id, key, value_encrypted, is_secret, created_at, updated_at)
-VALUES ($1, $2, $3, $4, now(), now());
+-- name: CreateAppEnvVars :copyfrom
+INSERT INTO app_env_vars (app_id, key, value_encrypted, is_secret)
+VALUES ($1, $2, $3, $4);
 
 -- name: GetRegistryCredentialByIDAndProjectID :one
 SELECT *
