@@ -47,8 +47,6 @@ func LoadIdentity() (Identity, error) {
 	if err := json.Unmarshal(raw, &identity); err != nil {
 		return Identity{}, fmt.Errorf("decode node identity: %w", err)
 	}
-	identity.NodeID = strings.TrimSpace(identity.NodeID)
-	identity.Region = strings.TrimSpace(identity.Region)
 	if identity.NodeID == "" || identity.Region == "" {
 		return Identity{}, ErrInvalidIdentity
 	}
@@ -56,8 +54,6 @@ func LoadIdentity() (Identity, error) {
 }
 
 func SaveIdentity(identity Identity) error {
-	identity.NodeID = strings.TrimSpace(identity.NodeID)
-	identity.Region = strings.TrimSpace(identity.Region)
 	if identity.NodeID == "" || identity.Region == "" {
 		return ErrInvalidIdentity
 	}

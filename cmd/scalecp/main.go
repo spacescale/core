@@ -13,10 +13,16 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	cfg, err := config.Load()
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("load config: %w", err)
 	}
 
 	log := logger.Init(cfg.Environment)
@@ -26,8 +32,7 @@ func main() {
 
 	cp, err := scalecp.New(ctx, cfg, log)
 	if err != nil {
-		log.Error("failed to initialize scalecp", "component", "scalecp", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("initialize scalecp: %w", err)
 	}
 	defer func() {
 		if err := cp.Close(); err != nil {
@@ -36,7 +41,8 @@ func main() {
 	}()
 
 	if err := cp.Run(ctx); err != nil {
-		log.Error("scalecp exited with error", "component", "scalecp", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("scalecp crashed: %w", err)
 	}
+
+	return nil
 }

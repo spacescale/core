@@ -22,8 +22,9 @@ type Daemon struct {
 }
 
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Daemon, error) {
-	cfg = cfg.Normalized()
-	if err := cfg.ValidateScaled(); err != nil {
+	var err error
+	cfg, err = cfg.ValidateScaled()
+	if err != nil {
 		return nil, fmt.Errorf("invalid scaled config: %w", err)
 	}
 
@@ -70,10 +71,16 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 	d.logger.Info("scaled ready", "component", "scaled", "node_id", identity.NodeID, "region", identity.Region)
 
+	heartbeats, err := d.nats.EnsureNodeHeartbeatKV(ctx)
+	if err != nil {
+		return fmt.Errorf("init heartbeat kv: %w", err)
+	}
+
 	g, gCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		return node.RunHeartbeatLoop(gCtx, d.nats, identity, bootID, d.logger)
+		node.Heartbeater(gCtx, heartbeats, identity.NodeID, bootID, d.logger)
+		return nil
 	})
 
 	if err := g.Wait(); err != nil {
@@ -84,9 +91,6 @@ func (d *Daemon) Run(ctx context.Context) error {
 }
 
 func (d *Daemon) Close() error {
-	if d == nil || d.nats == nil {
-		return nil
-	}
 	if err := d.nats.Drain(); err != nil {
 		return fmt.Errorf("nats drain failed: %w", err)
 	}

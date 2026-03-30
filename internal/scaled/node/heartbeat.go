@@ -2,61 +2,44 @@ package node
 
 import (
 	"context"
-	"errors"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/spacescale/core/internal/shared/nats"
 	scalepb "github.com/spacescale/core/internal/shared/pb/v1"
 )
 
-var errInvalidHeartbeat = errors.New("invalid node heartbeat")
-
 const HeartbeatInterval = 5 * time.Second
 
-func RunHeartbeatLoop(ctx context.Context, client *nats.Client, identity Identity, bootID string, logger *slog.Logger) error {
-	if client == nil {
-		return errors.New("nats client is required")
-	}
-	if logger == nil {
-		logger = slog.Default()
-	}
-
-	identity.NodeID = strings.TrimSpace(identity.NodeID)
-	bootID = strings.TrimSpace(bootID)
-	if identity.NodeID == "" || bootID == "" {
-		return errInvalidHeartbeat
-	}
-
+func Heartbeater(ctx context.Context, kv nats.KeyValue, nodeID, bootID string, logger *slog.Logger) {
+	key := nats.NodeHeartbeatKey(nodeID)
 	seqNo := uint64(1)
-	if err := publishHeartbeat(client, identity, bootID, seqNo); err != nil {
-		return err
-	}
+
+	publishHeartbeat(ctx, kv, key, nodeID, bootID, seqNo, logger)
+
 	ticker := time.NewTicker(HeartbeatInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
-
+			return
 		case <-ticker.C:
 			seqNo++
-			if err := publishHeartbeat(client, identity, bootID, seqNo); err != nil {
-				logger.Warn("publish heartbeat failed", "component", "scaled", "node_id", identity.NodeID, "error", err)
-			}
+			publishHeartbeat(ctx, kv, key, nodeID, bootID, seqNo, logger)
 		}
 	}
 }
 
-func publishHeartbeat(client *nats.Client, identity Identity, bootID string, seqNo uint64) error {
+func publishHeartbeat(ctx context.Context, kv nats.KeyValue, key, nodeID, bootID string, seqNo uint64, logger *slog.Logger) {
 	hb := &scalepb.NodeHeartbeat{
-		NodeId:         identity.NodeID,
+		NodeId:         nodeID,
 		SeqNo:          seqNo,
 		BootId:         bootID,
-		SentAtUnixNano: time.Now().UTC().UnixNano(),
+		SentAtUnixNano: time.Now().UnixNano(),
 	}
 
-	return client.PublishProto(nats.SubjectNodeHeartbeat, hb)
+	if _, err := nats.PutProtoKV(ctx, kv, key, hb); err != nil {
+		logger.Warn("failed to write heartbeat to KV", "node_id", nodeID, "error", err)
+	}
 }

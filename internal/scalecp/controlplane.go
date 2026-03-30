@@ -29,9 +29,9 @@ type ControlPlane struct {
 }
 
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*ControlPlane, error) {
-
-	cfg = cfg.Normalized()
-	if err := cfg.ValidateScalecp(); err != nil {
+	var err error
+	cfg, err = cfg.ValidateScalecp()
+	if err != nil {
 		return nil, fmt.Errorf("invalid scalecp config: %w", err)
 	}
 
@@ -100,19 +100,10 @@ func (cp *ControlPlane) Run(ctx context.Context) error {
 func (cp *ControlPlane) Close() error {
 	var closeErr error
 
-	if cp == nil {
-		return nil
+	if err := cp.nats.Drain(); err != nil {
+		closeErr = errors.Join(closeErr, fmt.Errorf("nats drain failed: %w", err))
 	}
-
-	if cp.nats != nil {
-		if err := cp.nats.Drain(); err != nil {
-			closeErr = errors.Join(closeErr, fmt.Errorf("nats drain failed: %w", err))
-		}
-	}
-
-	if cp.dbPool != nil {
-		cp.dbPool.Close()
-	}
+	cp.dbPool.Close()
 
 	return closeErr
 }

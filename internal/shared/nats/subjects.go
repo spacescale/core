@@ -1,4 +1,6 @@
-// Package nats defines the unified messaging taxonomy for the SpaceScale platform.
+// Package nats
+//
+// subject defines the unified messaging taxonomy for the SpaceScale platform.
 //
 // It acts as the central registry for all NATS Subjects and Queue Groups used
 // for communication between the stateless Control Plane (scalecp) and the

@@ -13,10 +13,16 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	cfg, err := config.Load()
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("load config: %w", err)
 	}
 
 	log := logger.Init(cfg.Environment)
@@ -26,8 +32,7 @@ func main() {
 
 	d, err := scaled.New(ctx, cfg, log)
 	if err != nil {
-		log.Error("failed to initialize scaled", "component", "scaled", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("initialize scaled: %w", err)
 	}
 	defer func() {
 		if err := d.Close(); err != nil {
@@ -36,7 +41,8 @@ func main() {
 	}()
 
 	if err := d.Run(ctx); err != nil {
-		log.Error("scaled exited with error", "component", "scaled", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("scaled crashed: %w", err)
 	}
+
+	return nil
 }

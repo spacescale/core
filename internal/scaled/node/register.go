@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/spacescale/core/internal/shared/nats"
@@ -14,7 +13,6 @@ import (
 const bootstrapRequestTimeout = 5 * time.Second
 
 var (
-	ErrInvalidBootstrapInfo     = errors.New("invalid node bootstrap info")
 	ErrInvalidBootstrapResponse = errors.New("invalid node bootstrap response")
 )
 
@@ -27,15 +25,6 @@ type BootstrapInfo struct {
 }
 
 func LoadOrRegisterIdentity(ctx context.Context, client *nats.Client, info BootstrapInfo) (Identity, bool, error) {
-	if client == nil {
-		return Identity{}, false, errors.New("nats client is required")
-	}
-
-	info, err := normalizeBootstrapInfo(info)
-	if err != nil {
-		return Identity{}, false, err
-	}
-
 	identity, err := LoadIdentity()
 	switch {
 	case err == nil:
@@ -63,13 +52,13 @@ func LoadOrRegisterIdentity(ctx context.Context, client *nats.Client, info Boots
 		return Identity{}, false, fmt.Errorf("bootstrap request failed: %w", err)
 	}
 
-	if bootstrapErr := strings.TrimSpace(resp.GetError()); bootstrapErr != "" {
+	if bootstrapErr := resp.GetError(); bootstrapErr != "" {
 		return Identity{}, false, fmt.Errorf("bootstrap rejected: %s", bootstrapErr)
 	}
 
 	identity = Identity{
-		NodeID: strings.TrimSpace(resp.GetNodeId()),
-		Region: strings.TrimSpace(resp.GetRegion()),
+		NodeID: resp.GetNodeId(),
+		Region: resp.GetRegion(),
 	}
 	if identity.NodeID == "" || identity.Region == "" {
 		return Identity{}, false, ErrInvalidBootstrapResponse
@@ -84,16 +73,4 @@ func LoadOrRegisterIdentity(ctx context.Context, client *nats.Client, info Boots
 	}
 
 	return identity, true, nil
-}
-
-func normalizeBootstrapInfo(info BootstrapInfo) (BootstrapInfo, error) {
-	info.Version = strings.TrimSpace(info.Version)
-	info.BootID = strings.TrimSpace(info.BootID)
-	if info.Version == "" || info.BootID == "" {
-		return BootstrapInfo{}, ErrInvalidBootstrapInfo
-	}
-	if info.TotalThreads == 0 || info.TotalRamMb == 0 || info.TotalDiskMb == 0 {
-		return BootstrapInfo{}, ErrInvalidBootstrapInfo
-	}
-	return info, nil
 }
