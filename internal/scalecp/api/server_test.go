@@ -17,7 +17,6 @@ import (
 	"github.com/spacescale/core/internal/scalecp/api"
 	"github.com/spacescale/core/internal/scalecp/db/sqlc"
 	"github.com/spacescale/core/internal/scalecp/service"
-	"github.com/spacescale/core/internal/scalecp/service/tenant"
 	"github.com/spacescale/core/internal/shared/config"
 	"github.com/stretchr/testify/require"
 )
@@ -65,12 +64,16 @@ func newTestServer(t *testing.T) *testServer {
 	}
 
 	queries := sqlc.New(pool)
-	envCipher, err := tenant.NewEnvValueCipher(testEnvEncryptionKeyID, []byte(testEnvEncryptionKey))
+	svcs, err := service.NewServices(service.Deps{
+		Queries:            queries,
+		DBPool:             pool,
+		EnvEncryptionKeyID: testEnvEncryptionKeyID,
+		EnvEncryptionKey:   []byte(testEnvEncryptionKey),
+	})
 	if err != nil {
 		pool.Close()
-		t.Fatalf("env cipher: %v", err)
+		t.Fatalf("services: %v", err)
 	}
-	svcs := service.NewServices(queries, pool, envCipher)
 	server := api.NewServer(api.ServerDeps{
 		Services: svcs,
 		DBPool:   pool,
