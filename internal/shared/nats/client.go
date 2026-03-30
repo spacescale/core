@@ -180,3 +180,54 @@ func (c *Client) RequestProto(subject string, req, resp proto.Message, timeout t
 
 	return nil
 }
+
+// Gather broadcasts a request with a private reply inbox and collects all
+// replies received during the timeout window.
+// It flushes the connection prior to publishing to prevent subscription race conditions.
+func (c *Client) Gather(subject string, payload []byte) ([]*Msg, error) {
+	inbox := natsgo.NewInbox()              // Create a temporary, unique burner inbox for this specific gather operation.
+	sub, err := c.conn.SubscribeSync(inbox) // Synchronously subscribe to the burner inbox. No background goroutines.
+	if err != nil {
+		return nil, fmt.Errorf("subscribe inbox %q: %w", inbox, err)
+	}
+	defer sub.Unsubscribe()
+	if err := c.Flush(defaultFlushTimeout); err != nil {
+		return nil, fmt.Errorf("flush inbox %q: %w", inbox, err)
+	}
+
+	if err := c.conn.PublishRequest(subject, inbox, payload); err != nil {
+		return nil, fmt.Errorf("publish request %q: %w", subject, err)
+	}
+
+	replies := make([]*Msg, 0, 4) // prepare empty slice to hold incoming bid
+	deadline := time.Now().Add(defaultGatherTimeout)
+
+	// we use loop to gather the replies
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return replies, nil
+		}
+		// Block and wait for the next message, but ONLY for the remaining time.
+		msg, err := sub.NextMsg(remaining)
+		if err != nil {
+			if errors.Is(err, natsgo.ErrTimeout) {
+				return replies, nil
+			}
+			return nil, fmt.Errorf("collect replies for %q: %w", subject, err)
+		}
+		// We caught a bid! Add it to the pile and loop back.
+		replies = append(replies, msg)
+	}
+}
+
+// GatherProto marshals a Protobuf request, executes a Gather, and returns the
+// raw slice of reply messages for the caller to unmarshal.
+func (c *Client) GatherProto(subject string, req proto.Message) ([]*Msg, error) {
+	payload, err := proto.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshal gather proto for %q: %w", subject, err)
+	}
+
+	return c.Gather(subject, payload)
+}
