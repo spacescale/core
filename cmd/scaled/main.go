@@ -9,7 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	scaled "github.com/spacescale/core/internal/scaled"
+	"github.com/spacescale/core/internal/scaled"
 	"github.com/spacescale/core/internal/shared/config"
 	"github.com/spacescale/core/internal/shared/logger"
 )
