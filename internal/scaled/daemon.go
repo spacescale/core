@@ -1,13 +1,13 @@
+//go:build linux
+
 package scaled
 
 import (
 	"context"
 	"fmt"
 	"log/slog"
-	"runtime"
 
 	"github.com/spacescale/core/internal/scaled/node"
-	"github.com/spacescale/core/internal/scaled/sysinfo"
 	"github.com/spacescale/core/internal/shared/config"
 	"github.com/spacescale/core/internal/shared/nats"
 	"golang.org/x/sync/errgroup"
@@ -37,37 +37,9 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Daemon, 
 }
 
 func (d *Daemon) Run(ctx context.Context) error {
-	bootID, err := sysinfo.ReadBootID()
+	bootID, identity, err := node.Bootstrap(ctx, d.nats, defaultDaemonVersion)
 	if err != nil {
-		return fmt.Errorf("read boot id: %w", err)
-	}
-
-	memory, err := sysinfo.ReadMemoryStats()
-	if err != nil {
-		return fmt.Errorf("read memory stats: %w", err)
-	}
-
-	disk, err := sysinfo.ReadDiskStats("/")
-	if err != nil {
-		return fmt.Errorf("read disk stats: %w", err)
-	}
-
-	bootstrapInfo := node.BootstrapInfo{
-		Version:      defaultDaemonVersion,
-		BootID:       bootID,
-		TotalThreads: uint32(runtime.NumCPU()),
-		TotalRamMb:   memory.TotalMB,
-		TotalDiskMb:  disk.TotalMB,
-	}
-
-	identity, registered, err := node.LoadOrRegisterIdentity(ctx, d.nats, bootstrapInfo)
-	if err != nil {
-		return fmt.Errorf("load or register identity: %w", err)
-	}
-	if registered {
-		d.logger.Info("node identity registered", "component", "scaled", "node_id", identity.NodeID, "region", identity.Region)
-	} else {
-		d.logger.Info("node identity loaded", "component", "scaled", "node_id", identity.NodeID, "region", identity.Region)
+		return err
 	}
 	d.logger.Info("scaled ready", "component", "scaled", "node_id", identity.NodeID, "region", identity.Region)
 
