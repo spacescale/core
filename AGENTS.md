@@ -43,3 +43,11 @@
   environment variables), you must use sqlc bulk operations
 - strict Transaction Teardown: Immediately after tx, err := pool.Begin(ctx), you must defer tx.Rollback(ctx). Postgres
   permanently poisons transactions on the first error; do not attempt to recover a failed transaction.
+
+
+## Architecture
+- optimize for architectural readability and maintainability over speed
+- optimize for the right ay and right design over compromises
+- split domains by concerns and don't create spaghetti code
+- avoid interfaces unless we  come to a  point where we cant avoid but to use it  Only define an interface if a service has multiple concrete implementations. e.g a providers
+- use single responsibility principles for creating files so codebase is easier to reason about
