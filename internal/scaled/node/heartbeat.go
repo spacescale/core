@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/spacescale/core/internal/shared/nats"
-	scalepb "github.com/spacescale/core/internal/shared/pb/v1"
+	"github.com/spacescale/core/internal/shared/pb/v1"
 )
 
 const HeartbeatInterval = 5 * time.Second
@@ -32,7 +32,7 @@ func Heartbeater(ctx context.Context, kv nats.KeyValue, nodeID, bootID string, l
 }
 
 func publishHeartbeat(ctx context.Context, kv nats.KeyValue, key, nodeID, bootID string, seqNo uint64, logger *slog.Logger) {
-	hb := &scalepb.NodeHeartbeat{
+	hb := &pb.NodeHeartbeat{
 		NodeId:         nodeID,
 		SeqNo:          seqNo,
 		BootId:         bootID,

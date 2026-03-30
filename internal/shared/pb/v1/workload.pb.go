@@ -4,7 +4,7 @@
 // 	protoc        v7.34.1
 // source: proto/v1/workload.proto
 
-package scalepb
+package pb
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -372,7 +372,7 @@ const file_proto_v1_workload_proto_rawDesc = "" +
 	"\fTIER_STARTER\x10\x01\x12\x0f\n" +
 	"\vTIER_GROWTH\x10\x02\x12\x0e\n" +
 	"\n" +
-	"TIER_SCALE\x10\x03B:Z8github.com/spacescale/core/internal/shared/pb/v1;scalepbb\x06proto3"
+	"TIER_SCALE\x10\x03B5Z3github.com/spacescale/core/internal/shared/pb/v1;pbb\x06proto3"
 
 var (
 	file_proto_v1_workload_proto_rawDescOnce sync.Once

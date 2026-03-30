@@ -4,7 +4,7 @@
 // 	protoc        v7.34.1
 // source: proto/v1/node.proto
 
-package scalepb
+package pb
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -257,7 +257,7 @@ const file_proto_v1_node_proto_rawDesc = "" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x15\n" +
 	"\x06seq_no\x18\x02 \x01(\x04R\x05seqNo\x12\x17\n" +
 	"\aboot_id\x18\x03 \x01(\tR\x06bootId\x12)\n" +
-	"\x11sent_at_unix_nano\x18\x04 \x01(\x03R\x0esentAtUnixNanoB:Z8github.com/spacescale/core/internal/shared/pb/v1;scalepbb\x06proto3"
+	"\x11sent_at_unix_nano\x18\x04 \x01(\x03R\x0esentAtUnixNanoB5Z3github.com/spacescale/core/internal/shared/pb/v1;pbb\x06proto3"
 
 var (
 	file_proto_v1_node_proto_rawDescOnce sync.Once

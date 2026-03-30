@@ -27,6 +27,8 @@
 //     one Control Plane instance, preventing database write conflicts.
 package nats
 
+import "fmt"
+
 // Subjects , The NAT Routing Addresses
 const (
 	// SubjectNodeBootstrap is used by a new scale daemon to announce its  physical specs to the CP and request a permanent identity.
@@ -38,13 +40,13 @@ const (
 	// SubjectNodeState is fired by the Edge daemon when its operational status changes e.g. from READY TO CORDONED
 	SubjectNodeState = "node.state.changed"
 
-	// SubjectNodeAuction is the regional broadcast frequency. CP publishes to this subject to solicit bids for new MicroVM
+	// subjectNodeAuction is the regional broadcast frequency. CP publishes to this subject to solicit bids for new MicroVM
 	// %s must be formatted with the target region  e,g, us-east
-	SubjectNodeAuction = "node.auction.%s.machine"
+	subjectNodeAuction = "node.auction.%s.machine"
 
-	// SubjectNodeMachineLaunch is the personal inbox for a specific Edge daemon. CP publishes container image and env after a node wins an auction
+	// subjectNodeMachineLaunch is the personal inbox for a specific Edge daemon. CP publishes container image and env after a node wins an auction
 	// The %s must be formatted with the target node's boot_id.
-	SubjectNodeMachineLaunch = "node.cmd.%s.machine.launch"
+	subjectNodeMachineLaunch = "node.cmd.%s.machine.launch"
 )
 
 // QUEUE GROUPS CONTROL PLANE LOAD BALANCING
@@ -59,3 +61,18 @@ const (
 	// QueueNodeState ensures only one CP instance updates the node's status in Postgres.
 	QueueNodeState = "node-state"
 )
+
+// NodeAuctionSubject generates the regional broadcast frequency for placement auctions.
+//
+// Example: "node.auction.us-east.machine"
+func NodeAuctionSubject(region string) string {
+	return fmt.Sprintf(subjectNodeAuction, region)
+}
+
+// NodeMachineLaunchSubject generates the specific inbox for a node to receive
+// its launch commands after winning an auction.
+//
+// Example: "node.cmd.boot-12345.machine.launch"
+func NodeMachineLaunchSubject(bootID string) string {
+	return fmt.Sprintf(subjectNodeMachineLaunch, bootID)
+}

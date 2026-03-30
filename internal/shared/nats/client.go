@@ -1,6 +1,19 @@
+// Package nats provides the unified transport layer for the SpaceScale platform.
+//
+// This client wraps the official NATS Go client to enforce architectural standards
+// across the Control Plane and Edge daemons. It abstracts away raw connection
+// handling, automatic reconnection logging, and Protobuf serialization.
+//
+// Architectural Note:
+// The system relies heavily on two messaging patterns:
+//  1. Fire-and-Forget (Publish): Used for alerts and state changes.
+//  2. Scatter-Gather (PublishRequest + SubscribeSync): Used for the placement
+//     auction, where the Control Plane broadcasts a requirement and collects
+//     multiple bids over a precise time window.
 package nats
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -10,7 +23,12 @@ import (
 )
 
 const (
+	// defaultFlushTimeout is the maximum duration the client will block waiting
+	// for the NATS server to acknowledge pending network operations
 	defaultFlushTimeout = 5 * time.Second
+
+	// defaultGatherTimeout is the strict, hardcoded operational window for all scatter-gather network operations
+	defaultGatherTimeout = 200 * time.Millisecond
 )
 
 // Client wraps a NATS connection with a small API used by Spacescale.

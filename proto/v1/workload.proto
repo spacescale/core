@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package spacescale.v1;
 
-option go_package = "github.com/spacescale/core/internal/shared/pb/v1;scalepb";
+option go_package = "github.com/spacescale/core/internal/shared/pb/v1;pb";
 
 // The abstract service tiers
 enum Tier {
