@@ -41,5 +41,5 @@
   hierarchies and relationships in a single network round-trip.
 - No N+1 Queries in Loops: Never place an INSERT, UPDATE, or SELECT inside a for loop. If inserting multiple rows (like
   environment variables), you must use sqlc bulk operations
-- trict Transaction Teardown: Immediately after tx, err := pool.Begin(ctx), you must defer tx.Rollback(ctx). Postgres
+- strict Transaction Teardown: Immediately after tx, err := pool.Begin(ctx), you must defer tx.Rollback(ctx). Postgres
   permanently poisons transactions on the first error; do not attempt to recover a failed transaction.

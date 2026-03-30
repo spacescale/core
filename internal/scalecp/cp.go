@@ -9,8 +9,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/internal/scalecp/api"
-	"github.com/spacescale/core/internal/scalecp/broker"
 	"github.com/spacescale/core/internal/scalecp/db/sqlc"
+	"github.com/spacescale/core/internal/scalecp/fabric/ingress"
 	"github.com/spacescale/core/internal/scalecp/service"
 	"github.com/spacescale/core/internal/scalecp/service/tenant"
 	"github.com/spacescale/core/internal/shared/config"
@@ -24,7 +24,7 @@ type ControlPlane struct {
 	dbPool   *pgxpool.Pool
 	nats     *nats.Client
 	services *service.Services
-	broker   *broker.NodeBroker
+	ingress  *ingress.BootstrapHandler
 	api      *api.Server
 }
 
@@ -55,7 +55,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*ControlP
 		return nil, fmt.Errorf("nats init failed: %w", err)
 	}
 
-	nodeBroker := broker.NewNodeBroker(services.Node, logger)
+	bootstrapHandler := ingress.NewBootstrapHandler(services.Node, logger)
 	apiServer := api.NewServer(api.ServerDeps{
 		Services: services,
 		DBPool:   dbPool,
@@ -68,14 +68,14 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*ControlP
 		dbPool:   dbPool,
 		nats:     natsClient,
 		services: services,
-		broker:   nodeBroker,
+		ingress:  bootstrapHandler,
 		api:      apiServer,
 	}, nil
 }
 
 func (cp *ControlPlane) Run(ctx context.Context) error {
-	if err := cp.broker.Register(ctx, cp.nats); err != nil {
-		return fmt.Errorf("node broker register failed: %w", err)
+	if err := cp.ingress.Register(ctx, cp.nats); err != nil {
+		return fmt.Errorf("bootstrap ingress register failed: %w", err)
 	}
 
 	g, gCtx := errgroup.WithContext(ctx)
