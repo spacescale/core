@@ -16,6 +16,7 @@
 - Constructors and internal helpers should not panic or re-validate dependencies when wiring is centralized and
   controlled
 - avoid wrapper layers that only re-check already-validated data
+- sub packages have their own orchestrators to make central orchestrators clean the sub orchestrators can log user the logger
 - If a helper is used by both a boundary path and an internal runtime path, keep validation in the boundary-facing path
 
 ## Concurrency and LifeCycles
