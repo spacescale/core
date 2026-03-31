@@ -8,6 +8,7 @@ import (
 	"log/slog"
 
 	"github.com/spacescale/core/internal/scaled/node"
+	"github.com/spacescale/core/internal/scaled/workload"
 	"github.com/spacescale/core/internal/shared/config"
 	"github.com/spacescale/core/internal/shared/nats"
 	"golang.org/x/sync/errgroup"
@@ -37,7 +38,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Daemon, 
 }
 
 func (d *Daemon) Run(ctx context.Context) error {
-	bootID, identity, err := node.Bootstrap(ctx, d.nats, defaultDaemonVersion)
+	snapshot, identity, err := node.Bootstrap(ctx, d.nats, defaultDaemonVersion)
 	if err != nil {
 		return err
 	}
@@ -48,10 +49,15 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return fmt.Errorf("init heartbeat kv: %w", err)
 	}
 
+	manager := workload.NewManager(d.logger, snapshot.TotalRamMb, snapshot.TotalThreads, identity.NodeID, snapshot.BootID, identity.Region)
+	if err := manager.Start(d.nats); err != nil {
+		return fmt.Errorf("start workload manager: %w", err)
+	}
+
 	g, gCtx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		node.Heartbeater(gCtx, heartbeats, identity.NodeID, bootID, d.logger)
+		node.Heartbeater(gCtx, heartbeats, identity.NodeID, snapshot.BootID, d.logger)
 		return nil
 	})
 

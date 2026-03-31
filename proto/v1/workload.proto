@@ -8,7 +8,7 @@ option go_package = "github.com/spacescale/core/internal/shared/pb/v1;pb";
 enum Tier {
   TIER_UNSPECIFIED = 0;
   TIER_STARTER = 1;     // 2 vCPU / 4 GB (Shared)
-  TIER_GROWTH = 2;      // 4 vCPU / 8 GB (Dedicated/Pinned)
+  TIER_GROWTH = 2;      // 4 vCPU / 8 GB (Shared)
   TIER_SCALE = 3;       // 8 vCPU / 16 GB (Dedicated/Pinned)
 }
 

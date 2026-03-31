@@ -17,10 +17,10 @@ const bootstrapRequestTimeout = 5 * time.Second
 
 var ErrInvalidBootstrapResponse = errors.New("invalid node bootstrap response")
 
-func Bootstrap(ctx context.Context, client *nats.Client, version string) (string, Identity, error) {
+func Bootstrap(ctx context.Context, client *nats.Client, version string) (sysinfo.Snapshot, Identity, error) {
 	snapshot, err := sysinfo.Read()
 	if err != nil {
-		return "", Identity{}, err
+		return sysinfo.Snapshot{}, Identity{}, err
 	}
 
 	req := &pb.NodeBootstrapRequest{
@@ -33,10 +33,10 @@ func Bootstrap(ctx context.Context, client *nats.Client, version string) (string
 
 	identity, err := loadOrRegisterIdentity(ctx, client, req)
 	if err != nil {
-		return "", Identity{}, err
+		return sysinfo.Snapshot{}, Identity{}, err
 	}
 
-	return snapshot.BootID, identity, nil
+	return snapshot, identity, nil
 }
 
 func loadOrRegisterIdentity(ctx context.Context, client *nats.Client, req *pb.NodeBootstrapRequest) (Identity, error) {
