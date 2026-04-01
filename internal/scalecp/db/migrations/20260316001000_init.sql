@@ -35,7 +35,6 @@ CREATE TABLE projects
     workspace_id UUID        NOT NULL REFERENCES workspaces (id) ON DELETE CASCADE,
     name         TEXT        NOT NULL CHECK (CHAR_LENGTH(BTRIM(name)) > 0 AND CHAR_LENGTH(name) <= 120),
     slug         TEXT        NOT NULL UNIQUE CHECK (CHAR_LENGTH(slug) BETWEEN 1 AND 63 AND slug ~ '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$'),
-    region       TEXT        NOT NULL CHECK (CHAR_LENGTH(region) BETWEEN 1 AND 32 AND region ~ '^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$'),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -57,6 +56,8 @@ CREATE TABLE apps
     slug         TEXT        NOT NULL,
     subdomain    TEXT        NOT NULL,
     image_ref    TEXT        NOT NULL,
+    tier         TEXT        NOT NULL DEFAULT 'starter',
+    primary_region TEXT      NOT NULL DEFAULT 'us-east',
     runtime_port INT         NOT NULL DEFAULT 8080,
     is_public    BOOLEAN     NOT NULL DEFAULT FALSE,
     status       TEXT        NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'deploying', 'running', 'failed')),
@@ -152,18 +153,35 @@ CREATE TABLE metals (
 -- Index to instantly find a specific server when a provider sends an API webhook/event
 CREATE INDEX metals_provider_server_idx ON metals (provider_id, provider_server_id);
 
--- Durable scaled daemon, and allocation ledger
+-- Durable scaled daemon identity bound to one metal host.
 CREATE TABLE scaled
 (
     id               TEXT PRIMARY KEY CHECK (id = BTRIM(id) AND CHAR_LENGTH(id) BETWEEN 1 AND 255),
     version TEXT NOT NULL, -- running daemon version
-    total_allocated_vms_threads INT NOT NULL DEFAULT 0 CHECK (total_allocated_vms_threads >= 0),
-    total_allocated_vms_ram_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_allocated_vms_ram_mb >= 0),
-    total_allocated_vm_disk_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_allocated_vm_disk_mb >= 0),
     metal_id UUID NOT NULL UNIQUE REFERENCES metals(id) ON DELETE CASCADE,
     created_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW()
 );
+
+
+CREATE TABLE machines
+(
+    id            UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
+    app_id        UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
+    deployment_id UUID        NOT NULL REFERENCES deployments (id) ON DELETE CASCADE,
+    node_id       TEXT                 REFERENCES scaled (id) ON DELETE RESTRICT,
+    region        TEXT        NOT NULL,
+    tier          TEXT        NOT NULL,
+    status        TEXT        NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'assigned', 'starting', 'running', 'stopping', 'destroyed', 'failed')),
+    error_message TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX machines_app_id_idx ON machines (app_id);
+CREATE INDEX machines_deployment_id_idx ON machines (deployment_id);
+CREATE INDEX machines_node_id_idx ON machines (node_id);
+CREATE INDEX machines_region_status_idx ON machines (region, status);
 
 
 CREATE TABLE registry_credentials
@@ -196,6 +214,7 @@ CREATE INDEX app_registry_credentials_registry_idx ON app_registry_credentials (
 -- +goose Down
 DROP TABLE IF EXISTS app_registry_credentials;
 DROP TABLE IF EXISTS app_env_vars;
+DROP TABLE IF EXISTS machines;
 DROP TABLE IF EXISTS scaled;
 DROP TABLE IF EXISTS metals;
 DROP TABLE IF EXISTS providers;

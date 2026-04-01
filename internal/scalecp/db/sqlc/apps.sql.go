@@ -12,19 +12,21 @@ import (
 )
 
 const createApp = `-- name: CreateApp :one
-INSERT INTO apps (project_id, name, slug, subdomain, image_ref, runtime_port, status, is_public, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, 'queued', $7, now(), now())
-RETURNING id, project_id, name, slug, subdomain, image_ref, runtime_port, is_public, status, created_at, updated_at
+INSERT INTO apps (project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, status, is_public, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', $9, now(), now())
+RETURNING id, project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, is_public, status, created_at, updated_at
 `
 
 type CreateAppParams struct {
-	ProjectID   uuid.UUID
-	Name        string
-	Slug        string
-	Subdomain   string
-	ImageRef    string
-	RuntimePort int32
-	IsPublic    bool
+	ProjectID     uuid.UUID
+	Name          string
+	Slug          string
+	Subdomain     string
+	ImageRef      string
+	Tier          string
+	PrimaryRegion string
+	RuntimePort   int32
+	IsPublic      bool
 }
 
 func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, error) {
@@ -34,6 +36,8 @@ func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, erro
 		arg.Slug,
 		arg.Subdomain,
 		arg.ImageRef,
+		arg.Tier,
+		arg.PrimaryRegion,
 		arg.RuntimePort,
 		arg.IsPublic,
 	)
@@ -45,6 +49,8 @@ func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, erro
 		&i.Slug,
 		&i.Subdomain,
 		&i.ImageRef,
+		&i.Tier,
+		&i.PrimaryRegion,
 		&i.RuntimePort,
 		&i.IsPublic,
 		&i.Status,
@@ -54,42 +60,11 @@ func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, erro
 	return i, err
 }
 
-const createAppEnvVar = `-- name: CreateAppEnvVar :exec
-INSERT INTO app_env_vars (app_id, key, value_encrypted, is_secret, created_at, updated_at)
-VALUES ($1, $2, $3, $4, now(), now())
-`
-
-type CreateAppEnvVarParams struct {
+type CreateAppEnvVarsParams struct {
 	AppID          uuid.UUID
 	Key            string
 	ValueEncrypted string
 	IsSecret       bool
-}
-
-func (q *Queries) CreateAppEnvVar(ctx context.Context, arg CreateAppEnvVarParams) error {
-	_, err := q.db.Exec(ctx, createAppEnvVar,
-		arg.AppID,
-		arg.Key,
-		arg.ValueEncrypted,
-		arg.IsSecret,
-	)
-	return err
-}
-
-const createQueuedDeployment = `-- name: CreateQueuedDeployment :exec
-INSERT INTO deployments (app_id, status, image_ref, runtime_port, public_url, created_at, updated_at)
-VALUES ($1, 'queued', $2, $3, NULL, now(), now())
-`
-
-type CreateQueuedDeploymentParams struct {
-	AppID       uuid.UUID
-	ImageRef    string
-	RuntimePort int32
-}
-
-func (q *Queries) CreateQueuedDeployment(ctx context.Context, arg CreateQueuedDeploymentParams) error {
-	_, err := q.db.Exec(ctx, createQueuedDeployment, arg.AppID, arg.ImageRef, arg.RuntimePort)
-	return err
 }
 
 const getRegistryCredentialByIDAndProjectID = `-- name: GetRegistryCredentialByIDAndProjectID :one
@@ -117,6 +92,134 @@ func (q *Queries) GetRegistryCredentialByIDAndProjectID(ctx context.Context, arg
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LastUsed,
+	)
+	return i, err
+}
+
+const listAppsByProjectID = `-- name: ListAppsByProjectID :many
+SELECT id, project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, is_public, status, created_at, updated_at
+FROM apps
+WHERE project_id = $1
+ORDER BY created_at ASC, id ASC
+`
+
+func (q *Queries) ListAppsByProjectID(ctx context.Context, projectID uuid.UUID) ([]App, error) {
+	rows, err := q.db.Query(ctx, listAppsByProjectID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []App
+	for rows.Next() {
+		var i App
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Name,
+			&i.Slug,
+			&i.Subdomain,
+			&i.ImageRef,
+			&i.Tier,
+			&i.PrimaryRegion,
+			&i.RuntimePort,
+			&i.IsPublic,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markAppDeploying = `-- name: MarkAppDeploying :one
+UPDATE apps
+SET status = 'deploying',
+    updated_at = now()
+WHERE id = $1
+RETURNING id, project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, is_public, status, created_at, updated_at
+`
+
+func (q *Queries) MarkAppDeploying(ctx context.Context, id uuid.UUID) (App, error) {
+	row := q.db.QueryRow(ctx, markAppDeploying, id)
+	var i App
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Slug,
+		&i.Subdomain,
+		&i.ImageRef,
+		&i.Tier,
+		&i.PrimaryRegion,
+		&i.RuntimePort,
+		&i.IsPublic,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const markAppFailed = `-- name: MarkAppFailed :one
+UPDATE apps
+SET status = 'failed',
+    updated_at = now()
+WHERE id = $1
+RETURNING id, project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, is_public, status, created_at, updated_at
+`
+
+func (q *Queries) MarkAppFailed(ctx context.Context, id uuid.UUID) (App, error) {
+	row := q.db.QueryRow(ctx, markAppFailed, id)
+	var i App
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Slug,
+		&i.Subdomain,
+		&i.ImageRef,
+		&i.Tier,
+		&i.PrimaryRegion,
+		&i.RuntimePort,
+		&i.IsPublic,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const markAppRunning = `-- name: MarkAppRunning :one
+UPDATE apps
+SET status = 'running',
+    updated_at = now()
+WHERE id = $1
+RETURNING id, project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, is_public, status, created_at, updated_at
+`
+
+func (q *Queries) MarkAppRunning(ctx context.Context, id uuid.UUID) (App, error) {
+	row := q.db.QueryRow(ctx, markAppRunning, id)
+	var i App
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Slug,
+		&i.Subdomain,
+		&i.ImageRef,
+		&i.Tier,
+		&i.PrimaryRegion,
+		&i.RuntimePort,
+		&i.IsPublic,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

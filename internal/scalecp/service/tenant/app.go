@@ -25,9 +25,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/internal/scalecp/db/sqlc"
+	pb "github.com/spacescale/core/internal/shared/pb/v1"
 )
 
 const (
+	appPrimaryRegionMaxLen = 32
 	defaultAppRuntimePort  = 8080 // fallback when create input omits runtime port.
 	appNameMaxChars        = 63   // maximum app display-name length.
 	appImageRefMaxChars    = 1024 // maximum accepted image reference length.
@@ -38,17 +40,30 @@ const (
 
 // App is the service-layer model returned to HTTP handlers.
 type App struct {
-	ID          string    // app UUID as string.
-	ProjectID   string    // owning project UUID as string.
-	Name        string    // user-facing app name.
-	Slug        string    // URL-safe app identifier.
-	Subdomain   string    // DNS label used for routing.
-	ImageRef    string    // OCI image reference used for deployment.
-	RuntimePort int32     // container port exposed by the app.
-	Status      string    // app lifecycle state.
-	IsPublic    bool      // whether public ingress is enabled.
-	CreatedAt   time.Time // record creation timestamp.
-	UpdatedAt   time.Time // record last-update timestamp.
+	ID            string    // app UUID as string.
+	ProjectID     string    // owning project UUID as string.
+	Name          string    // user-facing app name.
+	Slug          string    // URL-safe app identifier.
+	Subdomain     string    // DNS label used for routing.
+	ImageRef      string    // OCI image reference used for deployment.
+	Tier          string    // requested compute tier.
+	PrimaryRegion string    // requested home region.
+	RuntimePort   int32     // container port exposed by the app.
+	Status        string    // app lifecycle state.
+	IsPublic      bool      // whether public ingress is enabled.
+	CreatedAt     time.Time // record creation timestamp.
+	UpdatedAt     time.Time // record last-update timestamp.
+}
+
+type CreateAppResult struct {
+	App          App
+	AppID        uuid.UUID
+	DeploymentID uuid.UUID
+	MachineID    uuid.UUID
+	Region       string
+	Tier         pb.Tier
+	ImageRef     string
+	Env          map[string]string
 }
 
 // AppEnvVarInput defines one env var in create requests.
@@ -62,6 +77,8 @@ type AppEnvVarInput struct {
 type CreateAppParams struct {
 	Name                 string           // optional; derived from ImageRef when empty.
 	ImageRef             string           // required OCI image reference.
+	Tier                 string           // required compute tier.
+	PrimaryRegion        string           // required placement region.
 	RuntimePort          *int             // optional; nil uses defaultAppRuntimePort.
 	IsPublic             *bool            // optional; nil defaults to false.
 	RegistryCredentialID string           // optional; must belong to same project.
@@ -77,15 +94,6 @@ type AppService struct {
 
 // NewAppService constructs an AppService with shared query and crypto deps.
 func NewAppService(queries *sqlc.Queries, pool *pgxpool.Pool, envCipher *EnvValueCipher) *AppService {
-	if queries == nil {
-		panic("service.NewAppService requires non-nil queries")
-	}
-	if pool == nil {
-		panic("service.NewAppService requires non-nil db pool")
-	}
-	if envCipher == nil {
-		panic("service.NewAppService requires non-nil env cipher")
-	}
 	return &AppService{queries: queries, pool: pool, envCipher: envCipher}
 }
 
@@ -97,37 +105,51 @@ func NewAppService(queries *sqlc.Queries, pool *pgxpool.Pool, envCipher *EnvValu
 // - initial queued deployment row
 // - optional app<->registry association
 // - optional env var rows (encrypted values)
-func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, projectID string, p CreateAppParams) (App, error) {
+func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, projectID string, p CreateAppParams) (CreateAppResult, error) {
 	projectUUID, err := s.authorizeOwnedProject(ctx, ownerUserID, workspaceID, projectID)
 	if err != nil {
-		return App{}, err
+		return CreateAppResult{}, err
 	}
 
 	imageRef, ok := normalizeImageRef(p.ImageRef)
 	if !ok {
-		return App{}, ErrInvalidInput
+		return CreateAppResult{}, ErrInvalidInput
+	}
+	tier, ok := normalizeAppTier(p.Tier)
+	if !ok {
+		return CreateAppResult{}, ErrInvalidInput
+	}
+	tierProto := appTierProto(tier)
+
+	primaryRegion, ok := normalizeAppPrimaryRegion(p.PrimaryRegion)
+	if !ok {
+		return CreateAppResult{}, ErrInvalidInput
 	}
 	name, ok := normalizeOrDeriveAppName(p.Name, imageRef)
 	if !ok {
-		return App{}, ErrInvalidInput
+		return CreateAppResult{}, ErrInvalidInput
 	}
 	runtimePort, ok := normalizeRuntimePort(p.RuntimePort)
 	if !ok {
-		return App{}, ErrInvalidInput
+		return CreateAppResult{}, ErrInvalidInput
 	}
 	isPublic := normalizeIsPublic(p.IsPublic)
 	envVars, ok := normalizeEnvVars(p.EnvVars)
 	if !ok {
-		return App{}, ErrInvalidInput
+		return CreateAppResult{}, ErrInvalidInput
+	}
+	envMap := make(map[string]string, len(envVars))
+	for _, env := range envVars {
+		envMap[env.Key] = env.Value
 	}
 	registryCredentialID, hasRegistryCredential, err := s.resolveRegistryCredential(ctx, projectUUID, p.RegistryCredentialID)
 	if err != nil {
-		return App{}, err
+		return CreateAppResult{}, err
 	}
 
 	baseSlug := slugifyProjectName(name)
 	if baseSlug == "" {
-		return App{}, ErrInvalidInput
+		return CreateAppResult{}, ErrInvalidInput
 	}
 
 	// Retry only on slug/subdomain uniqueness conflicts. Each attempt must use a
@@ -137,41 +159,55 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 		if i > 0 {
 			suffix, suffixErr := randomSuffix(suffixLength)
 			if suffixErr != nil {
-				return App{}, suffixErr
+				return CreateAppResult{}, suffixErr
 			}
 			slug = slugWithSuffix(baseSlug, suffix)
 		}
 
 		tx, beginErr := s.pool.Begin(ctx)
 		if beginErr != nil {
-			return App{}, beginErr
+			return CreateAppResult{}, beginErr
 		}
 		txQueries := s.queries.WithTx(tx)
 
 		row, createErr := txQueries.CreateApp(ctx, sqlc.CreateAppParams{
-			ProjectID:   projectUUID,
-			Name:        name,
-			Slug:        slug,
-			Subdomain:   slug,
-			ImageRef:    imageRef,
-			RuntimePort: runtimePort,
-			IsPublic:    isPublic,
+			ProjectID:     projectUUID,
+			Name:          name,
+			Slug:          slug,
+			Subdomain:     slug,
+			ImageRef:      imageRef,
+			Tier:          tier,
+			PrimaryRegion: primaryRegion,
+			RuntimePort:   runtimePort,
+			IsPublic:      isPublic,
 		})
 		if createErr != nil {
 			_ = tx.Rollback(ctx)
 			if isUniqueViolation(createErr) {
 				continue
 			}
-			return App{}, createErr
+			return CreateAppResult{}, createErr
 		}
 
-		if err := txQueries.CreateQueuedDeployment(ctx, sqlc.CreateQueuedDeploymentParams{
+		deployment, err := txQueries.CreateQueuedDeployment(ctx, sqlc.CreateQueuedDeploymentParams{
 			AppID:       row.ID,
 			ImageRef:    imageRef,
 			RuntimePort: runtimePort,
-		}); err != nil {
+		})
+		if err != nil {
 			_ = tx.Rollback(ctx)
-			return App{}, err
+			return CreateAppResult{}, err
+		}
+
+		machine, err := txQueries.CreateQueuedMachine(ctx, sqlc.CreateQueuedMachineParams{
+			AppID:        row.ID,
+			DeploymentID: deployment.ID,
+			Region:       row.PrimaryRegion,
+			Tier:         row.Tier,
+		})
+		if err != nil {
+			_ = tx.Rollback(ctx)
+			return CreateAppResult{}, err
 		}
 
 		if hasRegistryCredential {
@@ -180,10 +216,11 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 				RegistryCredentialID: registryCredentialID,
 			}); err != nil {
 				_ = tx.Rollback(ctx)
-				return App{}, err
+				return CreateAppResult{}, err
 			}
 		}
 
+		bulkEnvVars := make([]sqlc.CreateAppEnvVarsParams, 0, len(envVars))
 		for _, env := range envVars {
 			valueEncrypted, encErr := s.envCipher.EncryptForStorage(env.Value, EnvValueRowContext{
 				AppID: row.ID,
@@ -191,30 +228,62 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 			})
 			if encErr != nil {
 				_ = tx.Rollback(ctx)
-				return App{}, encErr
+				return CreateAppResult{}, encErr
 			}
-			if err := txQueries.CreateAppEnvVar(ctx, sqlc.CreateAppEnvVarParams{
+			bulkEnvVars = append(bulkEnvVars, sqlc.CreateAppEnvVarsParams{
 				AppID:          row.ID,
 				Key:            env.Key,
 				ValueEncrypted: valueEncrypted,
 				IsSecret:       env.IsSecret,
-			}); err != nil {
+			})
+		}
+
+		if len(bulkEnvVars) > 0 {
+			if _, err := txQueries.CreateAppEnvVars(ctx, bulkEnvVars); err != nil {
 				_ = tx.Rollback(ctx)
 				if isUniqueViolation(err) {
-					return App{}, ErrConflict
+					return CreateAppResult{}, ErrConflict
 				}
-				return App{}, err
+				return CreateAppResult{}, err
 			}
 		}
 
 		if err := tx.Commit(ctx); err != nil {
-			return App{}, err
+			return CreateAppResult{}, err
 		}
 
-		return appFromRow(row), nil
+		return CreateAppResult{
+			App:          appFromRow(row),
+			AppID:        row.ID,
+			DeploymentID: deployment.ID,
+			MachineID:    machine.ID,
+			Region:       row.PrimaryRegion,
+			Tier:         tierProto,
+			ImageRef:     imageRef,
+			Env:          envMap,
+		}, nil
 	}
 
-	return App{}, ErrConflict
+	return CreateAppResult{}, ErrConflict
+}
+
+func (s *AppService) ListApps(ctx context.Context, ownerUserID, workspaceID, projectID string) ([]App, error) {
+	projectUUID, err := s.authorizeOwnedProject(ctx, ownerUserID, workspaceID, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.queries.ListAppsByProjectID(ctx, projectUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]App, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, appFromRow(row))
+	}
+
+	return out, nil
 }
 
 // authorizeOwnedProject verifies that the owner can access the workspace and
@@ -233,8 +302,9 @@ func (s *AppService) authorizeOwnedProject(ctx context.Context, ownerUserID, wor
 		return uuid.Nil, ErrInvalidInput
 	}
 
-	_, err := s.queries.GetWorkspaceByIDAndOwnerUserID(ctx, sqlc.GetWorkspaceByIDAndOwnerUserIDParams{
-		ID:          workspaceUUID,
+	_, err := s.queries.CheckProjectOwnership(ctx, sqlc.CheckProjectOwnershipParams{
+		ProjectID:   projectUUID,
+		WorkspaceID: workspaceUUID,
 		OwnerUserID: ownerUUID,
 	})
 	if err != nil {
@@ -242,20 +312,6 @@ func (s *AppService) authorizeOwnedProject(ctx context.Context, ownerUserID, wor
 			return uuid.Nil, ErrUnauthorized
 		}
 		return uuid.Nil, err
-	}
-
-	projectRow, err := s.queries.GetProjectByIDAndOwnerUserID(ctx, sqlc.GetProjectByIDAndOwnerUserIDParams{
-		ID:          projectUUID,
-		OwnerUserID: ownerUUID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return uuid.Nil, ErrUnauthorized
-		}
-		return uuid.Nil, err
-	}
-	if projectRow.WorkspaceID != workspaceUUID {
-		return uuid.Nil, ErrUnauthorized
 	}
 
 	return projectUUID, nil
@@ -264,12 +320,11 @@ func (s *AppService) authorizeOwnedProject(ctx context.Context, ownerUserID, wor
 // resolveRegistryCredential validates an optional registry credential id and
 // enforces project ownership for that credential.
 func (s *AppService) resolveRegistryCredential(ctx context.Context, projectID uuid.UUID, rawCredentialID string) (uuid.UUID, bool, error) {
-	trimmed := strings.TrimSpace(rawCredentialID)
-	if trimmed == "" {
+	if rawCredentialID == "" {
 		return uuid.Nil, false, nil
 	}
 
-	credentialID, ok := parseUUID(trimmed)
+	credentialID, ok := parseUUID(rawCredentialID)
 	if !ok {
 		return uuid.Nil, false, ErrInvalidInput
 	}
@@ -300,6 +355,49 @@ func normalizeImageRef(raw string) (string, bool) {
 	return ref, true
 }
 
+func normalizeAppTier(raw string) (string, bool) {
+	tier := strings.ToLower(strings.TrimSpace(raw))
+	switch tier {
+	case "starter", "growth", "scale":
+		return tier, true
+	default:
+		return "", false
+	}
+}
+
+func appTierProto(tier string) pb.Tier {
+	switch tier {
+	case "starter":
+		return pb.Tier_TIER_STARTER
+	case "growth":
+		return pb.Tier_TIER_GROWTH
+	case "scale":
+		return pb.Tier_TIER_SCALE
+	default:
+		return pb.Tier_TIER_UNSPECIFIED
+	}
+}
+
+func normalizeAppPrimaryRegion(raw string) (string, bool) {
+	region := strings.ToLower(strings.TrimSpace(raw))
+	if region == "" || len(region) > appPrimaryRegionMaxLen {
+		return "", false
+	}
+	if region[0] == '-' || region[len(region)-1] == '-' {
+		return "", false
+	}
+	for i := 0; i < len(region); i++ {
+		ch := region[i]
+		if ch == '-' {
+			continue
+		}
+		if !isASCIIAlphaNum(ch) {
+			return "", false
+		}
+	}
+	return region, true
+}
+
 // normalizeOrDeriveAppName returns a validated app name.
 func normalizeOrDeriveAppName(rawName, imageRef string) (string, bool) {
 	name := strings.TrimSpace(rawName)
@@ -319,12 +417,7 @@ func normalizeOrDeriveAppName(rawName, imageRef string) (string, bool) {
 // deriveAppNameFromImageRef extracts a display name candidate from an image
 // reference by dropping optional digest and tag components.
 func deriveAppNameFromImageRef(imageRef string) (string, bool) {
-	ref := strings.TrimSpace(imageRef)
-	if ref == "" {
-		return "", false
-	}
-
-	withoutDigest := ref
+	withoutDigest := imageRef
 	if at := strings.IndexByte(withoutDigest, '@'); at >= 0 {
 		withoutDigest = withoutDigest[:at]
 	}
@@ -341,8 +434,7 @@ func deriveAppNameFromImageRef(imageRef string) (string, bool) {
 		lastSegment = lastSegment[:colon]
 	}
 
-	name := strings.TrimSpace(lastSegment)
-	return name, name != ""
+	return lastSegment, lastSegment != ""
 }
 
 // normalizeRuntimePort returns a validated runtime port.
@@ -430,16 +522,18 @@ func isASCIIDigit(ch byte) bool {
 // appFromRow maps a SQLC app row into the service App model.
 func appFromRow(r sqlc.App) App {
 	return App{
-		ID:          r.ID.String(),
-		ProjectID:   r.ProjectID.String(),
-		Name:        r.Name,
-		Slug:        r.Slug,
-		Subdomain:   r.Subdomain,
-		ImageRef:    r.ImageRef,
-		RuntimePort: r.RuntimePort,
-		Status:      r.Status,
-		IsPublic:    r.IsPublic,
-		CreatedAt:   r.CreatedAt,
-		UpdatedAt:   r.UpdatedAt,
+		ID:            r.ID.String(),
+		ProjectID:     r.ProjectID.String(),
+		Name:          r.Name,
+		Slug:          r.Slug,
+		Subdomain:     r.Subdomain,
+		ImageRef:      r.ImageRef,
+		Tier:          r.Tier,
+		PrimaryRegion: r.PrimaryRegion,
+		RuntimePort:   r.RuntimePort,
+		Status:        r.Status,
+		IsPublic:      r.IsPublic,
+		CreatedAt:     r.CreatedAt,
+		UpdatedAt:     r.UpdatedAt,
 	}
 }

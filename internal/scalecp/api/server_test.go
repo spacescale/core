@@ -17,7 +17,6 @@ import (
 	"github.com/spacescale/core/internal/scalecp/api"
 	"github.com/spacescale/core/internal/scalecp/db/sqlc"
 	"github.com/spacescale/core/internal/scalecp/service"
-	"github.com/spacescale/core/internal/scalecp/service/tenant"
 	"github.com/spacescale/core/internal/shared/config"
 	"github.com/stretchr/testify/require"
 )
@@ -50,27 +49,29 @@ func newTestServer(t *testing.T) *testServer {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	pool, err := pgxpool.New(ctx, url)
-	if err != nil {
-		t.Fatalf("connect db: %v", err)
-	}
+	require.NoError(t, err)
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		t.Fatalf("ping db: %v", err)
+		require.NoError(t, err)
 	}
 
 	authCfg := config.AuthConfig{JWTSecret: testJWTSecret, Issuer: testIssuer, Audience: testAudience}
 	if err := authCfg.Validate(); err != nil {
 		pool.Close()
-		t.Fatalf("auth config: %v", err)
+		require.NoError(t, err)
 	}
 
 	queries := sqlc.New(pool)
-	envCipher, err := tenant.NewEnvValueCipher(testEnvEncryptionKeyID, []byte(testEnvEncryptionKey))
+	svcs, err := service.NewServices(service.Deps{
+		Queries:            queries,
+		DBPool:             pool,
+		EnvEncryptionKeyID: testEnvEncryptionKeyID,
+		EnvEncryptionKey:   []byte(testEnvEncryptionKey),
+	})
 	if err != nil {
 		pool.Close()
-		t.Fatalf("env cipher: %v", err)
+		require.NoError(t, err)
 	}
-	svcs := service.NewServices(queries, pool, envCipher)
 	server := api.NewServer(api.ServerDeps{
 		Services: svcs,
 		DBPool:   pool,
@@ -81,24 +82,6 @@ func newTestServer(t *testing.T) *testServer {
 	})
 
 	return &testServer{server: httptest.NewServer(server.Router()), pool: pool}
-}
-
-func TestNewServerRequiresNonEmptyInternalSecret(t *testing.T) {
-	require.PanicsWithValue(t, "http_api.NewServer requires non-empty internal auth secret", func() {
-		api.NewServer(api.ServerDeps{
-			Services: &service.Services{
-				Tenant: service.TenantServices{
-					Projects:   &tenant.ProjectService{},
-					Users:      &tenant.UserService{},
-					Workspaces: &tenant.WorkspaceService{},
-					Bootstrap:  &tenant.BootstrapService{},
-					Apps:       &tenant.AppService{},
-				},
-			},
-			DBPool: &pgxpool.Pool{},
-			Config: config.Config{InternalAuthSecret: "   "},
-		})
-	})
 }
 
 func TestInternalAuthSyncHeaderValidation(t *testing.T) {
@@ -187,21 +170,15 @@ func (ts *testServer) close() {
 func doRequest(t *testing.T, ts *testServer, method, path string, body []byte, headers map[string]string) (*http.Response, []byte) {
 	t.Helper()
 	req, err := http.NewRequest(method, ts.server.URL+path, bytes.NewReader(body))
-	if err != nil {
-		t.Fatalf("new request: %v", err)
-	}
+	require.NoError(t, err)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("do request: %v", err)
-	}
+	require.NoError(t, err)
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read body: %v", err)
-	}
+	require.NoError(t, err)
 	return resp, data
 }
 
@@ -218,9 +195,7 @@ func authHeaderForIdentityKey(t *testing.T, identityKey string) string {
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	raw, err := token.SignedString([]byte(testJWTSecret))
-	if err != nil {
-		t.Fatalf("sign auth token: %v", err)
-	}
+	require.NoError(t, err)
 	return "Bearer " + raw
 }
 

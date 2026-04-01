@@ -12,23 +12,47 @@ parentId: null
 variables:
   - enabled: true
     name: BASE_URL
-    value: localhost:8080
+    value: '127.0.0.1:8080'
     id: n9Au9fRs4f
   - enabled: true
     name: BFF_TOKEN
-    value: replace-with-bff-token
+    value: 'run make yaak-refresh'
     id: authToken
   - enabled: true
     name: INTERNAL_AUTH_SYNC_SECRET
-    value: replace-with-internal-auth-sync-secret
+    value: 'run make yaak-refresh'
     id: internalAuthSyncSecret
   - enabled: true
+    name: IDENTITY_KEY
+    value: 'run make yaak-refresh'
+    id: identityKey
+  - enabled: true
+    name: USER_EMAIL
+    value: 'run make yaak-refresh'
+    id: userEmail
+  - enabled: true
+    name: USER_NAME
+    value: 'run make yaak-refresh'
+    id: userName
+  - enabled: true
+    name: AVATAR_URL
+    value: 'run make yaak-refresh'
+    id: avatarUrl
+  - enabled: true
     name: WORKSPACE_ID
-    value: 2c6090ff-1b39-483b-beb3-29afc7bba0ae
+    value: 'run make yaak-refresh'
     id: workspaceId
   - enabled: true
     name: PROJECT_ID
-    value: replace-with-project-id
+    value: 'run make yaak-refresh'
     id: projectId
+  - enabled: true
+    name: PRIMARY_REGION
+    value: 'eu-central'
+    id: primaryRegion
+  - enabled: true
+    name: APP_TIER
+    value: 'starter'
+    id: appTier
 color: var(--primary)
 sortPriority: 0.0

@@ -83,32 +83,35 @@ func (c Config) ListenAddr() string {
 	return ":" + port
 }
 
-func (c Config) ValidateScalecp() error {
+func (c Config) ValidateScalecp() (Config, error) {
 	c = c.Normalized()
 	if c.DatabaseURL == "" {
-		return errors.New("missing required config DATABASE_URL")
+		return Config{}, errors.New("missing required config DATABASE_URL")
 	}
 	if strings.TrimSpace(c.Auth.JWTSecret) == "" {
-		return errors.New("missing required config BFF_JWT_SECRET")
+		return Config{}, errors.New("missing required config BFF_JWT_SECRET")
 	}
 	if c.InternalAuthSecret == "" {
-		return errors.New("missing required config INTERNAL_AUTH_SYNC_SECRET")
+		return Config{}, errors.New("missing required config INTERNAL_AUTH_SYNC_SECRET")
 	}
 	if c.EnvEncryptionKeyID == "" {
-		return errors.New("missing required config API_ENV_ENCRYPTION_KEY_ID")
+		return Config{}, errors.New("missing required config API_ENV_ENCRYPTION_KEY_ID")
 	}
 	if len(c.EnvEncryptionKey) == 0 {
-		return errors.New("missing required config API_ENV_ENCRYPTION_KEY")
+		return Config{}, errors.New("missing required config API_ENV_ENCRYPTION_KEY")
 	}
-	return c.Auth.Validate()
+	if err := c.Auth.Validate(); err != nil {
+		return Config{}, err
+	}
+	return c, nil
 }
 
-func (c Config) ValidateScaled() error {
+func (c Config) ValidateScaled() (Config, error) {
 	c = c.Normalized()
 	if c.NATSURL == "" {
-		return errors.New("missing required config NATS_URL")
+		return Config{}, errors.New("missing required config NATS_URL")
 	}
-	return nil
+	return c, nil
 }
 
 func (c AuthConfig) Normalized() AuthConfig {

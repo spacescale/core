@@ -1,6 +1,6 @@
 -- name: CreateProject :one
-INSERT INTO projects (workspace_id, name, slug, region, created_at, updated_at)
-VALUES ($1, $2, $3, $4, now(), now()) RETURNING *;
+INSERT INTO projects (workspace_id, name, slug, created_at, updated_at)
+VALUES ($1, $2, $3, now(), now()) RETURNING *;
 
 
 -- name: ListProjectsByWorkspaceIDAndOwnerUserID :many
@@ -28,6 +28,15 @@ WHERE p.id = $1
   AND w.owner_user_id = $2;
 
 
+-- name: CheckProjectOwnership :one
+SELECT p.id
+FROM projects AS p
+         JOIN workspaces AS w ON w.id = p.workspace_id
+WHERE p.id = sqlc.arg(project_id)::uuid
+  AND w.id = sqlc.arg(workspace_id)::uuid
+  AND w.owner_user_id = sqlc.arg(owner_user_id)::uuid;
+
+
 -- name: GetProjectBySlug :one
 SELECT *
 FROM projects
@@ -36,7 +45,6 @@ WHERE slug = $1;
 -- name: UpdateProjectByIDAndOwnerUserID :one
 UPDATE projects AS p
 SET name       = $3,
-    region     = $4,
     updated_at = now() FROM workspaces AS w
 WHERE p.workspace_id = w.id
   AND p.id = $1

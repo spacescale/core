@@ -1,8 +1,8 @@
 type: http_request
 model: http_request
 id: rq_G6mQv9yRt2
-createdAt: 2026-02-25T01:20:00.000000
-updatedAt: 2026-02-25T01:20:00.000000
+createdAt: 2026-02-25T01:20:00
+updatedAt: 2026-04-01T22:39:40.298469
 workspaceId: wk_KJF6oyHis3
 folderId: null
 authentication: {}
@@ -35,11 +35,11 @@ description: |-
   - empty response body
 
   ### Notes
-  - this route is outside `/v0` and does not require bearer auth
-  - use this first when debugging local startup (`make run`)
+  - this route is outside `/v1` and does not require bearer auth
+  - use this first when debugging local startup (`make cp`)
 headers: []
 method: GET
 name: Health Check
-sortPriority: 0.0
+sortPriority: 1000.0
 url: http://${[ BASE_URL ]}/healthz
 urlParameters: []

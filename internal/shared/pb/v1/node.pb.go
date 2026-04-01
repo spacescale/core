@@ -4,7 +4,7 @@
 // 	protoc        v7.34.1
 // source: proto/v1/node.proto
 
-package scalepb
+package pb
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -28,8 +28,8 @@ type NodeBootstrapRequest struct {
 	BootstrapToken string                 `protobuf:"bytes,1,opt,name=bootstrap_token,json=bootstrapToken,proto3" json:"bootstrap_token,omitempty"` // one time bootstrap secret baked onto the host
 	Version        string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`                                     // daemon version
 	BootId         string                 `protobuf:"bytes,3,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`                         // boot id to stores ths initial also, if system boots it changes
-	TotalThreads   uint32                 `protobuf:"varint,4,opt,name=total_threads,json=totalThreads,proto3" json:"total_threads,omitempty"`      // e.g. 96 From /proc/cpuinfo
-	TotalRamMb     uint64                 `protobuf:"varint,5,opt,name=total_ram_mb,json=totalRamMb,proto3" json:"total_ram_mb,omitempty"`          // e.g. 262144 From /proc/meminfo
+	TotalThreads   uint32                 `protobuf:"varint,4,opt,name=total_threads,json=totalThreads,proto3" json:"total_threads,omitempty"`      //  96 From /proc/cpuinfo
+	TotalRamMb     uint64                 `protobuf:"varint,5,opt,name=total_ram_mb,json=totalRamMb,proto3" json:"total_ram_mb,omitempty"`          // 262144 From /proc/meminfo
 	TotalDiskMb    uint64                 `protobuf:"varint,6,opt,name=total_disk_mb,json=totalDiskMb,proto3" json:"total_disk_mb,omitempty"`       // Total NVMe space
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -169,30 +169,13 @@ func (x *NodeBootstrapResponse) GetError() string {
 }
 
 type NodeHeartbeat struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// --- IDENTITY & SEQUENCING ---
-	NodeId              string `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`                                           // Primary key; maps this pulse to the Postgres inventory.
-	SeqNo               uint64 `protobuf:"varint,2,opt,name=seq_no,json=seqNo,proto3" json:"seq_no,omitempty"`                                             // Gap detection; if 10 follows 8, you lost a packet.
-	BootId              string `protobuf:"bytes,3,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`                                           // if changed without purposeful restart, its probably dead
-	SentAtUnixNano      int64  `protobuf:"varint,4,opt,name=sent_at_unix_nano,json=sentAtUnixNano,proto3" json:"sent_at_unix_nano,omitempty"`              // Staleness check; discards heartbeats delayed by network jitter.
-	Region              string `protobuf:"bytes,5,opt,name=region,proto3" json:"region,omitempty"`                                                         // Assigned control plane region; keeps scheduling decisions in KV fast.
-	SharedVcpuAvailable uint32 `protobuf:"varint,6,opt,name=shared_vcpu_available,json=sharedVcpuAvailable,proto3" json:"shared_vcpu_available,omitempty"` // Starter tier capacity; tracks over-provisioned slots.
-	PinnedCpusFree      uint32 `protobuf:"varint,7,opt,name=pinned_cpus_free,json=pinnedCpusFree,proto3" json:"pinned_cpus_free,omitempty"`                // Growth/Scale capacity; ensures dedicated performance.
-	AllocatableMemMb    uint64 `protobuf:"varint,8,opt,name=allocatable_mem_mb,json=allocatableMemMb,proto3" json:"allocatable_mem_mb,omitempty"`          // Policy-aware RAM; the "True North" for scheduling room.
-	AllocatableDiskMb   uint64 `protobuf:"varint,9,opt,name=allocatable_disk_mb,json=allocatableDiskMb,proto3" json:"allocatable_disk_mb,omitempty"`       // Local SSD budget; prevents "Disk Full" deployment failures.
-	ActiveVms           uint32 `protobuf:"varint,10,opt,name=active_vms,json=activeVms,proto3" json:"active_vms,omitempty"`                                // Zombie detection; verifies physical reality vs DB records.
-	// --- HEALTH & CONTENTION  ---
-	CpuPsiSome_10S    float64 `protobuf:"fixed64,11,opt,name=cpu_psi_some_10s,json=cpuPsiSome10s,proto3" json:"cpu_psi_some_10s,omitempty"`            // The "Suffering" metric; skips nodes where CPU is stalling.
-	IoPsiSome_10S     float64 `protobuf:"fixed64,12,opt,name=io_psi_some_10s,json=ioPsiSome10s,proto3" json:"io_psi_some_10s,omitempty"`               // The "NVMe Watcher"; detects failing drives or I/O abuse.
-	CpuTempMaxC       float32 `protobuf:"fixed32,13,opt,name=cpu_temp_max_c,json=cpuTempMaxC,proto3" json:"cpu_temp_max_c,omitempty"`                  // Thermal safety; prevents scheduling on melting hardware.
-	OomKillsSinceBoot uint32  `protobuf:"varint,14,opt,name=oom_kills_since_boot,json=oomKillsSinceBoot,proto3" json:"oom_kills_since_boot,omitempty"` // Stability audit; increments mean the node is leaking or unstable.
-	// --- INTENT & CONNECTIVITY ---
-	Status            string `protobuf:"bytes,15,opt,name=status,proto3" json:"status,omitempty"`                                                   // one of ready, draining, offline, cordoned, overheated
-	StatusReason      string `protobuf:"bytes,16,opt,name=status_reason,json=statusReason,proto3" json:"status_reason,omitempty"`                   // Only populated when status != ready
-	NetworkOk         bool   `protobuf:"varint,17,opt,name=network_ok,json=networkOk,proto3" json:"network_ok,omitempty"`                           // External reachability; node is useless if it's islanded.
-	NetUtilizationPct uint32 `protobuf:"varint,18,opt,name=net_utilization_pct,json=netUtilizationPct,proto3" json:"net_utilization_pct,omitempty"` // recent max TX or RX utilization percent of known link capacity
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	NodeId         string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`                              // Who am I?
+	SeqNo          uint64                 `protobuf:"varint,2,opt,name=seq_no,json=seqNo,proto3" json:"seq_no,omitempty"`                                // Am I dropping packets?
+	BootId         string                 `protobuf:"bytes,3,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`                              // Did I suddenly reboot?
+	SentAtUnixNano int64                  `protobuf:"varint,4,opt,name=sent_at_unix_nano,json=sentAtUnixNano,proto3" json:"sent_at_unix_nano,omitempty"` // Is there network lag?
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *NodeHeartbeat) Reset() {
@@ -253,104 +236,6 @@ func (x *NodeHeartbeat) GetSentAtUnixNano() int64 {
 	return 0
 }
 
-func (x *NodeHeartbeat) GetRegion() string {
-	if x != nil {
-		return x.Region
-	}
-	return ""
-}
-
-func (x *NodeHeartbeat) GetSharedVcpuAvailable() uint32 {
-	if x != nil {
-		return x.SharedVcpuAvailable
-	}
-	return 0
-}
-
-func (x *NodeHeartbeat) GetPinnedCpusFree() uint32 {
-	if x != nil {
-		return x.PinnedCpusFree
-	}
-	return 0
-}
-
-func (x *NodeHeartbeat) GetAllocatableMemMb() uint64 {
-	if x != nil {
-		return x.AllocatableMemMb
-	}
-	return 0
-}
-
-func (x *NodeHeartbeat) GetAllocatableDiskMb() uint64 {
-	if x != nil {
-		return x.AllocatableDiskMb
-	}
-	return 0
-}
-
-func (x *NodeHeartbeat) GetActiveVms() uint32 {
-	if x != nil {
-		return x.ActiveVms
-	}
-	return 0
-}
-
-func (x *NodeHeartbeat) GetCpuPsiSome_10S() float64 {
-	if x != nil {
-		return x.CpuPsiSome_10S
-	}
-	return 0
-}
-
-func (x *NodeHeartbeat) GetIoPsiSome_10S() float64 {
-	if x != nil {
-		return x.IoPsiSome_10S
-	}
-	return 0
-}
-
-func (x *NodeHeartbeat) GetCpuTempMaxC() float32 {
-	if x != nil {
-		return x.CpuTempMaxC
-	}
-	return 0
-}
-
-func (x *NodeHeartbeat) GetOomKillsSinceBoot() uint32 {
-	if x != nil {
-		return x.OomKillsSinceBoot
-	}
-	return 0
-}
-
-func (x *NodeHeartbeat) GetStatus() string {
-	if x != nil {
-		return x.Status
-	}
-	return ""
-}
-
-func (x *NodeHeartbeat) GetStatusReason() string {
-	if x != nil {
-		return x.StatusReason
-	}
-	return ""
-}
-
-func (x *NodeHeartbeat) GetNetworkOk() bool {
-	if x != nil {
-		return x.NetworkOk
-	}
-	return false
-}
-
-func (x *NodeHeartbeat) GetNetUtilizationPct() uint32 {
-	if x != nil {
-		return x.NetUtilizationPct
-	}
-	return 0
-}
-
 var File_proto_v1_node_proto protoreflect.FileDescriptor
 
 const file_proto_v1_node_proto_rawDesc = "" +
@@ -367,29 +252,12 @@ const file_proto_v1_node_proto_rawDesc = "" +
 	"\x15NodeBootstrapResponse\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x16\n" +
 	"\x06region\x18\x02 \x01(\tR\x06region\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error\"\xa8\x05\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"\x83\x01\n" +
 	"\rNodeHeartbeat\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x15\n" +
 	"\x06seq_no\x18\x02 \x01(\x04R\x05seqNo\x12\x17\n" +
 	"\aboot_id\x18\x03 \x01(\tR\x06bootId\x12)\n" +
-	"\x11sent_at_unix_nano\x18\x04 \x01(\x03R\x0esentAtUnixNano\x12\x16\n" +
-	"\x06region\x18\x05 \x01(\tR\x06region\x122\n" +
-	"\x15shared_vcpu_available\x18\x06 \x01(\rR\x13sharedVcpuAvailable\x12(\n" +
-	"\x10pinned_cpus_free\x18\a \x01(\rR\x0epinnedCpusFree\x12,\n" +
-	"\x12allocatable_mem_mb\x18\b \x01(\x04R\x10allocatableMemMb\x12.\n" +
-	"\x13allocatable_disk_mb\x18\t \x01(\x04R\x11allocatableDiskMb\x12\x1d\n" +
-	"\n" +
-	"active_vms\x18\n" +
-	" \x01(\rR\tactiveVms\x12'\n" +
-	"\x10cpu_psi_some_10s\x18\v \x01(\x01R\rcpuPsiSome10s\x12%\n" +
-	"\x0fio_psi_some_10s\x18\f \x01(\x01R\fioPsiSome10s\x12#\n" +
-	"\x0ecpu_temp_max_c\x18\r \x01(\x02R\vcpuTempMaxC\x12/\n" +
-	"\x14oom_kills_since_boot\x18\x0e \x01(\rR\x11oomKillsSinceBoot\x12\x16\n" +
-	"\x06status\x18\x0f \x01(\tR\x06status\x12#\n" +
-	"\rstatus_reason\x18\x10 \x01(\tR\fstatusReason\x12\x1d\n" +
-	"\n" +
-	"network_ok\x18\x11 \x01(\bR\tnetworkOk\x12.\n" +
-	"\x13net_utilization_pct\x18\x12 \x01(\rR\x11netUtilizationPctB:Z8github.com/spacescale/core/internal/shared/pb/v1;scalepbb\x06proto3"
+	"\x11sent_at_unix_nano\x18\x04 \x01(\x03R\x0esentAtUnixNanoB5Z3github.com/spacescale/core/internal/shared/pb/v1;pbb\x06proto3"
 
 var (
 	file_proto_v1_node_proto_rawDescOnce sync.Once

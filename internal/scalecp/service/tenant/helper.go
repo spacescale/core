@@ -16,17 +16,15 @@ import (
 )
 
 const (
-	defaultRegion        = "global"
 	maxSlugRetries       = 8
 	suffixLength         = 6
 	projectNameMaxLength = 120
-	projectRegionMaxLen  = 32
 	projectSlugMaxLength = 63
 )
 
-// parseUUID trims and parses UUID strings used by service workflows.
+// parseUUID parses UUID strings used by service workflows.
 func parseUUID(raw string) (uuid.UUID, bool) {
-	id, err := uuid.Parse(strings.TrimSpace(raw))
+	id, err := uuid.Parse(raw)
 	if err != nil {
 		return uuid.Nil, false
 	}
@@ -45,7 +43,7 @@ func uuidOrEmpty(id uuid.UUID) string {
 // The resulting slug is constrained to lowercase ASCII DNS-label-safe bytes:
 // [a-z0-9-], with collapsed separators, no edge hyphens, and max length 63.
 func slugifyProjectName(name string) string {
-	normalized := strings.ToLower(strings.TrimSpace(name))
+	normalized := strings.ToLower(name)
 
 	var b strings.Builder
 	b.Grow(len(normalized))
@@ -84,57 +82,23 @@ func normalizeProjectName(raw string) (string, bool) {
 	return name, true
 }
 
-// normalizeProjectRegion trims, lowercases, and validates region format.
-// Regions are restricted to lowercase ASCII DNS-label-safe bytes for stability.
-func normalizeProjectRegion(raw string) (string, bool) {
-	region := strings.ToLower(strings.TrimSpace(raw))
-	if region == "" {
-		region = defaultRegion
-	}
-	if len(region) == 0 || len(region) > projectRegionMaxLen {
-		return "", false
-	}
-	if region[0] == '-' || region[len(region)-1] == '-' {
-		return "", false
-	}
-	for i := 0; i < len(region); i++ {
-		ch := region[i]
-		if ch == '-' {
-			continue
-		}
-		if !isASCIIAlphaNum(ch) {
-			return "", false
-		}
-	}
-	return region, true
-}
-
 // slugWithSuffix appends a random suffix while keeping total slug length bounded.
 func slugWithSuffix(baseSlug, suffix string) string {
-	trimmedBase := strings.Trim(baseSlug, "-")
-	trimmedSuffix := strings.Trim(suffix, "-")
-	if trimmedSuffix == "" {
-		if len(trimmedBase) <= projectSlugMaxLength {
-			return trimmedBase
-		}
-		return strings.Trim(trimmedBase[:projectSlugMaxLength], "-")
-	}
-
-	maxBaseLen := projectSlugMaxLength - len(trimmedSuffix) - 1
+	maxBaseLen := projectSlugMaxLength - len(suffix) - 1
 	if maxBaseLen <= 0 {
-		if len(trimmedSuffix) <= projectSlugMaxLength {
-			return trimmedSuffix
+		if len(suffix) <= projectSlugMaxLength {
+			return suffix
 		}
-		return trimmedSuffix[:projectSlugMaxLength]
+		return suffix[:projectSlugMaxLength]
 	}
 
-	if len(trimmedBase) > maxBaseLen {
-		trimmedBase = strings.Trim(trimmedBase[:maxBaseLen], "-")
+	if len(baseSlug) > maxBaseLen {
+		baseSlug = strings.Trim(baseSlug[:maxBaseLen], "-")
 	}
-	if trimmedBase == "" {
-		return trimmedSuffix
+	if baseSlug == "" {
+		return suffix
 	}
-	return trimmedBase + "-" + trimmedSuffix
+	return baseSlug + "-" + suffix
 }
 
 func isASCIIAlphaNum(ch byte) bool {

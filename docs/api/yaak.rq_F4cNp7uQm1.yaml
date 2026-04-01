@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_F4cNp7uQm1
 createdAt: 2026-02-24T23:05:00
-updatedAt: 2026-02-25T06:24:13.467035
+updatedAt: 2026-04-01T22:39:40.300853
 workspaceId: wk_KJF6oyHis3
 folderId: null
 authentication: {}
@@ -19,12 +19,12 @@ description: |-
 
   ### Endpoint
   - **Method**: `POST`
-  - **Path**: `/v0/bootstrap-defaults`
+  - **Path**: `/v1/bootstrap-defaults`
 
   ### Authentication
   - `Authorization: Bearer <BFF_JWT_TOKEN>`
   - token must be signed with trusted BFF secret (`BFF_JWT_SECRET`)
-  - user must already exist in API users table (seed via `POST /v0/internal/auth-sync`)
+  - user must already exist in API users table (seed via `POST /v1/internal/auth-sync`)
 
   ### Request Body
   - empty body is allowed
@@ -77,6 +77,6 @@ headers:
   id: hBtDfType01
 method: POST
 name: Bootstrap Defaults
-sortPriority: 0.9144947416552353
-url: http://${[ BASE_URL ]}/v0/bootstrap-defaults
+sortPriority: 2000.0
+url: http://${[ BASE_URL ]}/v1/bootstrap-defaults
 urlParameters: []

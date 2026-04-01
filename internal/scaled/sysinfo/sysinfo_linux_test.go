@@ -1,19 +1,27 @@
 package sysinfo
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestReadMemoryStats(t *testing.T) {
-	stats, err := ReadMemoryStats()
+func TestRead(t *testing.T) {
+	snapshot, err := Read()
 	require.NoError(t, err)
 
-	assert.Greater(t, stats.TotalMB, uint64(0))
-	assert.Greater(t, stats.AvailableMB, uint64(0))
-	assert.GreaterOrEqual(t, stats.TotalMB, stats.AvailableMB)
+	assert.NotEmpty(t, snapshot.BootID)
+	assert.Equal(t, strings.TrimSpace(snapshot.BootID), snapshot.BootID)
+	assert.Len(t, snapshot.BootID, 36)
+	assert.Contains(t, snapshot.BootID, "-")
+	assert.Greater(t, snapshot.TotalThreads, uint32(0))
+	assert.Greater(t, snapshot.TotalRamMb, uint64(0))
+	assert.Greater(t, snapshot.AvailableRamMb, uint64(0))
+	assert.GreaterOrEqual(t, snapshot.TotalRamMb, snapshot.AvailableRamMb)
+	assert.Greater(t, snapshot.TotalDiskMb, uint64(0))
+	assert.GreaterOrEqual(t, snapshot.TotalDiskMb, snapshot.AvailableDiskMb)
 }
 
 func TestParseMemInfoKBLine(t *testing.T) {
@@ -59,4 +67,10 @@ func TestParseMemInfoKBLine(t *testing.T) {
 			assert.Equal(t, tc.wantValue, value)
 		})
 	}
+}
+
+func TestReadDiskStatsRejectsMissingPath(t *testing.T) {
+	_, err := readDiskStats("/path/that/should/not/exist")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "statfs")
 }

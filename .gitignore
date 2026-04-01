@@ -23,3 +23,7 @@ Thumbs.db
 
 # Testing
 coverage/
+
+AGENTS.md
+pipe.sh
+context.txt

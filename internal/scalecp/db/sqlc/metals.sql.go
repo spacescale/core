@@ -9,31 +9,14 @@ import (
 	"context"
 )
 
-const markMetalActiveByNodeID = `-- name: MarkMetalActiveByNodeID :execrows
-UPDATE metals m
-SET status = 'active',
-    bootstrap_token_hash = NULL,
-    updated_at = now()
-FROM scaled s
-WHERE s.id = $1
-  AND s.metal_id = m.id
-  AND m.status = 'provisioning'
-`
-
-func (q *Queries) MarkMetalActiveByNodeID(ctx context.Context, nodeID string) (int64, error) {
-	result, err := q.db.Exec(ctx, markMetalActiveByNodeID, nodeID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const updateProvisioningMetalFromBootstrap = `-- name: UpdateProvisioningMetalFromBootstrap :one
 UPDATE metals
-SET total_threads = $1,
-    total_ram_mb  = $2,
-    total_disk_mb = $3,
-    updated_at    = NOW()
+SET total_threads         = $1,
+    total_ram_mb          = $2,
+    total_disk_mb         = $3,
+    status                = 'active',
+    bootstrap_token_hash  = NULL,
+    updated_at            = NOW()
 WHERE bootstrap_token_hash = $4
   AND status = 'provisioning'
 RETURNING id, provider_id, provider_server_id, primary_ipv4, primary_ipv6, host_os_family, host_os_version, host_image_ref, region, provider_location, tier_target, total_cpu_core, total_threads, total_ram_mb, total_disk_mb, status, bootstrap_token_hash, created_at, updated_at

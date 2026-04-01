@@ -24,7 +24,7 @@ fi
 
 # Use Docker's psql so the script does not depend on a local Postgres install.
 psql_db() {
-  docker compose exec -T db psql -U spacescale -d spacescale "$@"
+  docker-compose exec -T db psql -U spacescale -d spacescale "$@"
 }
 
 # Generate a fresh one-time bootstrap token for this provisioning run.

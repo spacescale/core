@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httprate"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/spacescale/core/internal/scalecp/fabric/dispatch"
 	"github.com/spacescale/core/internal/scalecp/service"
 	"github.com/spacescale/core/internal/scalecp/service/tenant"
 	"github.com/spacescale/core/internal/shared/config"
@@ -20,15 +21,22 @@ import (
 
 // Server wires HTTP handlers to service dependencies and auth configuration.
 type Server struct {
-	users                   *tenant.UserService
-	projects                *tenant.ProjectService
-	workspaces              *tenant.WorkspaceService
-	bootstrap               *tenant.BootstrapService
-	apps                    *tenant.AppService
+
+	// multi tenant service layer
+	users      *tenant.UserService
+	projects   *tenant.ProjectService
+	workspaces *tenant.WorkspaceService
+	bootstrap  *tenant.BootstrapService
+	apps       *tenant.AppService
+
+	// dependencies
 	dbPool                  *pgxpool.Pool
 	config                  config.Config
 	internalIdentityLimiter *httprate.RateLimiter
 	server                  *http.Server
+
+	// fabric dependencies
+	dispatcher *dispatch.Dispatcher
 }
 
 const (
@@ -48,34 +56,12 @@ type ServerDeps struct {
 	Services *service.Services
 	DBPool   *pgxpool.Pool
 	Config   config.Config
+
+	// fabric dependencies
+	Dispatcher *dispatch.Dispatcher
 }
 
 func NewServer(deps ServerDeps) *Server {
-	if deps.Services == nil {
-		panic("http_api.NewServer requires non-nil services")
-	}
-	if deps.Services.Tenant.Projects == nil {
-		panic("http_api.NewServer requires non-nil project service")
-	}
-	if deps.Services.Tenant.Workspaces == nil {
-		panic("http_api.NewServer requires non-nil workspace service")
-	}
-	if deps.Services.Tenant.Bootstrap == nil {
-		panic("http_api.NewServer requires non-nil bootstrap service")
-	}
-	if deps.Services.Tenant.Apps == nil {
-		panic("http_api.NewServer requires non-nil app service")
-	}
-	if deps.Services.Tenant.Users == nil {
-		panic("http_api.NewServer requires non-nil user service")
-	}
-	if deps.DBPool == nil {
-		panic("http_api.NewServer requires non-nil db pool")
-	}
-	normalizedConfig := deps.Config.Normalized()
-	if normalizedConfig.InternalAuthSecret == "" {
-		panic("http_api.NewServer requires non-empty internal auth secret")
-	}
 	tenantServices := deps.Services.Tenant
 	s := &Server{
 		users:                   tenantServices.Users,
@@ -84,11 +70,14 @@ func NewServer(deps ServerDeps) *Server {
 		bootstrap:               tenantServices.Bootstrap,
 		apps:                    tenantServices.Apps,
 		dbPool:                  deps.DBPool,
-		config:                  normalizedConfig,
+		config:                  deps.Config,
 		internalIdentityLimiter: newInternalIdentityLimiter(),
+
+		// fabric dependencies
+		dispatcher: deps.Dispatcher,
 	}
 	s.server = &http.Server{
-		Addr:              normalizedConfig.ListenAddr(),
+		Addr:              deps.Config.ListenAddr(),
 		Handler:           http.MaxBytesHandler(s.Router(), 1<<20),
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -98,9 +87,6 @@ func NewServer(deps ServerDeps) *Server {
 }
 
 func (s *Server) Start() error {
-	if s == nil || s.server == nil {
-		return errors.New("http server is not initialized")
-	}
 	if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("http serve failed: %w", err)
 	}
@@ -108,12 +94,6 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-	if s == nil || s.server == nil {
-		return nil
-	}
-	if ctx == nil {
-		return errors.New("shutdown context is required")
-	}
 	if err := s.server.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("http shutdown failed: %w", err)
 	}
@@ -187,6 +167,7 @@ func (s *Server) Router() http.Handler {
 		r.Delete("/workspaces/{workspaceId}/projects/{projectId}", s.handleDeleteProject)
 
 		// Apps endpoints.
+		r.Get("/workspaces/{workspaceId}/projects/{projectId}/apps", s.handleListApps)
 		r.Post("/workspaces/{workspaceId}/projects/{projectId}/apps", s.handleCreateApp)
 	})
 
@@ -219,11 +200,7 @@ func newInternalIdentityLimiter() *httprate.RateLimiter {
 // "identity:unknown" instead of an error. This keeps limiter behavior predictable
 // and avoids triggering httprate's error handler path.
 func keyByIdentityKey(r *http.Request) (string, error) {
-	p, ok := principalFromContext(r.Context())
-	if !ok || p.IdentityKey == "" {
-		// defensive fallback bucket; avoids httprate error handler path
-		return "identity:unknown", nil
-	}
+	p, _ := principalFromContext(r.Context())
 	return "identity:" + p.IdentityKey, nil
 }
 
@@ -236,15 +213,14 @@ func keyByIdentityKey(r *http.Request) (string, error) {
 func internalAuthMiddleware(expectedSecret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			expected := strings.TrimSpace(expectedSecret)
 			provided := strings.TrimSpace(r.Header.Get("X-Internal-Auth"))
 
-			if expected == "" || provided == "" {
+			if provided == "" {
 				writeErr(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
 
-			if subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) != 1 {
+			if subtle.ConstantTimeCompare([]byte(expectedSecret), []byte(provided)) != 1 {
 				writeErr(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}

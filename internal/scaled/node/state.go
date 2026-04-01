@@ -35,7 +35,7 @@ func bootstrapTokenPath() string {
 	return filepath.Join(defaultStateDir, bootstrapTokenFileName)
 }
 
-func LoadIdentity() (Identity, error) {
+func loadIdentity() (Identity, error) {
 	raw, err := os.ReadFile(identityPath())
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -47,17 +47,13 @@ func LoadIdentity() (Identity, error) {
 	if err := json.Unmarshal(raw, &identity); err != nil {
 		return Identity{}, fmt.Errorf("decode node identity: %w", err)
 	}
-	identity.NodeID = strings.TrimSpace(identity.NodeID)
-	identity.Region = strings.TrimSpace(identity.Region)
 	if identity.NodeID == "" || identity.Region == "" {
 		return Identity{}, ErrInvalidIdentity
 	}
 	return identity, nil
 }
 
-func SaveIdentity(identity Identity) error {
-	identity.NodeID = strings.TrimSpace(identity.NodeID)
-	identity.Region = strings.TrimSpace(identity.Region)
+func saveIdentity(identity Identity) error {
 	if identity.NodeID == "" || identity.Region == "" {
 		return ErrInvalidIdentity
 	}
@@ -82,7 +78,7 @@ func SaveIdentity(identity Identity) error {
 	return nil
 }
 
-func LoadBootstrapToken() (string, error) {
+func loadBootstrapToken() (string, error) {
 	raw, err := os.ReadFile(bootstrapTokenPath())
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -97,7 +93,7 @@ func LoadBootstrapToken() (string, error) {
 	return token, nil
 }
 
-func DeleteBootstrapToken() error {
+func deleteBootstrapToken() error {
 	if err := os.Remove(bootstrapTokenPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("delete bootstrap token: %w", err)
 	}

@@ -17,8 +17,7 @@ WITH input AS (
         $1::uuid AS owner_user_id,
         $2::text AS workspace_name,
         $3::text AS project_name,
-        $4::text AS project_slug,
-        $5::text AS project_region
+        $4::text AS project_slug
 ),
      has_workspace AS (
          SELECT EXISTS (
@@ -36,8 +35,8 @@ WITH input AS (
              RETURNING id
      ),
 inserted_project AS (
-    INSERT INTO projects (workspace_id, name, slug, region, created_at, updated_at)
-    SELECT iw.id, i.project_name, i.project_slug, i.project_region, now(), now()
+    INSERT INTO projects (workspace_id, name, slug, created_at, updated_at)
+    SELECT iw.id, i.project_name, i.project_slug, now(), now()
     FROM inserted_workspace iw
     CROSS JOIN input i
     RETURNING id
@@ -77,7 +76,6 @@ type BootstrapDefaultsParams struct {
 	WorkspaceName string
 	ProjectName   string
 	ProjectSlug   string
-	ProjectRegion string
 }
 
 type BootstrapDefaultsRow struct {
@@ -87,8 +85,8 @@ type BootstrapDefaultsRow struct {
 }
 
 // Use named args here so sqlc generates readable parameter names
-// (OwnerUserID, WorkspaceName, ProjectName, ProjectSlug, ProjectRegion)
-// instead of generic Column1..Column5 in this multi-CTE query.
+// (OwnerUserID, WorkspaceName, ProjectName, ProjectSlug)
+// instead of generic Column1..Column4 in this multi-CTE query.
 // On returning users, inserted CTEs are empty.
 // selected_* CTEs guarantee non-null UUID rows so sqlc scans into uuid.UUID.
 func (q *Queries) BootstrapDefaults(ctx context.Context, arg BootstrapDefaultsParams) (BootstrapDefaultsRow, error) {
@@ -97,7 +95,6 @@ func (q *Queries) BootstrapDefaults(ctx context.Context, arg BootstrapDefaultsPa
 		arg.WorkspaceName,
 		arg.ProjectName,
 		arg.ProjectSlug,
-		arg.ProjectRegion,
 	)
 	var i BootstrapDefaultsRow
 	err := row.Scan(&i.Created, &i.WorkspaceID, &i.ProjectID)

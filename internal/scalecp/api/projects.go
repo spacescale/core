@@ -28,23 +28,18 @@ import (
 )
 
 // createProjectRequest is the optional request payload for project creation.
-// Both fields are optional; missing values are defaulted in the service layer.
-// Keeping transport model optional allows clients to create projects with "{}".
+// Missing names are defaulted in the service layer so clients can still create
+// projects with "{}".
 type createProjectRequest struct {
 	// Name is an optional project display name from the client.
 	// When empty, the service may generate a fallback name.
 	Name string `json:"name"`
-	// Region is an optional project region override from the client.
-	// When empty, the service applies its default region.
-	Region string `json:"region"`
 }
 
 // updateProjectRequest is the optional request payload for project updates.
-// At least one field must be provided; business validation is enforced by the
-// service layer.
+// A non-empty name is required; business validation is enforced by the service layer.
 type updateProjectRequest struct {
-	Name   string `json:"name"`
-	Region string `json:"region"`
+	Name string `json:"name"`
 }
 
 // createProjectResponse is the API payload returned on successful creation.
@@ -54,7 +49,6 @@ type createProjectResponse struct {
 	WorkspaceID string `json:"workspaceId"`
 	Name        string `json:"name"`
 	Slug        string `json:"slug"`
-	Region      string `json:"region"`
 	CreatedAt   string `json:"createdAt"`
 	UpdatedAt   string `json:"updatedAt"`
 }
@@ -116,8 +110,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 
 	// Delegate business behavior to service layer.
 	project, err := s.projects.CreateProject(r.Context(), user.ID, workspaceID, tenant.CreateProjectParams{
-		Name:   req.Name,
-		Region: req.Region,
+		Name: req.Name,
 	})
 
 	// Convert service errors into stable HTTP API responses.
@@ -155,7 +148,6 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		WorkspaceID: project.WorkspaceID,
 		Name:        project.Name,
 		Slug:        project.Slug,
-		Region:      project.Region,
 		CreatedAt:   project.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:   project.UpdatedAt.Format(time.RFC3339),
 	})
@@ -196,7 +188,6 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 			WorkspaceID: project.WorkspaceID,
 			Name:        project.Name,
 			Slug:        project.Slug,
-			Region:      project.Region,
 			CreatedAt:   project.CreatedAt.Format(time.RFC3339),
 			UpdatedAt:   project.UpdatedAt.Format(time.RFC3339),
 		})
@@ -243,7 +234,6 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 		WorkspaceID: project.WorkspaceID,
 		Name:        project.Name,
 		Slug:        project.Slug,
-		Region:      project.Region,
 		CreatedAt:   project.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:   project.UpdatedAt.Format(time.RFC3339),
 	})
@@ -276,8 +266,7 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	project, err := s.projects.UpdateProject(r.Context(), user.ID, workspaceID, projectID, tenant.UpdateProjectParams{
-		Name:   req.Name,
-		Region: req.Region,
+		Name: req.Name,
 	})
 	if err != nil {
 		switch {
@@ -305,7 +294,6 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		WorkspaceID: project.WorkspaceID,
 		Name:        project.Name,
 		Slug:        project.Slug,
-		Region:      project.Region,
 		CreatedAt:   project.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:   project.UpdatedAt.Format(time.RFC3339),
 	})

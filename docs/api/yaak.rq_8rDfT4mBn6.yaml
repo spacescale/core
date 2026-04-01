@@ -16,7 +16,7 @@ description: |-
 
   ### Endpoint
   - **Method**: `GET`
-  - **Path**: `/v0/workspaces/{workspaceId}`
+  - **Path**: `/v1/workspaces/{workspaceId}`
 
   ### Path Parameters
   - `workspaceId` (required): UUID of the workspace to fetch
@@ -45,5 +45,5 @@ headers:
 method: GET
 name: Get Workspace
 sortPriority: 2.0
-url: http://${[ BASE_URL ]}/v0/workspaces/${[ WORKSPACE_ID ]}
+url: http://${[ BASE_URL ]}/v1/workspaces/${[ WORKSPACE_ID ]}
 urlParameters: []
