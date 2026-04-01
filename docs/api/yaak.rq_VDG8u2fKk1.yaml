@@ -10,10 +10,10 @@ authenticationType: null
 body:
   text: |-
     {
-      "identityKey": "email:apprentice_py@icloud.com",
-      "email": "apprentice_py@icloud.com",
-      "name": "Dev User",
-      "avatarUrl": "https://example.com/avatar.png"
+      "identityKey": "${[ IDENTITY_KEY ]}",
+      "email": "${[ USER_EMAIL ]}",
+      "name": "${[ USER_NAME ]}",
+      "avatarUrl": "${[ AVATAR_URL ]}"
     }
 bodyType: application/json
 description: |-
@@ -23,7 +23,7 @@ description: |-
 
   ### Endpoint
   - **Method**: `POST`
-  - **Path**: `/v0/internal/auth-sync`
+  - **Path**: `/v1/internal/auth-sync`
 
   ### Security
   - route is intended for private-network service traffic
@@ -57,5 +57,5 @@ headers:
 method: POST
 name: Internal Auth Sync
 sortPriority: 0.0
-url: http://${[ BASE_URL ]}/v0/internal/auth-sync
+url: http://${[ BASE_URL ]}/v1/internal/auth-sync
 urlParameters: []

@@ -117,7 +117,7 @@ func TestConfigValidateScalecp(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.cfg.ValidateScalecp()
+			_, err := tc.cfg.ValidateScalecp()
 			if tc.wantErrMsg == "" {
 				require.NoError(t, err)
 				return
@@ -128,7 +128,7 @@ func TestConfigValidateScalecp(t *testing.T) {
 }
 
 func TestConfigValidateScaled(t *testing.T) {
-	err := (Config{}).ValidateScaled()
+	_, err := (Config{}).ValidateScaled()
 	require.NoError(t, err)
 }
 

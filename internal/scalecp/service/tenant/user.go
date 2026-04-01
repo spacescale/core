@@ -162,11 +162,10 @@ func userFromRow(r sqlc.User) User {
 
 // stringPtrOrNil returns nil for blank values and a trimmed pointer otherwise.
 func stringPtrOrNil(v string) *string {
-	trimmed := strings.TrimSpace(v)
-	if trimmed == "" {
+	if v == "" {
 		return nil
 	}
-	return &trimmed
+	return &v
 }
 
 // stringValue converts optional DB text fields into service-safe strings.
@@ -180,11 +179,10 @@ func stringValue(v *string) string {
 // keepExistingIfPresent keeps the stored value once available, and only uses
 // new provider data when the stored value is still empty.
 func keepExistingIfPresent(existing, incoming string) string {
-	trimmedExisting := strings.TrimSpace(existing)
-	if trimmedExisting != "" {
-		return trimmedExisting
+	if existing != "" {
+		return existing
 	}
-	return strings.TrimSpace(incoming)
+	return incoming
 }
 
 // normalizeIdentityKey validates and trims identity keys from trusted callers.
@@ -202,12 +200,11 @@ func normalizeIdentityKey(raw string) (string, bool) {
 // identityKeyLogRef returns a stable opaque identifier for logs.
 // Raw identity keys may include emails, so logs must never emit them directly.
 func identityKeyLogRef(identityKey string) string {
-	normalized := strings.TrimSpace(identityKey)
-	if normalized == "" {
+	if identityKey == "" {
 		return "identity:unknown"
 	}
 
-	sum := sha256.Sum256([]byte(normalized))
+	sum := sha256.Sum256([]byte(identityKey))
 	return "identity-hash:" + hex.EncodeToString(sum[:])
 }
 

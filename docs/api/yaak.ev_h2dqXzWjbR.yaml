@@ -3,12 +3,16 @@ model: environment
 id: ev_h2dqXzWjbR
 workspaceId: wk_KJF6oyHis3
 createdAt: 2026-01-25T02:14:12.183698
-updatedAt: 2026-01-25T03:25:51.991614
+updatedAt: 2026-04-01T21:59:03.740218
 name: Global Variables
 public: true
 base: true
 parentModel: workspace
 parentId: null
-variables: []
+variables:
+- enabled: true
+  name: BFF_TOKEN
+  value: ''
+  id: KIqG7n5H8P
 color: null
 sortPriority: 0.0

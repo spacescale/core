@@ -20,12 +20,12 @@ description: |-
 
   ### Endpoint
   - **Method**: `POST`
-  - **Path**: `/v0/workspaces`
+  - **Path**: `/v1/workspaces`
 
   ### Authentication
   - `Authorization: Bearer <BFF_JWT_TOKEN>`
   - token must be signed with trusted BFF secret (`BFF_JWT_SECRET`)
-  - user must already exist in API users table (seed via `POST /v0/internal/auth-sync`)
+  - user must already exist in API users table (seed via `POST /v1/internal/auth-sync`)
 
   ### Body Contract
   - `name` (required): workspace display name
@@ -42,7 +42,7 @@ description: |-
 
   ### Success Response
   - **Status**: `201 Created`
-  - **Headers**: includes `Location: /v0/workspaces/{id}`
+  - **Headers**: includes `Location: /v1/workspaces/{id}`
   - **Body**:
     - `id`
     - `name`
@@ -67,5 +67,5 @@ headers:
 method: POST
 name: Create Workspace
 sortPriority: 0.0
-url: http://${[ BASE_URL ]}/v0/workspaces
+url: http://${[ BASE_URL ]}/v1/workspaces
 urlParameters: []

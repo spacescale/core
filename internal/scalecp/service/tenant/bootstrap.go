@@ -56,7 +56,6 @@ func (s *BootstrapService) BootstrapDefaults(ctx context.Context, ownerUserID st
 			WorkspaceName: defaultBootstrapWorkspaceName,
 			ProjectName:   projectName,
 			ProjectSlug:   candidateSlug,
-			ProjectRegion: defaultRegion,
 		})
 		if err == nil {
 			out := BootstrapDefaultsResult{

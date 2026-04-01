@@ -9,10 +9,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/internal/scalecp/api"
-	"github.com/spacescale/core/internal/scalecp/broker"
 	"github.com/spacescale/core/internal/scalecp/db/sqlc"
+	"github.com/spacescale/core/internal/scalecp/fabric"
 	"github.com/spacescale/core/internal/scalecp/service"
-	"github.com/spacescale/core/internal/scalecp/service/tenant"
 	"github.com/spacescale/core/internal/shared/config"
 	"github.com/spacescale/core/internal/shared/nats"
 	"golang.org/x/sync/errgroup"
@@ -24,14 +23,14 @@ type ControlPlane struct {
 	dbPool   *pgxpool.Pool
 	nats     *nats.Client
 	services *service.Services
-	broker   *broker.NodeBroker
+	fabric   *fabric.Fabric
 	api      *api.Server
 }
 
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*ControlPlane, error) {
-
-	cfg = cfg.Normalized()
-	if err := cfg.ValidateScalecp(); err != nil {
+	var err error
+	cfg, err = cfg.ValidateScalecp()
+	if err != nil {
 		return nil, fmt.Errorf("invalid scalecp config: %w", err)
 	}
 
@@ -40,14 +39,17 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*ControlP
 		return nil, fmt.Errorf("database init failed: %w", err)
 	}
 
-	envCipher, err := tenant.NewEnvValueCipher(cfg.EnvEncryptionKeyID, cfg.EnvEncryptionKey)
+	queries := sqlc.New(dbPool)
+	services, err := service.NewServices(service.Deps{
+		Queries:            queries,
+		DBPool:             dbPool,
+		EnvEncryptionKeyID: cfg.EnvEncryptionKeyID,
+		EnvEncryptionKey:   cfg.EnvEncryptionKey,
+	})
 	if err != nil {
 		dbPool.Close()
-		return nil, fmt.Errorf("env encryption init failed: %w", err)
+		return nil, fmt.Errorf("service init failed: %w", err)
 	}
-
-	queries := sqlc.New(dbPool)
-	services := service.NewServices(queries, dbPool, envCipher)
 
 	natsClient, err := nats.New(cfg.NATSURL, "scalecp", logger)
 	if err != nil {
@@ -55,11 +57,13 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*ControlP
 		return nil, fmt.Errorf("nats init failed: %w", err)
 	}
 
-	nodeBroker := broker.NewNodeBroker(services.Node, logger)
+	controlFabric := fabric.New(services, queries, dbPool, natsClient, logger)
 	apiServer := api.NewServer(api.ServerDeps{
 		Services: services,
 		DBPool:   dbPool,
 		Config:   cfg,
+		
+		Dispatcher: controlFabric.Dispatcher(),
 	})
 
 	return &ControlPlane{
@@ -68,14 +72,14 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*ControlP
 		dbPool:   dbPool,
 		nats:     natsClient,
 		services: services,
-		broker:   nodeBroker,
+		fabric:   controlFabric,
 		api:      apiServer,
 	}, nil
 }
 
 func (cp *ControlPlane) Run(ctx context.Context) error {
-	if err := cp.broker.Register(ctx, cp.nats); err != nil {
-		return fmt.Errorf("node broker register failed: %w", err)
+	if err := cp.fabric.Register(ctx, cp.nats); err != nil {
+		return fmt.Errorf("control fabric register failed: %w", err)
 	}
 
 	g, gCtx := errgroup.WithContext(ctx)
@@ -100,19 +104,10 @@ func (cp *ControlPlane) Run(ctx context.Context) error {
 func (cp *ControlPlane) Close() error {
 	var closeErr error
 
-	if cp == nil {
-		return nil
+	if err := cp.nats.Drain(); err != nil {
+		closeErr = errors.Join(closeErr, fmt.Errorf("nats drain failed: %w", err))
 	}
-
-	if cp.nats != nil {
-		if err := cp.nats.Drain(); err != nil {
-			closeErr = errors.Join(closeErr, fmt.Errorf("nats drain failed: %w", err))
-		}
-	}
-
-	if cp.dbPool != nil {
-		cp.dbPool.Close()
-	}
+	cp.dbPool.Close()
 
 	return closeErr
 }

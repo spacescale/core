@@ -1,10 +1,20 @@
+// Package nats
+// kv.go provides the shared transport and storage primitives for SpaceScale.
+//
+// This file specifically manages NATS JetStream Key-Value (KV) stores. In the
+// SpaceScale architecture, the KV store is NOT used for placement data or
+// permanent state which lives in Postgres.
+//
+// Instead, the KV store acts as the cluster's "Immune System" and ephemeral
+// liveness registry. Daemons write their heartbeat to an in-memory bucket with
+// a strict Time-To-Live (TTL). If a node dies, NATS automatically deletes the key,
+// triggering the Control Plane's Watcher to re-auction the orphaned workloads.
 package nats
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
@@ -12,175 +22,102 @@ import (
 )
 
 const (
-	NodeHeartbeatBucket    = "NODE_HEARTBEATS"
+	// NodeHeartbeatBucket is the name of the JetStream KV bucket for liveness.
+	NodeHeartbeatBucket = "NODE_HEARTBEATS"
+
+	// NodeHeartbeatKeyPrefix namespaces the keys within the bucket.
 	NodeHeartbeatKeyPrefix = "nodes"
-	NodeHeartbeatTTL       = 15 * time.Second
+
+	// NodeHeartbeatTTL is the dead-man's switch duration. If a node fails to
+	// pulse within this window, NATS automatically purges its key.
+	NodeHeartbeatTTL = 15 * time.Second
 )
 
-type JetStream = jetstream.JetStream           // Core interface for stream, consumer, and KV management.
-type KeyValue = jetstream.KeyValue             // Dedicated interface for state-based Key-Value operations.
-type KeyValueEntry = jetstream.KeyValueEntry   // Represents a single version of a value, including its metadata and revision.
-type KeyWatcher = jetstream.KeyWatcher         // A subscription handle used to react to real-time key updates.
-type KeyValueConfig = jetstream.KeyValueConfig // The configuration blueprint for bucket behavior (TTL, history, storage).
-type KeyValueOp = jetstream.KeyValueOp         // Enum identifying the specific change type (Put, Delete, or Purge).
+// Type aliases for easier consumption by downstream SpaceScale packages
+// without needing to import the NATS jetstream package directly.
 
-// JetStream initializes and returns a JetStream management context from the underlying NATS connection.
-// It serves as the primary gateway for persistent messaging features, including Streams, Consumers,
-// and Key-Value buckets. It returns an error if the Client or the base NATS connection is uninitialized.
+type JetStream = jetstream.JetStream
+type KeyValue = jetstream.KeyValue
+type KeyValueEntry = jetstream.KeyValueEntry
+type KeyWatcher = jetstream.KeyWatcher
+type KeyValueConfig = jetstream.KeyValueConfig
+type KeyValueOp = jetstream.KeyValueOp
+
+// JetStream upgrades the standard NATS connection to a JetStream context.
+// It assumes the underlying Client and connection are successfully initialized.
 func (c *Client) JetStream() (JetStream, error) {
-	if c == nil || c.conn == nil {
-		return nil, errors.New("nats client is not initialized")
-	}
-
-	js, err := jetstream.New(c.conn)
-	if err != nil {
-		return nil, fmt.Errorf("create jetstream context: %w", err)
-	}
-	return js, nil
+	return jetstream.New(c.conn)
 }
 
-// EnsureKeyValue idempotently creates or updates a Key-Value (KV) bucket using the provided configuration.
-// If the bucket already exists, it returns a handle to the existing bucket after applying any
-// configuration updates; otherwise, it creates a new one. This method is essential for
-// initializing state-dependent storage like node heartbeat buckets at startup.
+// EnsureKeyValue creates a new JetStream KV bucket or updates it if it already
+// exists with differing configuration parameters.
 func (c *Client) EnsureKeyValue(ctx context.Context, cfg KeyValueConfig) (KeyValue, error) {
-	if ctx == nil {
-		return nil, errors.New("context is required")
-	}
-
-	cfg.Bucket = strings.TrimSpace(cfg.Bucket)
-	if cfg.Bucket == "" {
-		return nil, errors.New("key value bucket is required")
-	}
-
 	js, err := c.JetStream()
 	if err != nil {
 		return nil, err
 	}
-
-	kv, err := js.CreateOrUpdateKeyValue(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("create or update key value bucket %q: %w", cfg.Bucket, err)
-	}
-	return kv, nil
+	// CreateOrUpdateKeyValue handles idempotency automatically.
+	return js.CreateOrUpdateKeyValue(ctx, cfg)
 }
 
-// EnsureNodeHeartbeatKV is a specialized, idempotent wrapper that initializes
-// the Key-Value bucket specifically for node heartbeats. It enforces a strict
-// 15-second TTL (Time-To-Live) and MemoryStorage to ensure that stale heartbeats
-// are automatically purged, preventing the Control Plane from scheduling
-// workloads on nodes that have silently gone dark.
+// EnsureNodeHeartbeatKV provisions the ephemeral liveness bucket.
+// It forces MemoryStorage because this data is highly transient and rebuilding
+// it after a NATS server restart requires no durable state.
 func (c *Client) EnsureNodeHeartbeatKV(ctx context.Context) (KeyValue, error) {
 	return c.EnsureKeyValue(ctx, KeyValueConfig{
-		Bucket:      NodeHeartbeatBucket, // namespace where heartbeats live
-		Description: "Live state of all scaled daemon nodes",
-		TTL:         NodeHeartbeatTTL,        // 15s: Pulse must be fresh
-		History:     1,                       // Only care about the *latest* reality
-		Storage:     jetstream.MemoryStorage, // High performance, zero disk I/O
+		Bucket:      NodeHeartbeatBucket,
+		Description: "Ephemeral liveness state of all scaled daemon nodes",
+		TTL:         NodeHeartbeatTTL,
+		History:     1, // We only care about the absolute latest pulse
+		Storage:     jetstream.MemoryStorage,
 	})
 }
 
-func NodeHeartbeatKey(nodeID string) (string, error) {
-	nodeID, err := normalizeKeyToken(nodeID, "node id")
-	if err != nil {
-		return "", err
-	}
-	return NodeHeartbeatKeyPrefix + "." + nodeID, nil
+// NodeHeartbeatKey generates the specific KV key for a given node.
+// Format: nodes.<nodeID>
+func NodeHeartbeatKey(nodeID string) string {
+	return NodeHeartbeatKeyPrefix + "." + nodeID
 }
 
-// NodeHeartbeatWatchAll returns the NATS full-wildcard pattern used to observe
-// every heartbeat across the entire global fleet.
+// NodeHeartbeatWatchAll returns the NATS wildcard routing key used by the
+// Control Plane's reconciliation loop to watch all node lifecycles.
 func NodeHeartbeatWatchAll() string {
 	return NodeHeartbeatKeyPrefix + ".>"
 }
 
-// PutProtoKV marshals a Protobuf message and stores it in the provided NATS Key-Value bucket.
+// PutProtoKV marshals a Protobuf message and writes it directly to the KV bucket.
 func PutProtoKV(ctx context.Context, kv KeyValue, key string, msg proto.Message) (uint64, error) {
-	if ctx == nil {
-		return 0, errors.New("context is required")
-	}
-	if kv == nil {
-		return 0, errors.New("key value store is required")
-	}
-
-	key = strings.TrimSpace(key)
-	if key == "" {
-		return 0, errors.New("key value key is required")
-	}
-
-	if msg == nil {
-		return 0, errors.New("proto message is required")
-	}
-
 	payload, err := proto.Marshal(msg)
 	if err != nil {
 		return 0, fmt.Errorf("marshal proto for key %q: %w", key, err)
 	}
-	revision, err := kv.Put(ctx, key, payload)
-	if err != nil {
-		return 0, fmt.Errorf("put key %q: %w", key, err)
-	}
-
-	return revision, nil
+	return kv.Put(ctx, key, payload)
 }
 
+// GetProtoKV reads a key from the bucket and unmarshals it into the provided
+// Protobuf destination. It returns a boolean indicating if the key was found,
+// cleanly abstracting the NATS ErrKeyNotFound logic.
 func GetProtoKV(ctx context.Context, kv KeyValue, key string, dst proto.Message) (bool, uint64, error) {
-	if ctx == nil {
-		return false, 0, errors.New("context is required")
-	}
-	if kv == nil {
-		return false, 0, errors.New("key value store required")
-	}
-
-	key = strings.TrimSpace(key)
-	if key == "" {
-		return false, 0, errors.New("key value key is required")
-	}
-
 	entry, err := kv.Get(ctx, key)
 	if err != nil {
 		if errors.Is(err, jetstream.ErrKeyNotFound) {
-			return false, 0, nil
+			return false, 0, nil // Cleanly handle standard absence
 		}
 		return false, 0, fmt.Errorf("get key %q: %w", key, err)
 	}
+
 	if err := UnmarshalEntryProto(entry, dst); err != nil {
 		return false, 0, err
 	}
+
 	return true, entry.Revision(), nil
 }
 
-func IsKeyNotFound(err error) bool {
-	return errors.Is(err, jetstream.ErrKeyNotFound)
-}
-
+// UnmarshalEntryProto is a helper to extract and decode the raw bytes from a
+// KeyValueEntry into a structured Protobuf message.
 func UnmarshalEntryProto(entry KeyValueEntry, dst proto.Message) error {
-	if entry == nil {
-		return errors.New("key value entry is required")
-	}
-	if dst == nil {
-		return errors.New("proto destination is required")
-	}
-	value := entry.Value()
-	if len(value) == 0 {
-		return fmt.Errorf("key value entry %q has no value", entry.Key())
-	}
-	if err := proto.Unmarshal(value, dst); err != nil {
+	if err := proto.Unmarshal(entry.Value(), dst); err != nil {
 		return fmt.Errorf("unmarshal proto from key %q: %w", entry.Key(), err)
 	}
 	return nil
-}
-
-func normalizeKeyToken(value, name string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", fmt.Errorf("%s is required", name)
-	}
-	if strings.Contains(value, ".") {
-		return "", fmt.Errorf("%s must not contain dot", name)
-	}
-	if strings.ContainsAny(value, "*> \t\r\n") {
-		return "", fmt.Errorf("%s contains invalid characters", name)
-	}
-	return value, nil
 }

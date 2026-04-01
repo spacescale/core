@@ -1,0 +1,68 @@
+type: http_request
+model: http_request
+id: rq_M4nLp8sQw3
+createdAt: 2026-04-01T23:00:00
+updatedAt: 2026-04-01T22:44:55.705341
+workspaceId: wk_KJF6oyHis3
+folderId: fl_da6TvdABY7
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: |-
+  ## List Apps In Project
+
+  Return apps for one caller-owned project inside one caller-owned workspace.
+
+  ### Endpoint
+  - **Method**: `GET`
+  - **Path**: `/v1/workspaces/{workspaceId}/projects/{projectId}/apps`
+
+  ### Authentication
+  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+
+  ### Path Parameters
+  - `workspaceId` (required): workspace UUID owned by caller
+  - `projectId` (required): project UUID owned by caller and scoped to workspace
+
+  ### Success Response
+  - **Status**: `200 OK`
+  - **Body**:
+
+  ```json
+  {
+    "apps": [
+      {
+        "id": "uuid",
+        "projectId": "uuid",
+        "name": "manual-e2e",
+        "slug": "manual-e2e",
+        "subdomain": "manual-e2e",
+        "imageRef": "ghcr.io/acme/spacescale-api:latest",
+        "tier": "starter",
+        "primaryRegion": "eu-central",
+        "runtimePort": 8080,
+        "status": "queued",
+        "isPublic": false,
+        "createdAt": "RFC3339",
+        "updatedAt": "RFC3339"
+      }
+    ]
+  }
+  ```
+
+  ### Error Responses
+  - `400 Bad Request`: invalid path input
+  - `401 Unauthorized`: token invalid or project not owned by caller
+  - `429 Too Many Requests`: per-user API rate limit exceeded
+  - `500 Internal Server Error`: unexpected runtime error
+headers:
+- enabled: true
+  name: Authorization
+  value: Bearer ${[ BFF_TOKEN ]}
+  id: hAppLsAuth01
+method: GET
+name: List Apps
+sortPriority: 1.0
+url: http://${[ BASE_URL ]}/v1/workspaces/${[ WORKSPACE_ID ]}/projects/${[ PROJECT_ID ]}/apps
+urlParameters: []

@@ -12,17 +12,19 @@ import (
 )
 
 type App struct {
-	ID          uuid.UUID
-	ProjectID   uuid.UUID
-	Name        string
-	Slug        string
-	Subdomain   string
-	ImageRef    string
-	RuntimePort int32
-	IsPublic    bool
-	Status      string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID            uuid.UUID
+	ProjectID     uuid.UUID
+	Name          string
+	Slug          string
+	Subdomain     string
+	ImageRef      string
+	Tier          string
+	PrimaryRegion string
+	RuntimePort   int32
+	IsPublic      bool
+	Status        string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type AppEnvVar struct {
@@ -52,6 +54,19 @@ type Deployment struct {
 	ImageRef     string
 	RuntimePort  int32
 	PublicUrl    *string
+	ErrorMessage *string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type Machine struct {
+	ID           uuid.UUID
+	AppID        uuid.UUID
+	DeploymentID uuid.UUID
+	NodeID       *string
+	Region       string
+	Tier         string
+	Status       string
 	ErrorMessage *string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
@@ -93,7 +108,6 @@ type Project struct {
 	WorkspaceID uuid.UUID
 	Name        string
 	Slug        string
-	Region      string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
@@ -120,14 +134,11 @@ type RegistryCredential struct {
 }
 
 type Scaled struct {
-	ID                       string
-	Version                  string
-	TotalAllocatedVmsThreads int32
-	TotalAllocatedVmsRamMb   int64
-	TotalAllocatedVmDiskMb   int64
-	MetalID                  uuid.UUID
-	CreatedAt                time.Time
-	UpdatedAt                time.Time
+	ID        string
+	Version   string
+	MetalID   uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type SystemsConfig struct {

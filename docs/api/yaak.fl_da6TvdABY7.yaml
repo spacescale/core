@@ -2,7 +2,7 @@ type: folder
 model: folder
 id: fl_da6TvdABY7
 createdAt: 2026-02-11T07:51:34.546155
-updatedAt: 2026-02-11T07:51:45.194666
+updatedAt: 2026-04-01T22:39:40.308476
 workspaceId: wk_KJF6oyHis3
 folderId: null
 authentication: {}
@@ -10,4 +10,4 @@ authenticationType: null
 description: ''
 headers: []
 name: apps
-sortPriority: 74.07407407407406
+sortPriority: 6000.0

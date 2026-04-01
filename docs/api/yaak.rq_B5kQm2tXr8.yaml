@@ -16,7 +16,7 @@ description: |-
 
   ### Endpoint
   - **Method**: `GET`
-  - **Path**: `/v0/workspaces/{workspaceId}/projects`
+  - **Path**: `/v1/workspaces/{workspaceId}/projects`
 
   ### Path Parameters
   - `workspaceId` (required): UUID of the workspace scope
@@ -36,7 +36,6 @@ description: |-
         "workspaceId": "uuid",
         "name": "project-name",
         "slug": "project-slug",
-        "region": "global",
         "createdAt": "RFC3339",
         "updatedAt": "RFC3339"
       }
@@ -57,5 +56,5 @@ headers:
 method: GET
 name: List Projects In Workspace
 sortPriority: 1.0
-url: http://${[ BASE_URL ]}/v0/workspaces/${[ WORKSPACE_ID ]}/projects
+url: http://${[ BASE_URL ]}/v1/workspaces/${[ WORKSPACE_ID ]}/projects
 urlParameters: []

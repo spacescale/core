@@ -16,7 +16,7 @@ description: |-
 
   ### Endpoint
   - **Method**: `GET`
-  - **Path**: `/v0/workspaces`
+  - **Path**: `/v1/workspaces`
 
   ### Authentication
   - `Authorization: Bearer <BFF_JWT_TOKEN>`
@@ -54,5 +54,5 @@ headers:
 method: GET
 name: List Workspaces
 sortPriority: 1.0
-url: http://${[ BASE_URL ]}/v0/workspaces
+url: http://${[ BASE_URL ]}/v1/workspaces
 urlParameters: []

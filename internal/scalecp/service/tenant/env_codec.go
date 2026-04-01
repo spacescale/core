@@ -113,9 +113,6 @@ func parseEnvValueCiphertextParts(encoded string) ([]string, error) {
 }
 
 func (c *EnvValueCipher) decryptFromParts(parts []string, rowCtx EnvValueRowContext) (string, error) {
-	if len(parts) != 5 {
-		return "", ErrInvalidEnvValueCiphertext
-	}
 	if parts[2] != c.keyID {
 		return "", ErrInvalidEnvValueCiphertext
 	}
@@ -160,9 +157,8 @@ func rowBoundAAD(header string, rowCtx EnvValueRowContext) ([]byte, error) {
 	if rowCtx.AppID == uuid.Nil {
 		return nil, ErrInvalidEnvValueCiphertext
 	}
-	key := strings.TrimSpace(rowCtx.Key)
-	if key == "" {
+	if rowCtx.Key == "" {
 		return nil, ErrInvalidEnvValueCiphertext
 	}
-	return []byte(header + "|app_id=" + rowCtx.AppID.String() + "|key=" + key), nil
+	return []byte(header + "|app_id=" + rowCtx.AppID.String() + "|key=" + rowCtx.Key), nil
 }
