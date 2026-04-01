@@ -25,3 +25,5 @@ Thumbs.db
 coverage/
 
 AGENTS.md
+pipe.sh
+context.txt
