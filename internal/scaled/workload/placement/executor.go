@@ -84,7 +84,7 @@ func (e *Executor) handle(client *nats.Client, msg *nats.Msg) error {
 	if committedSpec.IsPinned {
 		pinnedStr = "pinned"
 	}
-	e.logger.Info("machine launch accepted",
+	e.logger.Info("won placement auction",
 		"machine_id", req.MachineId,
 		"tier", req.Tier,
 		"vcpu", committedSpec.VCPU,

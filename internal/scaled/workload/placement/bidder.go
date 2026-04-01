@@ -78,7 +78,7 @@ func (b *Bidder) handle(client *nats.Client, msg *nats.Msg) error {
 		return nil
 	}
 
-	b.logger.Info("bidding on auction", "machine_id", req.MachineId, "tier", req.Tier, "free_ram_mb", freeRAM)
+	b.logger.Info("submitted bid", "machine_id", req.MachineId, "tier", req.Tier, "free_ram_mb", freeRAM)
 
 	reply := &pb.AuctionReply{
 		MachineId: req.MachineId,

@@ -267,6 +267,25 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 	return CreateAppResult{}, ErrConflict
 }
 
+func (s *AppService) ListApps(ctx context.Context, ownerUserID, workspaceID, projectID string) ([]App, error) {
+	projectUUID, err := s.authorizeOwnedProject(ctx, ownerUserID, workspaceID, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.queries.ListAppsByProjectID(ctx, projectUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]App, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, appFromRow(row))
+	}
+
+	return out, nil
+}
+
 // authorizeOwnedProject verifies that the owner can access the workspace and
 // project, and that the project belongs to that workspace.
 func (s *AppService) authorizeOwnedProject(ctx context.Context, ownerUserID, workspaceID, projectID string) (uuid.UUID, error) {

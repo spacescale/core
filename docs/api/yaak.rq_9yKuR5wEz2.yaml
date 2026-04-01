@@ -20,7 +20,7 @@ description: |-
 
   ### Endpoint
   - **Method**: `PATCH`
-  - **Path**: `/v0/workspaces/{workspaceId}`
+  - **Path**: `/v1/workspaces/{workspaceId}`
 
   ### Path Parameters
   - `workspaceId` (required): UUID of the workspace to update
@@ -66,5 +66,5 @@ headers:
 method: PATCH
 name: Update Workspace
 sortPriority: 3.0
-url: http://${[ BASE_URL ]}/v0/workspaces/${[ WORKSPACE_ID ]}
+url: http://${[ BASE_URL ]}/v1/workspaces/${[ WORKSPACE_ID ]}
 urlParameters: []

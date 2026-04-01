@@ -96,6 +96,47 @@ func (q *Queries) GetRegistryCredentialByIDAndProjectID(ctx context.Context, arg
 	return i, err
 }
 
+const listAppsByProjectID = `-- name: ListAppsByProjectID :many
+SELECT id, project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, is_public, status, created_at, updated_at
+FROM apps
+WHERE project_id = $1
+ORDER BY created_at ASC, id ASC
+`
+
+func (q *Queries) ListAppsByProjectID(ctx context.Context, projectID uuid.UUID) ([]App, error) {
+	rows, err := q.db.Query(ctx, listAppsByProjectID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []App
+	for rows.Next() {
+		var i App
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Name,
+			&i.Slug,
+			&i.Subdomain,
+			&i.ImageRef,
+			&i.Tier,
+			&i.PrimaryRegion,
+			&i.RuntimePort,
+			&i.IsPublic,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markAppDeploying = `-- name: MarkAppDeploying :one
 UPDATE apps
 SET status = 'deploying',

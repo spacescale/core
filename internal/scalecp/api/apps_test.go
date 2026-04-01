@@ -1,7 +1,7 @@
-// This file verifies end-to-end behavior of create-app HTTP workflows.
+// This file verifies end-to-end behavior of app HTTP workflows.
 //
 // Scope:
-// - Request/response contract for app creation.
+// - Request/response contracts for app create and list endpoints.
 // - Initial status behavior (queued).
 // - Persistence side effects in deployments, machines, and app_env_vars tables.
 //
@@ -37,6 +37,10 @@ type createAppResponse struct {
 	IsPublic      bool   `json:"isPublic"`
 	CreatedAt     string `json:"createdAt"`
 	UpdatedAt     string `json:"updatedAt"`
+}
+
+type listAppsResponse struct {
+	Apps []createAppResponse `json:"apps"`
 }
 
 // TestCreateAppCreatesQueuedDeployment verifies create-app writes app,
@@ -244,4 +248,101 @@ func TestCreateAppRequiresTierAndPrimaryRegion(t *testing.T) {
 	var out errorResponse
 	require.NoError(t, json.Unmarshal(data, &out))
 	require.Equal(t, "invalid input", out.Error)
+}
+
+func TestListApps(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.close()
+
+	identityKey := uniqueIdentityKey(t)
+	syncAuthUserForTest(t, ts, identityKey)
+
+	workspaceID := createWorkspaceForIdentity(t, ts, identityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
+	projectA := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("project-a-%d", time.Now().UnixNano()))
+	projectB := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("project-b-%d", time.Now().UnixNano()))
+
+	appOne := createAppViaAPI(t, ts, identityKey, workspaceID, projectA.ID, `{"name":"api","imageRef":"ghcr.io/acme/api:latest","tier":"starter","primaryRegion":"eu-central"}`)
+	appTwo := createAppViaAPI(t, ts, identityKey, workspaceID, projectA.ID, `{"name":"worker","imageRef":"ghcr.io/acme/worker:latest","tier":"growth","primaryRegion":"eu-central"}`)
+	_ = createAppViaAPI(t, ts, identityKey, workspaceID, projectB.ID, `{"name":"cron","imageRef":"ghcr.io/acme/cron:latest","tier":"scale","primaryRegion":"eu-central"}`)
+
+	resp, data := doRequest(
+		t,
+		ts,
+		http.MethodGet,
+		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, projectA.ID),
+		nil,
+		map[string]string{
+			"Authorization": authHeaderForIdentityKey(t, identityKey),
+		},
+	)
+
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
+
+	var out listAppsResponse
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Len(t, out.Apps, 2)
+	require.Equal(t, appOne.ID, out.Apps[0].ID)
+	require.Equal(t, projectA.ID, out.Apps[0].ProjectID)
+	require.Equal(t, "api", out.Apps[0].Name)
+	require.Equal(t, "starter", out.Apps[0].Tier)
+	require.Equal(t, "eu-central", out.Apps[0].PrimaryRegion)
+	require.Equal(t, "queued", out.Apps[0].Status)
+	require.Equal(t, appTwo.ID, out.Apps[1].ID)
+	require.Equal(t, projectA.ID, out.Apps[1].ProjectID)
+	require.Equal(t, "worker", out.Apps[1].Name)
+	require.Equal(t, "growth", out.Apps[1].Tier)
+	require.Equal(t, "eu-central", out.Apps[1].PrimaryRegion)
+	require.Equal(t, "queued", out.Apps[1].Status)
+}
+
+func TestListAppsRequiresOwnership(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.close()
+
+	ownerIdentityKey := uniqueIdentityKey(t)
+	otherIdentityKey := uniqueIdentityKey(t)
+	syncAuthUserForTest(t, ts, ownerIdentityKey)
+	syncAuthUserForTest(t, ts, otherIdentityKey)
+
+	workspaceID := createWorkspaceForIdentity(t, ts, ownerIdentityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
+	project := createProjectViaAPI(t, ts, ownerIdentityKey, workspaceID, fmt.Sprintf("project-%d", time.Now().UnixNano()))
+	_ = createAppViaAPI(t, ts, ownerIdentityKey, workspaceID, project.ID, `{"name":"api","imageRef":"ghcr.io/acme/api:latest","tier":"starter","primaryRegion":"eu-central"}`)
+
+	resp, data := doRequest(
+		t,
+		ts,
+		http.MethodGet,
+		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, project.ID),
+		nil,
+		map[string]string{
+			"Authorization": authHeaderForIdentityKey(t, otherIdentityKey),
+		},
+	)
+
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
+	var out errorResponse
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Equal(t, "unauthorized", out.Error)
+}
+
+func createAppViaAPI(t *testing.T, ts *testServer, identityKey, workspaceID, projectID, body string) createAppResponse {
+	t.Helper()
+
+	resp, data := doRequest(
+		t,
+		ts,
+		http.MethodPost,
+		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, projectID),
+		[]byte(body),
+		map[string]string{
+			"Authorization": authHeaderForIdentityKey(t, identityKey),
+			"Content-Type":  "application/json",
+		},
+	)
+
+	require.Equal(t, http.StatusCreated, resp.StatusCode, string(data))
+
+	var out createAppResponse
+	require.NoError(t, json.Unmarshal(data, &out))
+	return out
 }

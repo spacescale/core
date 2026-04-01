@@ -14,6 +14,13 @@ var (
 )
 
 func (d *Dispatcher) auction(req Request) (Winner, error) {
+	d.logger.Info("starting placement auction",
+		"app_id", req.AppID,
+		"deployment_id", req.DeploymentID,
+		"machine_id", req.MachineID,
+		"region", req.Region,
+		"tier", req.Tier,
+	)
 
 	msgs, err := d.nats.GatherProto(nats.NodeAuctionSubject(req.Region), &pb.AuctionRequest{MachineId: req.MachineID.String(), Tier: req.Tier})
 	if err != nil {
@@ -35,6 +42,13 @@ func (d *Dispatcher) auction(req Request) (Winner, error) {
 		bids = append(bids, reply)
 	}
 	if len(bids) == 0 {
+		d.logger.Warn("placement auction received no bids",
+			"app_id", req.AppID,
+			"deployment_id", req.DeploymentID,
+			"machine_id", req.MachineID,
+			"region", req.Region,
+			"tier", req.Tier,
+		)
 		return Winner{}, ErrNoAuctionBids
 	}
 
@@ -54,6 +68,17 @@ func (d *Dispatcher) auction(req Request) (Winner, error) {
 		return cmp.Compare(a.BootId, b.BootId)
 	})
 	winner := bids[0]
+	d.logger.Info("placement auction selected winner",
+		"app_id", req.AppID,
+		"deployment_id", req.DeploymentID,
+		"machine_id", req.MachineID,
+		"region", req.Region,
+		"tier", req.Tier,
+		"node_id", winner.NodeId,
+		"boot_id", winner.BootId,
+		"free_ram_mb", winner.FreeRamMb,
+		"bid_count", len(bids),
+	)
 
 	return Winner{NodeID: winner.NodeId, BootID: winner.BootId, FreeRamMB: winner.FreeRamMb}, nil
 }

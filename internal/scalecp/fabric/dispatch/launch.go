@@ -20,6 +20,15 @@ func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 	if err != nil {
 		return d.markFailed(ctx, req, err.Error())
 	}
+	d.logger.Info("dispatching launch command",
+		"app_id", req.AppID,
+		"deployment_id", req.DeploymentID,
+		"machine_id", req.MachineID,
+		"region", req.Region,
+		"tier", req.Tier,
+		"node_id", winner.NodeID,
+		"boot_id", winner.BootID,
+	)
 	nodeID := winner.NodeID
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
@@ -74,6 +83,17 @@ func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 		}
 		return fmt.Errorf("%w: %s", ErrLaunchRejected, reason)
 	}
+
+	d.logger.Info("launch command accepted",
+		"app_id", req.AppID,
+		"deployment_id", req.DeploymentID,
+		"machine_id", req.MachineID,
+		"region", req.Region,
+		"tier", req.Tier,
+		"node_id", winner.NodeID,
+		"boot_id", winner.BootID,
+		"status", resp.Status,
+	)
 
 	_, err = d.queries.MarkMachineStarting(ctx, req.MachineID)
 	return err

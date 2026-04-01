@@ -167,6 +167,7 @@ func (s *Server) Router() http.Handler {
 		r.Delete("/workspaces/{workspaceId}/projects/{projectId}", s.handleDeleteProject)
 
 		// Apps endpoints.
+		r.Get("/workspaces/{workspaceId}/projects/{projectId}/apps", s.handleListApps)
 		r.Post("/workspaces/{workspaceId}/projects/{projectId}/apps", s.handleCreateApp)
 	})
 

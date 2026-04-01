@@ -3,6 +3,12 @@ INSERT INTO apps (project_id, name, slug, subdomain, image_ref, tier, primary_re
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', $9, now(), now())
 RETURNING *;
 
+-- name: ListAppsByProjectID :many
+SELECT *
+FROM apps
+WHERE project_id = $1
+ORDER BY created_at ASC, id ASC;
+
 -- name: MarkAppDeploying :one
 UPDATE apps
 SET status = 'deploying',

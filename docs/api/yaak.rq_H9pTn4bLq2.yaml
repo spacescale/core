@@ -10,10 +10,12 @@ authenticationType: null
 body:
   text: |-
     {
-      "name": "api",
+      "name": "manual-e2e",
       "imageRef": "ghcr.io/acme/spacescale-api:latest",
+      "tier": "${[ APP_TIER ]}",
+      "primaryRegion": "${[ PRIMARY_REGION ]}",
       "runtimePort": 8080,
-      "isPublic": true,
+      "isPublic": false,
       "registryCredentialId": "",
       "envVars": [
         {
@@ -44,6 +46,8 @@ description: |-
 
   ### Body Contract
   - `imageRef` (required): OCI image reference
+  - `tier` (required): `starter`, `growth`, or `scale`
+  - `primaryRegion` (required): placement region and must match an active node region for end-to-end dispatch
   - `name` (optional): display name; when omitted service derives from image ref
   - `runtimePort` (optional): defaults to `8080`
   - `isPublic` (optional): defaults to `false`
@@ -55,12 +59,9 @@ description: |-
     - duplicate keys (after normalization) are rejected
 
   ### Behavior Notes
-  - create operation is atomic in one DB transaction:
-    1) app row insert (`status=queued`)
-    2) queued deployment row insert
-    3) optional registry credential link
-    4) optional env var inserts
-  - app status is persisted as `queued` only when queued deployment insert succeeds
+  - create operation persists app, deployment, machine, optional registry binding, and encrypted env vars atomically
+  - when dispatch is active, `scalecp` immediately runs auction + targeted launch after create
+  - current manual node region is `eu-central`, so use `primaryRegion=eu-central` for the live end-to-end path
 
   ### Success Response
   - **Status**: `201 Created`
@@ -72,8 +73,10 @@ description: |-
     - `slug`
     - `subdomain`
     - `imageRef`
+    - `tier`
+    - `primaryRegion`
     - `runtimePort`
-    - `status` (`queued` at creation)
+    - `status` (`deploying` when dispatch succeeds, `queued` only when no dispatcher is wired)
     - `isPublic`
     - `createdAt`
     - `updatedAt`
@@ -82,6 +85,7 @@ description: |-
   - `400 Bad Request`: invalid JSON or invalid input
   - `401 Unauthorized`: token invalid, caller missing, or ownership violation
   - `409 Conflict`: slug/subdomain collision or duplicate env key conflict
+  - `503 Service Unavailable`: no auction bids / no capacity available
   - `413 Request Entity Too Large`: body exceeds configured max bytes
   - `429 Too Many Requests`: per-user API rate limit exceeded
   - `500 Internal Server Error`: unexpected runtime error

@@ -10,8 +10,7 @@ authenticationType: null
 body:
   text: |-
     {
-      "name": "renamed-project",
-      "region": "global"
+      "name": "renamed-project"
     }
 bodyType: application/json
 description: |-
@@ -21,7 +20,7 @@ description: |-
 
   ### Endpoint
   - **Method**: `PATCH`
-  - **Path**: `/v0/workspaces/{workspaceId}/projects/{projectId}`
+  - **Path**: `/v1/workspaces/{workspaceId}/projects/{projectId}`
 
   ### Path Parameters
   - `workspaceId` (required): workspace UUID
@@ -31,17 +30,14 @@ description: |-
   - `Authorization: Bearer <BFF_JWT_TOKEN>`
 
   ### Body Contract
-  - at least one field is required:
-    - `name` (optional)
-    - `region` (optional)
+  - `name` is required
   - project slug is immutable in this endpoint
 
   Example:
 
   ```json
   {
-    "name": "renamed-project",
-    "region": "global"
+    "name": "renamed-project"
   }
   ```
 
@@ -52,12 +48,11 @@ description: |-
     - `workspaceId`
     - `name`
     - `slug`
-    - `region`
     - `createdAt`
     - `updatedAt`
 
   ### Error Responses
-  - `400 Bad Request`: invalid JSON, empty patch body, or invalid UUID path params
+  - `400 Bad Request`: invalid JSON, invalid input, or invalid UUID path params
   - `401 Unauthorized`: token invalid or resource not owned by caller
   - `429 Too Many Requests`: per-user API rate limit exceeded
   - `500 Internal Server Error`: unexpected runtime error
@@ -73,5 +68,5 @@ headers:
 method: PATCH
 name: Update Project
 sortPriority: 3.0
-url: http://${[ BASE_URL ]}/v0/workspaces/${[ WORKSPACE_ID ]}/projects/${[ PROJECT_ID ]}
+url: http://${[ BASE_URL ]}/v1/workspaces/${[ WORKSPACE_ID ]}/projects/${[ PROJECT_ID ]}
 urlParameters: []

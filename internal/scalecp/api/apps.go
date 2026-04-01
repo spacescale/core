@@ -1,4 +1,4 @@
-// This file implements HTTP transport for app-creation endpoints.
+// This file implements HTTP transport for app endpoints.
 //
 // Responsibilities in this file:
 // - Decode and validate request envelopes at transport boundaries.
@@ -55,6 +55,62 @@ type appResponse struct {
 	IsPublic      bool   `json:"isPublic"`
 	CreatedAt     string `json:"createdAt"`
 	UpdatedAt     string `json:"updatedAt"`
+}
+
+type listAppsResponse struct {
+	Apps []appResponse `json:"apps"`
+}
+
+func appResponseFromModel(app tenant.App) appResponse {
+	return appResponse{
+		ID:            app.ID,
+		ProjectID:     app.ProjectID,
+		Name:          app.Name,
+		Slug:          app.Slug,
+		Subdomain:     app.Subdomain,
+		ImageRef:      app.ImageRef,
+		Tier:          app.Tier,
+		PrimaryRegion: app.PrimaryRegion,
+		RuntimePort:   app.RuntimePort,
+		Status:        app.Status,
+		IsPublic:      app.IsPublic,
+		CreatedAt:     app.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:     app.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireCallerUser(w, r)
+	if !ok {
+		return
+	}
+
+	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
+	projectID := strings.TrimSpace(chi.URLParam(r, "projectId"))
+	if workspaceID == "" || projectID == "" {
+		writeErr(w, http.StatusBadRequest, "invalid input")
+		return
+	}
+
+	apps, err := s.apps.ListApps(r.Context(), user.ID, workspaceID, projectID)
+	if err != nil {
+		switch {
+		case errors.Is(err, tenant.ErrInvalidInput):
+			writeErr(w, http.StatusBadRequest, "invalid input")
+		case errors.Is(err, tenant.ErrUnauthorized):
+			writeErr(w, http.StatusUnauthorized, "unauthorized")
+		default:
+			writeErr(w, http.StatusInternalServerError, "internal error")
+		}
+		return
+	}
+
+	items := make([]appResponse, 0, len(apps))
+	for _, app := range apps {
+		items = append(items, appResponseFromModel(app))
+	}
+
+	writeJSON(w, http.StatusOK, listAppsResponse{Apps: items})
 }
 
 // handleCreateApp creates one app in an owned workspace/project.
@@ -148,19 +204,5 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		"Location",
 		"/v1/workspaces/"+url.PathEscape(workspaceID)+"/projects/"+url.PathEscape(projectID)+"/apps/"+url.PathEscape(app.ID),
 	)
-	writeJSON(w, http.StatusCreated, appResponse{
-		ID:            app.ID,
-		ProjectID:     app.ProjectID,
-		Name:          app.Name,
-		Slug:          app.Slug,
-		Subdomain:     app.Subdomain,
-		ImageRef:      app.ImageRef,
-		Tier:          app.Tier,
-		PrimaryRegion: app.PrimaryRegion,
-		RuntimePort:   app.RuntimePort,
-		Status:        app.Status,
-		IsPublic:      app.IsPublic,
-		CreatedAt:     app.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:     app.UpdatedAt.Format(time.RFC3339),
-	})
+	writeJSON(w, http.StatusCreated, appResponseFromModel(app))
 }

@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_CbKMXg38kC
 createdAt: 2026-02-09T22:56:16.999811
-updatedAt: 2026-02-25T00:10:00.000000
+updatedAt: 2026-04-01T22:39:40.293731
 workspaceId: wk_KJF6oyHis3
 folderId: null
 authentication: {}
@@ -10,122 +10,97 @@ authenticationType: null
 body: {}
 bodyType: null
 description: |-
-  ## Local Token and API Testing
+  ## Local API Flow
 
-  This info request documents the standard local API testing flow.
+  This info request documents the current Yaak flow for the running local API.
 
-  ### Runtime Prerequisites (README-aligned)
-  - from repo root, start local API + DB with:
-
-  ```bash
-  make run
-  ```
-
-  - run API tests with:
+  ### Runtime Prerequisites
+  1. Start DB + NATS:
 
   ```bash
-  make test
+  make db
   ```
 
-  - stop local DB container with:
+  2. Start the control plane API in another terminal:
 
   ```bash
-  make stop
+  make cp
   ```
 
-  ### Why this exists
-  - Next.js BFF usually issues the API token
-  - for direct API checks (Yaak/curl), use `make mint` to generate a short-lived JWT
+  3. For full app placement tests, make sure at least one `scaled` node is already bootstrapped and connected in the same region you will use for app creation.
 
-  ### `.env.local` requirements
-  The `make mint` target reads values from repo-root `.env.local`.
+  Common dev flow for the manual node:
 
-  Required keys:
-  - `BFF_JWT_SECRET` (HMAC signing secret, must match API runtime secret)
-  - `BFF_IDENTITY_KEY` (stable identity key used by API)
-
-  Optional keys:
-  - `BFF_JWT_ISSUER` (default: `spacescale-web-bff`)
-  - `BFF_JWT_AUDIENCE` (default: `spacescale-api`)
-  - `BFF_JWT_TTL_SECONDS` (default: `3600`)
-  - `BFF_SUBJECT_HASH_SECRET` (subject hash source)
-  - `NEXTAUTH_SECRET` (used as subject hash fallback)
-  - `BFF_JWT_EMAIL`
-  - `BFF_JWT_NAME`
-  - `BFF_JWT_AVATAR_URL`
-
-  ### `.env.local` example
-
-  ```env
-  BFF_JWT_SECRET=replace-with-strong-secret
-  BFF_JWT_ISSUER=spacescale-web-bff
-  BFF_JWT_AUDIENCE=spacescale-api
-  BFF_IDENTITY_KEY=email:you@example.com
-  BFF_SUBJECT_HASH_SECRET=replace-with-stable-secret
-  BFF_JWT_TTL_SECONDS=3600
-  BFF_JWT_EMAIL=you@example.com
-  BFF_JWT_NAME=Dev User
-  BFF_JWT_AVATAR_URL=https://example.com/avatar.png
+  ```bash
+  make provision-node
+  make scaled
   ```
 
-  ### Mint command
+  `scaled` is Linux-only and bootstraps over NATS, not HTTP.
+
+  4. Refresh the Yaak environment before opening requests:
+
+  ```bash
+  make yaak-refresh
+  ```
+
+  That refresh step:
+  - mints a fresh local BFF token from `.env.local`
+  - calls `POST /v1/internal/auth-sync`
+  - calls `POST /v1/bootstrap-defaults`
+  - resolves the current workspace + project ids
+  - rewrites `docs/api/yaak.ev_hTkEdmm6xq.yaml`
+
+  If you only need the raw bearer token:
 
   ```bash
   make mint
   ```
 
-  Output is one HS256 JWT on stdout.
-  Token payload includes:
-  - `sub` as opaque `github:v2:<hash>`
-  - `identity_key` as explicit stable identity key
+  ### Current Route Prefixes
+  - health: `/healthz`
+  - internal route: `/v1/internal/auth-sync`
+  - authenticated user routes: `/v1/...`
 
-  ### Use token in Yaak
-  1. Copy output from `make mint`.
-  2. Open Yaak environment `LOCAL`.
-  3. Set `BFF_TOKEN=<pasted-token>`.
-  4. Protected requests use:
-     - `Authorization: Bearer ${[ BFF_TOKEN ]}`
+  ### Yaak Environment Notes
+  - `LOCAL` contains the variables Yaak requests expect
+  - `make yaak-refresh` is the source of truth for:
+    - `BASE_URL=127.0.0.1:8080`
+    - `BFF_TOKEN`
+    - `WORKSPACE_ID`
+    - `PROJECT_ID`
+  - `PRIMARY_REGION` defaults to `eu-central` for the current manual node path
+  - rerun `make yaak-refresh` whenever the token expires, DB is reset, or bootstrap state changes
 
-  ### Recommended first-call flow
+  ### Recommended Request Order In Yaak
+  1. `Health Check`
+  2. `Internal Auth Sync`
+  3. `Bootstrap Defaults`
+  4. `List Workspaces`
+  5. `List Projects In Workspace`
+  6. `Create App`
+  7. `List Apps`
 
-  ```bash
-  # 1) sync user (trusted internal route)
-  curl -i -X POST "http://localhost:8080/v0/internal/auth-sync" \
-    -H "X-Internal-Auth: <internal-secret>" \
-    -H "Content-Type: application/json" \
-    -d '{"identityKey":"email:you@example.com"}'
+  ### Important For Create App
+  - `tier` is required
+  - `primaryRegion` is required
+  - for the live end-to-end flow, use `primaryRegion=eu-central`
+  - the app create request will only dispatch successfully if a bootstrapped `scaled` node is actively bidding in that region
+  - if no active node is bidding in that region, API returns `503 no capacity available`
 
-  # 2) bootstrap default workspace + project
-  curl -i -X POST "http://localhost:8080/v0/bootstrap-defaults" \
-    -H "Authorization: Bearer $BFF_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{}'
+  ### Expected Happy Path
+  - `Create App` returns `201 Created`
+  - response status is `deploying` when dispatch succeeds
+  - `scaled` logs:
+    - `submitted bid`
+    - `won placement auction`
 
-  # 3) list workspaces
-  curl -i "http://localhost:8080/v0/workspaces" \
-    -H "Authorization: Bearer $BFF_TOKEN"
-  ```
-
-  ### JWT validation enforced by API middleware
-  Required claims:
-  - `sub` (non-empty)
-  - `identity_key` (stable identity key)
-  - `iss` matches `BFF_JWT_ISSUER`
-  - `aud` matches `BFF_JWT_AUDIENCE`
-  - `exp` is in the future
-
-  Invalid claims or signature return `401 unauthorized`.
-
-  ### Troubleshooting
-  - `BFF_JWT_SECRET is required in .env.local`
-    - add key and run `make mint` again
-  - API returns `401 unauthorized`
-    - re-mint token (expired tokens are common)
-    - verify secret/issuer/audience values
-    - verify header format `Authorization: Bearer <token>`
+  ### Useful Recovery Note
+  - `Bootstrap Defaults` is idempotent
+  - when it returns `{ "created": false }`, keep using `List Workspaces` and `List Projects In Workspace` to refresh ids instead of expecting `workspaceId` / `projectId` in that response
 headers: []
 method: INFO
-name: Mint Process
+name: Mint Process - Please Read
 sortPriority: 0.0
-url: ""
+url: ''
 urlParameters: []
