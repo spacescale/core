@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httprate"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/spacescale/core/internal/scalecp/fabric/dispatch"
 	"github.com/spacescale/core/internal/scalecp/service"
 	"github.com/spacescale/core/internal/scalecp/service/tenant"
 	"github.com/spacescale/core/internal/shared/config"
@@ -20,15 +21,22 @@ import (
 
 // Server wires HTTP handlers to service dependencies and auth configuration.
 type Server struct {
-	users                   *tenant.UserService
-	projects                *tenant.ProjectService
-	workspaces              *tenant.WorkspaceService
-	bootstrap               *tenant.BootstrapService
-	apps                    *tenant.AppService
+
+	// multi tenant service layer
+	users      *tenant.UserService
+	projects   *tenant.ProjectService
+	workspaces *tenant.WorkspaceService
+	bootstrap  *tenant.BootstrapService
+	apps       *tenant.AppService
+
+	// dependencies
 	dbPool                  *pgxpool.Pool
 	config                  config.Config
 	internalIdentityLimiter *httprate.RateLimiter
 	server                  *http.Server
+
+	// fabric dependencies
+	dispatcher *dispatch.Dispatcher
 }
 
 const (
@@ -48,6 +56,9 @@ type ServerDeps struct {
 	Services *service.Services
 	DBPool   *pgxpool.Pool
 	Config   config.Config
+
+	// fabric dependencies
+	Dispatcher *dispatch.Dispatcher
 }
 
 func NewServer(deps ServerDeps) *Server {
@@ -61,6 +72,9 @@ func NewServer(deps ServerDeps) *Server {
 		dbPool:                  deps.DBPool,
 		config:                  deps.Config,
 		internalIdentityLimiter: newInternalIdentityLimiter(),
+
+		// fabric dependencies
+		dispatcher: deps.Dispatcher,
 	}
 	s.server = &http.Server{
 		Addr:              deps.Config.ListenAddr(),

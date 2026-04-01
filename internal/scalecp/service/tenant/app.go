@@ -25,6 +25,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/internal/scalecp/db/sqlc"
+	pb "github.com/spacescale/core/internal/shared/pb/v1"
 )
 
 const (
@@ -52,6 +53,17 @@ type App struct {
 	IsPublic      bool      // whether public ingress is enabled.
 	CreatedAt     time.Time // record creation timestamp.
 	UpdatedAt     time.Time // record last-update timestamp.
+}
+
+type CreateAppResult struct {
+	App          App
+	AppID        uuid.UUID
+	DeploymentID uuid.UUID
+	MachineID    uuid.UUID
+	Region       string
+	Tier         pb.Tier
+	ImageRef     string
+	Env          map[string]string
 }
 
 // AppEnvVarInput defines one env var in create requests.
@@ -93,45 +105,51 @@ func NewAppService(queries *sqlc.Queries, pool *pgxpool.Pool, envCipher *EnvValu
 // - initial queued deployment row
 // - optional app<->registry association
 // - optional env var rows (encrypted values)
-func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, projectID string, p CreateAppParams) (App, error) {
+func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, projectID string, p CreateAppParams) (CreateAppResult, error) {
 	projectUUID, err := s.authorizeOwnedProject(ctx, ownerUserID, workspaceID, projectID)
 	if err != nil {
-		return App{}, err
+		return CreateAppResult{}, err
 	}
 
 	imageRef, ok := normalizeImageRef(p.ImageRef)
 	if !ok {
-		return App{}, ErrInvalidInput
+		return CreateAppResult{}, ErrInvalidInput
 	}
 	tier, ok := normalizeAppTier(p.Tier)
 	if !ok {
-		return App{}, ErrInvalidInput
+		return CreateAppResult{}, ErrInvalidInput
 	}
+	tierProto := appTierProto(tier)
+
 	primaryRegion, ok := normalizeAppPrimaryRegion(p.PrimaryRegion)
 	if !ok {
-		return App{}, ErrInvalidInput
+		return CreateAppResult{}, ErrInvalidInput
 	}
 	name, ok := normalizeOrDeriveAppName(p.Name, imageRef)
 	if !ok {
-		return App{}, ErrInvalidInput
+		return CreateAppResult{}, ErrInvalidInput
 	}
 	runtimePort, ok := normalizeRuntimePort(p.RuntimePort)
 	if !ok {
-		return App{}, ErrInvalidInput
+		return CreateAppResult{}, ErrInvalidInput
 	}
 	isPublic := normalizeIsPublic(p.IsPublic)
 	envVars, ok := normalizeEnvVars(p.EnvVars)
 	if !ok {
-		return App{}, ErrInvalidInput
+		return CreateAppResult{}, ErrInvalidInput
+	}
+	envMap := make(map[string]string, len(envVars))
+	for _, env := range envVars {
+		envMap[env.Key] = env.Value
 	}
 	registryCredentialID, hasRegistryCredential, err := s.resolveRegistryCredential(ctx, projectUUID, p.RegistryCredentialID)
 	if err != nil {
-		return App{}, err
+		return CreateAppResult{}, err
 	}
 
 	baseSlug := slugifyProjectName(name)
 	if baseSlug == "" {
-		return App{}, ErrInvalidInput
+		return CreateAppResult{}, ErrInvalidInput
 	}
 
 	// Retry only on slug/subdomain uniqueness conflicts. Each attempt must use a
@@ -141,14 +159,14 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 		if i > 0 {
 			suffix, suffixErr := randomSuffix(suffixLength)
 			if suffixErr != nil {
-				return App{}, suffixErr
+				return CreateAppResult{}, suffixErr
 			}
 			slug = slugWithSuffix(baseSlug, suffix)
 		}
 
 		tx, beginErr := s.pool.Begin(ctx)
 		if beginErr != nil {
-			return App{}, beginErr
+			return CreateAppResult{}, beginErr
 		}
 		txQueries := s.queries.WithTx(tx)
 
@@ -168,7 +186,7 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 			if isUniqueViolation(createErr) {
 				continue
 			}
-			return App{}, createErr
+			return CreateAppResult{}, createErr
 		}
 
 		deployment, err := txQueries.CreateQueuedDeployment(ctx, sqlc.CreateQueuedDeploymentParams{
@@ -178,17 +196,18 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 		})
 		if err != nil {
 			_ = tx.Rollback(ctx)
-			return App{}, err
+			return CreateAppResult{}, err
 		}
 
-		if _, err := txQueries.CreateQueuedMachine(ctx, sqlc.CreateQueuedMachineParams{
+		machine, err := txQueries.CreateQueuedMachine(ctx, sqlc.CreateQueuedMachineParams{
 			AppID:        row.ID,
 			DeploymentID: deployment.ID,
 			Region:       row.PrimaryRegion,
 			Tier:         row.Tier,
-		}); err != nil {
+		})
+		if err != nil {
 			_ = tx.Rollback(ctx)
-			return App{}, err
+			return CreateAppResult{}, err
 		}
 
 		if hasRegistryCredential {
@@ -197,7 +216,7 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 				RegistryCredentialID: registryCredentialID,
 			}); err != nil {
 				_ = tx.Rollback(ctx)
-				return App{}, err
+				return CreateAppResult{}, err
 			}
 		}
 
@@ -209,7 +228,7 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 			})
 			if encErr != nil {
 				_ = tx.Rollback(ctx)
-				return App{}, encErr
+				return CreateAppResult{}, encErr
 			}
 			bulkEnvVars = append(bulkEnvVars, sqlc.CreateAppEnvVarsParams{
 				AppID:          row.ID,
@@ -223,20 +242,29 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 			if _, err := txQueries.CreateAppEnvVars(ctx, bulkEnvVars); err != nil {
 				_ = tx.Rollback(ctx)
 				if isUniqueViolation(err) {
-					return App{}, ErrConflict
+					return CreateAppResult{}, ErrConflict
 				}
-				return App{}, err
+				return CreateAppResult{}, err
 			}
 		}
 
 		if err := tx.Commit(ctx); err != nil {
-			return App{}, err
+			return CreateAppResult{}, err
 		}
 
-		return appFromRow(row), nil
+		return CreateAppResult{
+			App:          appFromRow(row),
+			AppID:        row.ID,
+			DeploymentID: deployment.ID,
+			MachineID:    machine.ID,
+			Region:       row.PrimaryRegion,
+			Tier:         tierProto,
+			ImageRef:     imageRef,
+			Env:          envMap,
+		}, nil
 	}
 
-	return App{}, ErrConflict
+	return CreateAppResult{}, ErrConflict
 }
 
 // authorizeOwnedProject verifies that the owner can access the workspace and
@@ -315,6 +343,19 @@ func normalizeAppTier(raw string) (string, bool) {
 		return tier, true
 	default:
 		return "", false
+	}
+}
+
+func appTierProto(tier string) pb.Tier {
+	switch tier {
+	case "starter":
+		return pb.Tier_TIER_STARTER
+	case "growth":
+		return pb.Tier_TIER_GROWTH
+	case "scale":
+		return pb.Tier_TIER_SCALE
+	default:
+		return pb.Tier_TIER_UNSPECIFIED
 	}
 }
 

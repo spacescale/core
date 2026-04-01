@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/spacescale/core/internal/scalecp/fabric/dispatch"
 	"github.com/spacescale/core/internal/scalecp/service/tenant"
 )
 
@@ -90,7 +91,7 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	app, err := s.apps.CreateApp(r.Context(), user.ID, workspaceID, projectID, tenant.CreateAppParams{
+	result, err := s.apps.CreateApp(r.Context(), user.ID, workspaceID, projectID, tenant.CreateAppParams{
 		Name:                 req.Name,
 		ImageRef:             req.ImageRef,
 		Tier:                 req.Tier,
@@ -112,6 +113,30 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, "internal error")
 		}
 		return
+	}
+
+	app := result.App
+
+	if s.dispatcher != nil {
+		if err := s.dispatcher.Launch(r.Context(), dispatch.Request{
+			AppID:        result.AppID,
+			DeploymentID: result.DeploymentID,
+			MachineID:    result.MachineID,
+			Region:       result.Region,
+			Tier:         result.Tier,
+			ImageRef:     result.ImageRef,
+			Env:          result.Env,
+		}); err != nil {
+			switch {
+			case errors.Is(err, dispatch.ErrNoAuctionBids), errors.Is(err, dispatch.ErrLaunchRejected):
+				writeErr(w, http.StatusServiceUnavailable, "no capacity available")
+			default:
+				writeErr(w, http.StatusInternalServerError, "internal error")
+			}
+			return
+		}
+
+		app.Status = "deploying"
 	}
 
 	if lc, ok := logContextFromContext(r.Context()); ok {

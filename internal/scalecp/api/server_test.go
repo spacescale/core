@@ -49,18 +49,16 @@ func newTestServer(t *testing.T) *testServer {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	pool, err := pgxpool.New(ctx, url)
-	if err != nil {
-		t.Fatalf("connect db: %v", err)
-	}
+	require.NoError(t, err)
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		t.Fatalf("ping db: %v", err)
+		require.NoError(t, err)
 	}
 
 	authCfg := config.AuthConfig{JWTSecret: testJWTSecret, Issuer: testIssuer, Audience: testAudience}
 	if err := authCfg.Validate(); err != nil {
 		pool.Close()
-		t.Fatalf("auth config: %v", err)
+		require.NoError(t, err)
 	}
 
 	queries := sqlc.New(pool)
@@ -72,7 +70,7 @@ func newTestServer(t *testing.T) *testServer {
 	})
 	if err != nil {
 		pool.Close()
-		t.Fatalf("services: %v", err)
+		require.NoError(t, err)
 	}
 	server := api.NewServer(api.ServerDeps{
 		Services: svcs,
@@ -172,21 +170,15 @@ func (ts *testServer) close() {
 func doRequest(t *testing.T, ts *testServer, method, path string, body []byte, headers map[string]string) (*http.Response, []byte) {
 	t.Helper()
 	req, err := http.NewRequest(method, ts.server.URL+path, bytes.NewReader(body))
-	if err != nil {
-		t.Fatalf("new request: %v", err)
-	}
+	require.NoError(t, err)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("do request: %v", err)
-	}
+	require.NoError(t, err)
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read body: %v", err)
-	}
+	require.NoError(t, err)
 	return resp, data
 }
 
@@ -203,9 +195,7 @@ func authHeaderForIdentityKey(t *testing.T, identityKey string) string {
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	raw, err := token.SignedString([]byte(testJWTSecret))
-	if err != nil {
-		t.Fatalf("sign auth token: %v", err)
-	}
+	require.NoError(t, err)
 	return "Bearer " + raw
 }
 

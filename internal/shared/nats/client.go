@@ -236,6 +236,10 @@ func (c *Client) Gather(subject string, payload []byte) ([]*Msg, error) {
 		}
 		// We caught a bid! Add it to the pile and loop back.
 		replies = append(replies, msg)
+		//early exit 10 node is enough to start the tie breaker
+		if len(replies) >= 10 {
+			return replies, nil
+		}
 	}
 }
 

@@ -57,10 +57,13 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*ControlP
 		return nil, fmt.Errorf("nats init failed: %w", err)
 	}
 
-	controlFabric := fabric.New(services, logger)
-	apiServer := api.NewServer(api.ServerDeps{Services: services,
-		DBPool: dbPool,
-		Config: cfg,
+	controlFabric := fabric.New(services, queries, dbPool, natsClient, logger)
+	apiServer := api.NewServer(api.ServerDeps{
+		Services: services,
+		DBPool:   dbPool,
+		Config:   cfg,
+		
+		Dispatcher: controlFabric.Dispatcher(),
 	})
 
 	return &ControlPlane{
