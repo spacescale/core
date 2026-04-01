@@ -15,17 +15,6 @@ import (
 	"time"
 )
 
-// sharedVCPUOvercommitRatio dictates the economic and performance model for shared
-// compute tiers. It represents how many virtual CPUs can be sold per physical hardware
-// thread. A ratio of 4 means 4 virtual CPUs map to 1 physical thread.
-//
-// This overcommit relies on the statistical probability that most shared workloads
-// are idle most of the time allowing the Linux kernel Completely Fair Scheduler
-// to rapidly time slice the physical CPU between active workloads. If too many
-// virtual CPUs become active simultaneously it causes CPU steal and thrashing.
-// A ratio of 4 to 6 is the industry standard sweet spot for general purpose web traffic.
-const sharedVCPUOvercommitRatio uint32 = 4
-
 // reservation represents a temporary hold on physical resources while a node
 // waits to see if it won a placement auction.
 type reservation struct {
@@ -38,24 +27,32 @@ type reservation struct {
 // Capacity tracks the hardware allocation state of the edge daemon.
 // It manages the split between dedicated resources and overcommitted shared resources.
 type Capacity struct {
-	mu                    sync.Mutex
-	totalRAMMB            uint64
-	usedRAMMB             uint64
-	reservedRAMMB         uint64
-	totalThreads          uint32
+	mu sync.Mutex
+
+	// RAM Allocation (Megabytes)
+	sellableRAMMB uint64
+	usedRAMMB     uint64
+	reservedRAMMB uint64
+
+	// Pinned CPU Allocation (Dedicated Physical Threads)
+	sellableThreads       uint32
 	usedPinnedThreads     uint32
 	reservedPinnedThreads uint32
-	usedSharedVCPU        uint32
-	reservedSharedVCPU    uint32
-	reservations          map[string]reservation
+
+	// Shared CPU Allocation (Overcommitted Virtual CPUs)
+	usedSharedVCPU     uint32
+	reservedSharedVCPU uint32
+
+	// In-Flight Reservations (Ghost Holds)
+	reservations map[string]reservation
 }
 
 // NewCapacity initializes the node resource ledger using real hardware metrics.
 func NewCapacity(totalRAMMB uint64, totalThreads uint32) *Capacity {
 	return &Capacity{
-		totalRAMMB:   totalRAMMB,
-		totalThreads: totalThreads,
-		reservations: make(map[string]reservation),
+		sellableRAMMB:   sellableRAMMB(totalRAMMB),
+		sellableThreads: sellableThreads(totalThreads),
+		reservations:    make(map[string]reservation),
 	}
 }
 
@@ -63,7 +60,7 @@ func NewCapacity(totalRAMMB uint64, totalThreads uint32) *Capacity {
 // It is mathematically atomic. It checks capacity and deducts it under the
 // same lock to prevent Time Of Check to Time Of Use race conditions.
 //
-// It returns the remaining free RAM which acts as the auction tie breaker
+// It returns the remaining free RAM which acts as the auction tiebreaker
 // and true if successful. If a reservation for the machineID already exists
 // or if there is insufficient physical capacity it returns false.
 func (c *Capacity) Reserve(machineID string, spec HardwareSpec, ttl time.Duration) (uint64, bool) {
@@ -197,18 +194,18 @@ func (c *Capacity) canFitLocked(spec HardwareSpec) bool {
 
 func (c *Capacity) freeRAMMBLocked() uint64 {
 	allocated := c.usedRAMMB + c.reservedRAMMB
-	if allocated > c.totalRAMMB {
+	if allocated > c.sellableRAMMB {
 		return 0 // Defensive return preventing catastrophic uint64 underflow
 	}
-	return c.totalRAMMB - allocated
+	return c.sellableRAMMB - allocated
 }
 
 func (c *Capacity) freePinnedThreadsLocked() uint32 {
 	allocated := c.usedPinnedThreads + c.reservedPinnedThreads
-	if allocated > c.totalThreads {
+	if allocated > c.sellableThreads {
 		return 0 // Defensive return preventing catastrophic uint32 underflow
 	}
-	return c.totalThreads - allocated
+	return c.sellableThreads - allocated
 }
 
 // freeSharedVCPULocked calculates available virtual capacity.
@@ -217,10 +214,10 @@ func (c *Capacity) freePinnedThreadsLocked() uint32 {
 // allocated shared virtual CPUs to find the remaining pool.
 func (c *Capacity) freeSharedVCPULocked() uint32 {
 	dedicatedThreads := c.usedPinnedThreads + c.reservedPinnedThreads
-	if dedicatedThreads > c.totalThreads {
+	if dedicatedThreads > c.sellableThreads {
 		return 0 // Defensive guard
 	}
-	sharedThreads := c.totalThreads - dedicatedThreads
+	sharedThreads := c.sellableThreads - dedicatedThreads
 
 	sharedCapacity := sharedThreads * sharedVCPUOvercommitRatio
 
@@ -232,6 +229,8 @@ func (c *Capacity) freeSharedVCPULocked() uint32 {
 	return sharedCapacity - allocatedShared
 }
 
+// releaseExpiredLocked sweeps the active reservations and deletes any that have passed their TTL.
+// It assumes the caller holds the mutex.
 func (c *Capacity) releaseExpiredLocked(now time.Time) {
 	for machineID, res := range c.reservations {
 		if now.After(res.ExpiresAt) {
@@ -240,6 +239,8 @@ func (c *Capacity) releaseExpiredLocked(now time.Time) {
 	}
 }
 
+// releaseLocked drops a temporary hold and returns the capacity to the free pool.
+// It assumes the caller holds the mutex.
 func (c *Capacity) releaseLocked(machineID string) {
 	res, ok := c.reservations[machineID]
 	if !ok {

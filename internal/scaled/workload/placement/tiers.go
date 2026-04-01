@@ -42,7 +42,7 @@ func TranslateTier(tier pb.Tier) (HardwareSpec, error) {
 		return HardwareSpec{
 			VCPU:     8,
 			RAM:      16384,
-			IsPinned: true,
+			IsPinned: true, //CPU Pinnings
 		}, nil
 
 	default:
