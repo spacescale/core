@@ -67,6 +67,39 @@ type CreateAppEnvVarsParams struct {
 	IsSecret       bool
 }
 
+const getAppByIDAndProjectID = `-- name: GetAppByIDAndProjectID :one
+SELECT id, project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, is_public, status, created_at, updated_at
+FROM apps
+WHERE id = $1
+  AND project_id = $2
+`
+
+type GetAppByIDAndProjectIDParams struct {
+	ID        uuid.UUID
+	ProjectID uuid.UUID
+}
+
+func (q *Queries) GetAppByIDAndProjectID(ctx context.Context, arg GetAppByIDAndProjectIDParams) (App, error) {
+	row := q.db.QueryRow(ctx, getAppByIDAndProjectID, arg.ID, arg.ProjectID)
+	var i App
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Slug,
+		&i.Subdomain,
+		&i.ImageRef,
+		&i.Tier,
+		&i.PrimaryRegion,
+		&i.RuntimePort,
+		&i.IsPublic,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getRegistryCredentialByIDAndProjectID = `-- name: GetRegistryCredentialByIDAndProjectID :one
 SELECT id, project_id, name, registry_url, username, token_encrypted, created_at, updated_at, last_used
 FROM registry_credentials

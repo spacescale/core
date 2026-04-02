@@ -13,6 +13,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
@@ -23,6 +24,8 @@ import (
 	"github.com/spacescale/core/internal/scalecp/fabric/dispatch"
 	"github.com/spacescale/core/internal/scalecp/service/tenant"
 )
+
+const createAppDispatchTimeout = 3 * time.Second
 
 type createAppEnvVarRequest struct {
 	Key      string `json:"key"`
@@ -77,6 +80,20 @@ func appResponseFromModel(app tenant.App) appResponse {
 		CreatedAt:     app.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:     app.UpdatedAt.Format(time.RFC3339),
 	}
+}
+
+func newCreateAppDispatchContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(parent), createAppDispatchTimeout)
+}
+
+func resolveCreateAppAfterDispatch(current tenant.App, dispatchErr error, refreshed tenant.App, refreshErr error) tenant.App {
+	if refreshErr == nil {
+		return refreshed
+	}
+	if dispatchErr == nil {
+		current.Status = "deploying"
+	}
+	return current
 }
 
 func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +164,7 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// Persist the app intent first so the resource exists before placement runs.
 	result, err := s.apps.CreateApp(r.Context(), user.ID, workspaceID, projectID, tenant.CreateAppParams{
 		Name:                 req.Name,
 		ImageRef:             req.ImageRef,
@@ -173,8 +191,17 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 
 	app := result.App
 
+	if lc, ok := logContextFromContext(r.Context()); ok {
+		lc.ProjectID = app.ProjectID
+		lc.AppID = app.ID
+	}
+
 	if s.dispatcher != nil {
-		if err := s.dispatcher.Launch(r.Context(), dispatch.Request{
+		// Keep placement synchronous for now but detach it from client cancel.
+		dispatchCtx, cancel := newCreateAppDispatchContext(r.Context())
+		defer cancel()
+
+		dispatchErr := s.dispatcher.Launch(dispatchCtx, dispatch.Request{
 			AppID:        result.AppID,
 			DeploymentID: result.DeploymentID,
 			MachineID:    result.MachineID,
@@ -182,22 +209,11 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 			Tier:         result.Tier,
 			ImageRef:     result.ImageRef,
 			Env:          result.Env,
-		}); err != nil {
-			switch {
-			case errors.Is(err, dispatch.ErrNoAuctionBids), errors.Is(err, dispatch.ErrLaunchRejected):
-				writeErr(w, http.StatusServiceUnavailable, "no capacity available")
-			default:
-				writeErr(w, http.StatusInternalServerError, "internal error")
-			}
-			return
-		}
+		})
 
-		app.Status = "deploying"
-	}
-
-	if lc, ok := logContextFromContext(r.Context()); ok {
-		lc.ProjectID = app.ProjectID
-		lc.AppID = app.ID
+		// Reload the app so the response reflects the real persisted status.
+		refreshed, refreshErr := s.apps.GetApp(dispatchCtx, user.ID, workspaceID, projectID, app.ID)
+		app = resolveCreateAppAfterDispatch(app, dispatchErr, refreshed, refreshErr)
 	}
 
 	w.Header().Set(

@@ -60,7 +60,7 @@ func (d *Dispatcher) auction(req Request) (Winner, error) {
 		}
 
 		// Step 2: Tie-breaker - Node ID in ASCENDING order.
-		if r := cmp.Compare(a.NodeId, b.NodeId); r != 0 { // flip the arguments to cmp.Compare(b, a). so it sorts descending
+		if r := cmp.Compare(a.NodeId, b.NodeId); r != 0 {
 			return r
 		}
 

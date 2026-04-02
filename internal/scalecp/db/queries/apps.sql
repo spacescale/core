@@ -9,6 +9,12 @@ FROM apps
 WHERE project_id = $1
 ORDER BY created_at ASC, id ASC;
 
+-- name: GetAppByIDAndProjectID :one
+SELECT *
+FROM apps
+WHERE id = $1
+  AND project_id = $2;
+
 -- name: MarkAppDeploying :one
 UPDATE apps
 SET status = 'deploying',

@@ -18,7 +18,7 @@ var ErrLaunchRejected = errors.New("machine launch rejected")
 func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 	winner, err := d.auction(req)
 	if err != nil {
-		return d.markFailed(ctx, req, err.Error())
+		return returnLaunchError(err, d.markFailed(ctx, req, err.Error()))
 	}
 	d.logger.Info("dispatching launch command",
 		"app_id", req.AppID,
@@ -70,7 +70,7 @@ func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 		resp,
 		machineLaunchTimeout,
 	); err != nil {
-		return d.markFailed(ctx, req, err.Error())
+		return returnLaunchError(err, d.markFailed(ctx, req, err.Error()))
 	}
 
 	if !resp.Accepted {
@@ -95,8 +95,25 @@ func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 		"status", resp.Status,
 	)
 
-	_, err = d.queries.MarkMachineStarting(ctx, req.MachineID)
-	return err
+	if _, err := d.queries.MarkMachineStarting(ctx, req.MachineID); err != nil {
+		d.logger.Error("failed to mark machine starting",
+			"app_id", req.AppID,
+			"deployment_id", req.DeploymentID,
+			"machine_id", req.MachineID,
+			"node_id", winner.NodeID,
+			"boot_id", winner.BootID,
+			"error", err,
+		)
+	}
+
+	return nil
+}
+
+func returnLaunchError(launchErr, markErr error) error {
+	if markErr == nil {
+		return launchErr
+	}
+	return errors.Join(launchErr, markErr)
 }
 
 func (d *Dispatcher) markFailed(ctx context.Context, req Request, reason string) error {

@@ -142,8 +142,8 @@ func (s *Server) Router() http.Handler {
 	// Internal routes are intended for private-network service-to-service traffic.
 	// They apply both a global circuit breaker and per-identity guardrails.
 	r.Route("/v1/internal", func(r chi.Router) {
-		r.Use(internalAuthMiddleware(s.config.InternalAuthSecret))
 		r.Use(internalGlobalLimiter.Handler)
+		r.Use(internalAuthMiddleware(s.config.InternalAuthSecret))
 		r.Post("/auth-sync", s.handleSyncAuthUser)
 	})
 
@@ -200,7 +200,10 @@ func newInternalIdentityLimiter() *httprate.RateLimiter {
 // "identity:unknown" instead of an error. This keeps limiter behavior predictable
 // and avoids triggering httprate's error handler path.
 func keyByIdentityKey(r *http.Request) (string, error) {
-	p, _ := principalFromContext(r.Context())
+	p, ok := principalFromContext(r.Context())
+	if !ok || p.IdentityKey == "" {
+		return "identity:unknown", nil
+	}
 	return "identity:" + p.IdentityKey, nil
 }
 

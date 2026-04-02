@@ -286,6 +286,31 @@ func (s *AppService) ListApps(ctx context.Context, ownerUserID, workspaceID, pro
 	return out, nil
 }
 
+func (s *AppService) GetApp(ctx context.Context, ownerUserID, workspaceID, projectID, appID string) (App, error) {
+	projectUUID, err := s.authorizeOwnedProject(ctx, ownerUserID, workspaceID, projectID)
+	if err != nil {
+		return App{}, err
+	}
+
+	appUUID, ok := parseUUID(appID)
+	if !ok {
+		return App{}, ErrInvalidInput
+	}
+
+	row, err := s.queries.GetAppByIDAndProjectID(ctx, sqlc.GetAppByIDAndProjectIDParams{
+		ID:        appUUID,
+		ProjectID: projectUUID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return App{}, ErrUnauthorized
+		}
+		return App{}, err
+	}
+
+	return appFromRow(row), nil
+}
+
 // authorizeOwnedProject verifies that the owner can access the workspace and
 // project, and that the project belongs to that workspace.
 func (s *AppService) authorizeOwnedProject(ctx context.Context, ownerUserID, workspaceID, projectID string) (uuid.UUID, error) {
