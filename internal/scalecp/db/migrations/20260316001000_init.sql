@@ -167,7 +167,7 @@ CREATE TABLE machines
     id            UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
     app_id        UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
     deployment_id UUID        NOT NULL REFERENCES deployments (id) ON DELETE CASCADE,
-    node_id       TEXT                 REFERENCES metals (id) ON DELETE RESTRICT,
+    metal_id UUID REFERENCES metals(id) ON DELETE RESTRICT,
     region        TEXT        NOT NULL,
     tier          TEXT        NOT NULL,
     status        TEXT        NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'assigned', 'starting', 'running', 'stopping', 'destroyed', 'failed')),
