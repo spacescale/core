@@ -139,9 +139,7 @@ CREATE TABLE metals (
     host_image_ref TEXT,         -- provider image slug / internal image version
     region TEXT NOT NULL, --normalized region
     provider_location TEXT NOT NULL,  -- raw provider location code like FSN1-DC10 or gra1
-    tier_target TEXT NOT NULL CHECK (tier_target IN ('shared', 'dedicated')), --- for isolating shared/dedicated
-    total_cpu_core INT NOT NULL CHECK (total_cpu_core > 0), -- cores are not threads we can get that directly from iaas provider
-    total_threads INT NOT NULL DEFAULT 0 CHECK (total_threads >= 0), -- updated by scaled once node becomes active
+    total_core INT NOT NULL DEFAULT 0 CHECK (total_core >= 0), -- updated by scaled once node becomes active
     total_ram_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_ram_mb >= 0), -- updated by scaled once node becomes active
     total_disk_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_disk_mb >= 0), --updated by scaled once node becomes active
     status TEXT NOT NULL DEFAULT 'provisioning' CHECK (status IN ('provisioning', 'active', 'retired', 'faulty', 'maintenance')), -- node becomes active if daemon connects as well
