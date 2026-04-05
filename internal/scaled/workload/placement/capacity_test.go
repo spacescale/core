@@ -13,8 +13,8 @@ func TestCapacityReserveSharedPoolLimit(t *testing.T) {
 	spec := HardwareSpec{VCPU: 4, RAM: 8192, IsPinned: false}
 
 	for i := 0; i < 4; i++ {
-		machineID := "growth-" + string(rune('a'+i))
-		_, ok := capacity.Reserve(machineID, spec, time.Second)
+		microvmID := "growth-" + string(rune('a'+i))
+		_, ok := capacity.Reserve(microvmID, spec, time.Second)
 		require.True(t, ok)
 	}
 
@@ -36,10 +36,10 @@ func TestCapacityCommitAndRevert(t *testing.T) {
 	capacity := NewCapacity(65536, 8)
 	spec := HardwareSpec{VCPU: 4, RAM: 8192, IsPinned: false}
 
-	_, ok := capacity.Reserve("machine-1", spec, time.Second)
+	_, ok := capacity.Reserve("microvm-1", spec, time.Second)
 	require.True(t, ok)
 
-	committed, ok := capacity.Commit("machine-1")
+	committed, ok := capacity.Commit("microvm-1")
 	require.True(t, ok)
 	assert.Equal(t, spec, committed)
 	assert.Equal(t, spec.RAM, capacity.usedRAMMB)
@@ -54,12 +54,12 @@ func TestCapacityReleaseExpired(t *testing.T) {
 	capacity := NewCapacity(65536, 8)
 	spec := HardwareSpec{VCPU: 2, RAM: 4096, IsPinned: false}
 
-	_, ok := capacity.Reserve("machine-1", spec, 10*time.Millisecond)
+	_, ok := capacity.Reserve("microvm-1", spec, 10*time.Millisecond)
 	require.True(t, ok)
 
 	capacity.ReleaseExpired(time.Now().Add(time.Second))
 
-	_, exists := capacity.reservations["machine-1"]
+	_, exists := capacity.reservations["microvm-1"]
 	assert.False(t, exists)
 	assert.Zero(t, capacity.reservedRAMMB)
 	assert.Zero(t, capacity.reservedSharedVCPU)

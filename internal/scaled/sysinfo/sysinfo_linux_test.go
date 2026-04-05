@@ -16,7 +16,7 @@ func TestRead(t *testing.T) {
 	assert.Equal(t, strings.TrimSpace(snapshot.BootID), snapshot.BootID)
 	assert.Len(t, snapshot.BootID, 36)
 	assert.Contains(t, snapshot.BootID, "-")
-	assert.Greater(t, snapshot.TotalThreads, uint32(0))
+	assert.Greater(t, snapshot.TotalCores, uint32(0))
 	assert.Greater(t, snapshot.TotalRamMb, uint64(0))
 	assert.Greater(t, snapshot.AvailableRamMb, uint64(0))
 	assert.GreaterOrEqual(t, snapshot.TotalRamMb, snapshot.AvailableRamMb)

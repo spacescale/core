@@ -1,20 +1,20 @@
-# How ScaleCP Provisions Metal on demand
+# How ScaleCP Provisions Nodes on demand
 
 This document defines how ScaleCP uses a decentralized, stateless workflow for the dynamic provisioning and scaling of
-bare metal instances.This architecture enforces strict hardware isolation, utilizes NATS for state and concurrency, and
+nodes. This architecture enforces strict hardware isolation, utilizes NATS for state and concurrency, and
 operates on an exact 86% capacity threshold.
 
 ## Core Philosophy: The Stateless Control Plane
 
 The SpaceScale control plane `ScaleCP` is a stateless router. Infrastructure state is never stored in a PostgreSQL
-database. The edge hardware`scaleD`  acts as the ultimate source of truth. All capacity math, provisioning
+database. The edge node daemon `scaled` acts as the ultimate source of truth. All capacity math, provisioning
 locks, and cluster coordination are handled entirely over a secure NATS messaging fabric using mTLS.
 
 ## The Provisioning LifeCycle
 
 ### Phase 1: Real-Time Capacity Calculation Using Scatter-Gather Pattern:
 
-To determine if a region requires more bare-metal servers, `ScaleCP` asks the hardware directly using the NATs
+To determine if a region requires more nodes, `ScaleCP` asks active nodes directly using the NATS
 Request-Reply pattern.
 
 - The Broadcast:Every 60 seconds, a background worker in scalecp broadcasts a NATS request to a regional subject for
@@ -35,12 +35,12 @@ to buy a server. We use the NATS JetStream KeyValue Store to prevent duplicate p
 - Atomic Guarantee: NATS guarantees only one instance will successfully create the key. The winning instance proceeds.
 - The Losers: The other scalecp instances receive a "Key Exists" error, silently drop their execution, and go back to
   sleep.
-- The 15-Minute TTL: The lock is created with a 15-minute Time-To-Live. This covers the time it takes OVH to install
-  bare Debian. If the API call fails, the lock expires automatically.
+- The 15-Minute TTL: The lock is created with a 15-minute Time-To-Live. This covers the time it takes OVH to prepare
+  the node. If the API call fails, the lock expires automatically.
 
-### Phase 3: Hardware Procurement and SSH bootstrap
+### Phase 3: Node Procurement and SSH bootstrap
 
-The scalecp instance holding the lock calls the OVH API to rent a standard bare-metal server (Debian).Once the OVH API
+The scalecp instance holding the lock calls the OVH API to rent a standard server for the new node. Once the OVH API
 reports the server is active and returns the IP address, scalecp connects via SSH to bootstrap the node.
 
 - Once the OVH API reports the server is active and returns the IP address, scalecp connects via SSH to bootstrap the
@@ -51,8 +51,8 @@ reports the server is active and returns the IP address, scalecp connects via SS
 
 ### Phase 4:  Edge Pre-Flight & Network Lockdown
 
-The moment the scaled binary starts on the new server, it executes a strict PreFlight() sequence. It violently secures
-the hardware and locks down the network before ever connecting to NATS.
+The moment the scaled binary starts on the new server, it executes a strict PreFlight sequence. It secures
+the node and locks down the network before ever connecting to NATS.
 
 - Kill SMT (Hyperthreading): scaled writes off to /sys/devices/system/cpu/smt/control. 1 vCPU = 1 isolated physical
   core.
@@ -72,7 +72,7 @@ Network Firewall (iptables/nftables):
 ### Phase 5: Closing the Loop
 
 - scaled uses its injected mTLS certificates to connect to the Regional NATS cluster.
-- It publishes a NodeReady event: {"event": "node_ready", "physical_cores": 16, "ram_mb": 65536}.
+- It publishes a node ready event with its physical cores and RAM.
 - scalecp listens for this event. Upon receiving it, scalecp explicitly deletes the us-east-provisioning-lock from the
   NATS KV store
 - During the next 60-second scatter-gather, the new node replies with its empty capacity. The regional utilization

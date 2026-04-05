@@ -17,18 +17,17 @@ const bootstrapRequestTimeout = 5 * time.Second
 
 var ErrInvalidBootstrapResponse = errors.New("invalid node bootstrap response")
 
-func Bootstrap(ctx context.Context, client *nats.Client, version string) (sysinfo.Snapshot, Identity, error) {
+func Bootstrap(ctx context.Context, client *nats.Client) (sysinfo.Snapshot, Identity, error) {
 	snapshot, err := sysinfo.Read()
 	if err != nil {
 		return sysinfo.Snapshot{}, Identity{}, err
 	}
 
 	req := &pb.NodeBootstrapRequest{
-		Version:      version,
-		BootId:       snapshot.BootID,
-		TotalThreads: snapshot.TotalThreads,
-		TotalRamMb:   snapshot.TotalRamMb,
-		TotalDiskMb:  snapshot.TotalDiskMb,
+		BootId:      snapshot.BootID,
+		TotalCores:  snapshot.TotalCores,
+		TotalRamMb:  snapshot.TotalRamMb,
+		TotalDiskMb: snapshot.TotalDiskMb,
 	}
 
 	identity, err := loadOrRegisterIdentity(ctx, client, req)

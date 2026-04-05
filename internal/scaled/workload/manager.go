@@ -25,8 +25,8 @@ type Manager struct {
 
 // NewManager initializes the workload boundaries using real hardware metrics
 // discovered during node boot.
-func NewManager(logger *slog.Logger, totalRAM uint64, totalThreads uint32, nodeID, bootID, region string) *Manager {
-	cap := placement.NewCapacity(totalRAM, totalThreads)
+func NewManager(logger *slog.Logger, totalRAM uint64, totalCores uint32, nodeID, bootID, region string) *Manager {
+	cap := placement.NewCapacity(totalRAM, totalCores)
 
 	return &Manager{
 		logger:   logger,

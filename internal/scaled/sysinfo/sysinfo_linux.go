@@ -18,7 +18,7 @@ const (
 
 type Snapshot struct {
 	BootID          string
-	TotalThreads    uint32
+	TotalCores      uint32
 	TotalRamMb      uint64
 	AvailableRamMb  uint64
 	TotalDiskMb     uint64
@@ -53,7 +53,7 @@ func Read() (Snapshot, error) {
 
 	return Snapshot{
 		BootID:          bootID,
-		TotalThreads:    uint32(runtime.NumCPU()),
+		TotalCores:      uint32(runtime.NumCPU()),
 		TotalRamMb:      memory.TotalMb,
 		AvailableRamMb:  memory.AvailableMb,
 		TotalDiskMb:     disk.TotalMb,

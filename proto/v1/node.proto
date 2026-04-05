@@ -9,9 +9,8 @@ option go_package = "github.com/spacescale/core/internal/shared/pb/v1;pb";
 // It reports the "Physical Truth" discovered by the hardware probe.
 message NodeBootstrapRequest {
   string bootstrap_token = 1; // one time bootstrap secret baked onto the host
-  string version = 2;  // daemon version
   string boot_id = 3; // boot id to stores ths initial also, if system boots it changes
-  uint32 total_threads = 4;   //  96 From /proc/cpuinfo
+  uint32 total_cores = 4;
   uint64 total_ram_mb = 5;    // 262144 From /proc/meminfo
   uint64 total_disk_mb = 6;  // Total NVMe space
 }

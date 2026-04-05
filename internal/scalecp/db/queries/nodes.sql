@@ -1,5 +1,5 @@
--- name: UpdateProvisioningMetalFromBootstrap :one
-UPDATE metals
+-- name: UpdateProvisioningNodeFromBootstrap :one
+UPDATE nodes
 SET total_cores = sqlc.arg(total_cores),
     total_ram_mb = sqlc.arg(total_ram_mb),
     total_disk_mb = sqlc.arg(total_disk_mb),

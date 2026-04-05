@@ -1,7 +1,7 @@
 // Package placement provides the local execution and placement engine for microVMs.
 //
 // This file implements the Capacity ledger which tracks the real time physical
-// resources of the bare metal node. It uses optimistic concurrency control
+// resources of the node. It uses optimistic concurrency control
 // via temporary reservations to prevent scheduling race conditions such as OOM
 // during decentralized NATS auctions.
 //
@@ -61,9 +61,9 @@ func NewCapacity(totalRAMMB uint64, totalThreads uint32) *Capacity {
 // same lock to prevent Time Of Check to Time Of Use race conditions.
 //
 // It returns the remaining free RAM which acts as the auction tiebreaker
-// and true if successful. If a reservation for the machineID already exists
+// and true if successful. If a reservation for the microvm id already exists
 // or if there is insufficient physical capacity it returns false.
-func (c *Capacity) Reserve(machineID string, spec HardwareSpec, ttl time.Duration) (uint64, bool) {
+func (c *Capacity) Reserve(microvmID string, spec HardwareSpec, ttl time.Duration) (uint64, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -72,8 +72,8 @@ func (c *Capacity) Reserve(machineID string, spec HardwareSpec, ttl time.Duratio
 	// This prevents the need for a separate background ticker goroutine.
 	c.releaseExpiredLocked(now)
 
-	// Idempotency check. If we already reserved this machine we cannot reserve it again.
-	if _, exists := c.reservations[machineID]; exists {
+	// Idempotency check. If we already reserved this microvm we cannot reserve it again.
+	if _, exists := c.reservations[microvmID]; exists {
 		return 0, false
 	}
 
@@ -82,7 +82,7 @@ func (c *Capacity) Reserve(machineID string, spec HardwareSpec, ttl time.Duratio
 		return 0, false
 	}
 
-	c.reservations[machineID] = reservation{
+	c.reservations[microvmID] = reservation{
 		RAMMB:     spec.RAM,
 		VCPU:      spec.VCPU,
 		IsPinned:  spec.IsPinned,
@@ -101,18 +101,18 @@ func (c *Capacity) Reserve(machineID string, spec HardwareSpec, ttl time.Duratio
 
 // Commit moves a reservation into permanent usage. This is called when
 // the Control Plane explicitly awards the workload to this node via a Launch command.
-func (c *Capacity) Commit(machineID string) (HardwareSpec, bool) {
+func (c *Capacity) Commit(microvmID string) (HardwareSpec, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.releaseExpiredLocked(time.Now())
 
-	res, ok := c.reservations[machineID]
+	res, ok := c.reservations[microvmID]
 	if !ok {
 		return HardwareSpec{}, false
 	}
 
-	delete(c.reservations, machineID)
+	delete(c.reservations, microvmID)
 
 	c.reservedRAMMB -= res.RAMMB
 	c.usedRAMMB += res.RAMMB
@@ -160,10 +160,10 @@ func (c *Capacity) Revert(spec HardwareSpec) {
 
 // Release manually drops a temporary hold. This is called if a node bids on an
 // auction but the network explicitly fails immediately bypassing the TTL.
-func (c *Capacity) Release(machineID string) {
+func (c *Capacity) Release(microvmID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.releaseLocked(machineID)
+	c.releaseLocked(microvmID)
 }
 
 // ReleaseExpired sweeps the map for any dead temporary holds.
@@ -232,22 +232,22 @@ func (c *Capacity) freeSharedVCPULocked() uint32 {
 // releaseExpiredLocked sweeps the active reservations and deletes any that have passed their TTL.
 // It assumes the caller holds the mutex.
 func (c *Capacity) releaseExpiredLocked(now time.Time) {
-	for machineID, res := range c.reservations {
+	for microvmID, res := range c.reservations {
 		if now.After(res.ExpiresAt) {
-			c.releaseLocked(machineID)
+			c.releaseLocked(microvmID)
 		}
 	}
 }
 
 // releaseLocked drops a temporary hold and returns the capacity to the free pool.
 // It assumes the caller holds the mutex.
-func (c *Capacity) releaseLocked(machineID string) {
-	res, ok := c.reservations[machineID]
+func (c *Capacity) releaseLocked(microvmID string) {
+	res, ok := c.reservations[microvmID]
 	if !ok {
 		return
 	}
 
-	delete(c.reservations, machineID)
+	delete(c.reservations, microvmID)
 
 	c.reservedRAMMB -= res.RAMMB
 	if res.IsPinned {

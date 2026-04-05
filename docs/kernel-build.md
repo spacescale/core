@@ -2,7 +2,7 @@
 
 This document outlines the procedure for compiling a production-grade, hypervisor-optimized Linux 6.1 guest kernel. The
 output of this pipeline is a raw, uncompressed vmlinux ELF binary. This artifact is dynamically downloaded by the scaled
-edge daemon during the provisioning phase to boot customer microVMs via Firecracker on bare-metal nodes
+edge daemon during the provisioning phase to boot customer microVMs via Firecracker on active nodes.
 
 ## Build Dependencies
 

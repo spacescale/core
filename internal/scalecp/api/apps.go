@@ -36,7 +36,7 @@ type createAppEnvVarRequest struct {
 type createAppRequest struct {
 	Name                 string                   `json:"name"`
 	ImageRef             string                   `json:"imageRef"`
-	Tier                 string                   `json:"tier"`
+	PlanID               string                   `json:"planId"`
 	PrimaryRegion        string                   `json:"primaryRegion"`
 	RuntimePort          *int                     `json:"runtimePort"`
 	IsPublic             *bool                    `json:"isPublic"`
@@ -45,19 +45,20 @@ type createAppRequest struct {
 }
 
 type appResponse struct {
-	ID            string `json:"id"`
-	ProjectID     string `json:"projectId"`
-	Name          string `json:"name"`
-	Slug          string `json:"slug"`
-	Subdomain     string `json:"subdomain"`
-	ImageRef      string `json:"imageRef"`
-	Tier          string `json:"tier"`
-	PrimaryRegion string `json:"primaryRegion"`
-	RuntimePort   int32  `json:"runtimePort"`
-	Status        string `json:"status"`
-	IsPublic      bool   `json:"isPublic"`
-	CreatedAt     string `json:"createdAt"`
-	UpdatedAt     string `json:"updatedAt"`
+	ID             string `json:"id"`
+	ProjectID      string `json:"projectId"`
+	Name           string `json:"name"`
+	Slug           string `json:"slug"`
+	Subdomain      string `json:"subdomain"`
+	ImageRef       string `json:"imageRef"`
+	PlanID         string `json:"planId"`
+	TargetReplicas int32  `json:"targetReplicas"`
+	PrimaryRegion  string `json:"primaryRegion"`
+	RuntimePort    int32  `json:"runtimePort"`
+	Status         string `json:"status"`
+	IsPublic       bool   `json:"isPublic"`
+	CreatedAt      string `json:"createdAt"`
+	UpdatedAt      string `json:"updatedAt"`
 }
 
 type listAppsResponse struct {
@@ -66,19 +67,20 @@ type listAppsResponse struct {
 
 func appResponseFromModel(app tenant.App) appResponse {
 	return appResponse{
-		ID:            app.ID,
-		ProjectID:     app.ProjectID,
-		Name:          app.Name,
-		Slug:          app.Slug,
-		Subdomain:     app.Subdomain,
-		ImageRef:      app.ImageRef,
-		Tier:          app.Tier,
-		PrimaryRegion: app.PrimaryRegion,
-		RuntimePort:   app.RuntimePort,
-		Status:        app.Status,
-		IsPublic:      app.IsPublic,
-		CreatedAt:     app.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:     app.UpdatedAt.Format(time.RFC3339),
+		ID:             app.ID,
+		ProjectID:      app.ProjectID,
+		Name:           app.Name,
+		Slug:           app.Slug,
+		Subdomain:      app.Subdomain,
+		ImageRef:       app.ImageRef,
+		PlanID:         app.PlanID,
+		TargetReplicas: app.TargetReplicas,
+		PrimaryRegion:  app.PrimaryRegion,
+		RuntimePort:    app.RuntimePort,
+		Status:         app.Status,
+		IsPublic:       app.IsPublic,
+		CreatedAt:      app.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:      app.UpdatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -168,7 +170,7 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 	result, err := s.apps.CreateApp(r.Context(), user.ID, workspaceID, projectID, tenant.CreateAppParams{
 		Name:                 req.Name,
 		ImageRef:             req.ImageRef,
-		Tier:                 req.Tier,
+		PlanID:               req.PlanID,
 		PrimaryRegion:        req.PrimaryRegion,
 		RuntimePort:          req.RuntimePort,
 		IsPublic:             req.IsPublic,
@@ -204,11 +206,12 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		dispatchErr := s.dispatcher.Launch(dispatchCtx, dispatch.Request{
 			AppID:        result.AppID,
 			DeploymentID: result.DeploymentID,
-			MachineID:    result.MachineID,
+			MicroVMID:    result.MicroVMID,
 			Region:       result.Region,
-			Tier:         result.Tier,
+			Shape:        result.Shape,
 			ImageRef:     result.ImageRef,
 			Env:          result.Env,
+			RuntimePort:  result.RuntimePort,
 		})
 
 		// Reload the app so the response reflects the real persisted status.

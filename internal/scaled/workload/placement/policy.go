@@ -1,42 +1,80 @@
 // Package placement implements the decentralized scheduling engine for the edge node.
 //
 // This file defines the static economic and hardware taxation policies for the
-// bare-metal node. It calculates exactly how much physical RAM and how many
-// CPU threads are held back for the host operating system, ensuring customer
+// node. It calculates exactly how much physical RAM and how many
+// PHYSICAL cores are held back for the host operating system, ensuring customer
 // workloads cannot starve the host hypervisor or the scaled daemon itself.
+//
+// NOTE: SpaceScale operates strictly on a Physical Core Truth model.
+// SMT (Hyperthreading) is considered a security vulnerability and is disabled.
+// This file does not enforce runtime pinning, cgroups, or cpusets. It only
+// answers the capacity policy question of how much of the host may be sold to
+// customer workloads once the operating system tax is applied.
 package placement
 
-// hostReservedThreads guarantees that a small number of physical threads are
-// permanently held back from the customer workload pool. This ensures the
-// host operating system, the scaled daemon itself, and essential system
-// processes (like network bridges and ssh) always have dedicated CPU time,
-// preventing a 100% tenant CPU spike from causing the host to go offline.
-const hostReservedThreads uint32 = 2
-
-// sharedVCPUOvercommitRatio dictates the economic and performance model for shared
-// compute tiers. It represents how many virtual CPUs can be sold per physical hardware
-// thread. A ratio of 3 means 3 virtual CPUs map to 1 physical thread.
-//
-// This overcommit relies on the statistical probability that most shared workloads
-// are idle most of the time allowing the Linux kernel Completely Fair Scheduler
-// to rapidly time slice the physical CPU between active workloads. If too many
-// virtual CPUs become active simultaneously it causes CPU steal and thrashing.
-// A ratio of 3 to 6 is the industry standard sweet spot for general purpose web traffic.
-const sharedVCPUOvercommitRatio uint32 = 3
+const (
+	// sharedVCPUOvercommitRatio defines how many shared guest vCPUs may be sold
+	// per remaining physical host core. This ratio applies only to the shared
+	// pool after host reserved cores and dedicated pinned workloads have already
+	// been removed from the node capacity.
+	//
+	// The platform now assumes SMT is disabled, so this ratio applies directly
+	// to physical cores.
+	sharedVCPUOvercommitRatio uint32 = 6
+	// Nodes up to and including this size reserve one host core.
+	singleHostReserveCoreCeiling uint32 = 64
+	// Smaller nodes keep one core for the host. Very large nodes keep two.
+	baseHostReservedCores  uint32 = 1
+	largeHostReservedCores uint32 = 2
+)
 
 const (
-	// Node boundary constants in Megabytes. These are used to determine the
-	// progressive taxation rate for the host OS based on the server's physical RAM.
+	// Node RAM thresholds in Megabytes. These determine the progressive host
+	// memory tax applied before any customer workload capacity is exposed.
 	node32GBMB uint64 = 32768
 	node64GBMB uint64 = 65536
-
-	// hostTax constants define the exact amount of RAM (in MB) that is permanently
-	// withheld from the customer workload pool. This "tax" pays for the Linux kernel,
-	// systemd, the scaled Go daemon, network bridge buffers, and Firecracker overhead.
-	hostTax32GBMB     uint64 = 3686 // ~3.6GB reserved for host on 32GB nodes
-	hostTax64GBMB     uint64 = 5324 // ~5.3GB reserved for host on 64GB nodes
-	hostTaxOver64GBMB uint64 = 8601 // ~8.6GB reserved for host on 128GB+ nodes
+	// hostTax constants define the exact amount of RAM in Megabytes that is
+	// withheld from the customer workload pool. This pays for the Linux kernel,
+	// system services, the scaled daemon, network buffers, and microVM overhead.
+	hostTax32GBMB     uint64 = 3686
+	hostTax64GBMB     uint64 = 5324
+	hostTaxOver64GBMB uint64 = 8601
 )
+
+// hostReservedCores returns how many physical cores must always remain with the
+// host operating system and control processes.
+//
+// The current policy is:
+//
+// 1. Nodes with up to 64 physical cores reserve 1 host core.
+// 2. Nodes above 64 physical cores reserve 2 host cores.
+//
+// This policy assumes routing and other heavier data plane work is offloaded
+// elsewhere, so the node host only needs a small protected CPU slice for
+// scaled, systemd, tap and bridge work, and basic operating system activity.
+func hostReservedCores(total uint32) uint32 {
+	switch {
+	case total == 0:
+		return 0
+	case total > singleHostReserveCoreCeiling:
+		return largeHostReservedCores
+	default:
+		return baseHostReservedCores
+	}
+}
+
+// sellableCores calculates the final pool of physical host cores available for
+// customer workloads after the host reserve is removed.
+//
+// Callers must pass the true physical core count discovered by host preflight.
+// This function must not be fed logical thread counts.
+func sellableCores(total uint32) uint32 {
+	reserved := hostReservedCores(total)
+	if total <= reserved {
+		return 0
+	}
+	return total - reserved
+}
 
 // hostTaxRAMMB determines the exact amount of RAM in Megabytes that must be
 // withheld from the workload pool based on the physical size of the server.
@@ -61,13 +99,4 @@ func sellableRAMMB(total uint64) uint64 {
 		return 0
 	}
 	return total - tax
-}
-
-// sellableThreads calculates the final pool of physical CPU threads available
-// for customer workloads by withholding the necessary host operating system threads.
-func sellableThreads(total uint32) uint32 {
-	if total <= hostReservedThreads {
-		return 0
-	}
-	return total - hostReservedThreads
 }

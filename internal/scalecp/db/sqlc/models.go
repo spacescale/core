@@ -8,23 +8,23 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type App struct {
-	ID            uuid.UUID
-	ProjectID     uuid.UUID
-	Name          string
-	Slug          string
-	Subdomain     string
-	ImageRef      string
-	Tier          string
-	PrimaryRegion string
-	RuntimePort   int32
-	IsPublic      bool
-	Status        string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID             uuid.UUID
+	ProjectID      uuid.UUID
+	Name           string
+	Slug           string
+	Subdomain      string
+	ImageRef       string
+	PlanID         string
+	TargetReplicas int32
+	PrimaryRegion  string
+	RuntimePort    int32
+	IsPublic       bool
+	Status         string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type AppEnvVar struct {
@@ -59,39 +59,23 @@ type Deployment struct {
 	UpdatedAt    time.Time
 }
 
-type Machine struct {
+type Microvm struct {
 	ID           uuid.UUID
-	AppID        uuid.UUID
-	DeploymentID uuid.UUID
-	NodeID       *string
+	WorkspaceID  uuid.UUID
+	ResourceType string
+	ResourceID   *uuid.UUID
+	Metadata     []byte
+	NodeID       *uuid.UUID
 	Region       string
-	Tier         string
+	Vcpu         int32
+	RamMb        int64
+	CpuMode      string
+	RootDiskMb   int64
+	VolumeMb     int64
 	Status       string
 	ErrorMessage *string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
-}
-
-type Metal struct {
-	ID                 uuid.UUID
-	ProviderID         string
-	ProviderServerID   string
-	PrimaryIpv4        string
-	PrimaryIpv6        *string
-	HostOsFamily       *string
-	HostOsVersion      *string
-	HostImageRef       *string
-	Region             string
-	ProviderLocation   string
-	TierTarget         string
-	TotalCpuCore       int32
-	TotalThreads       int32
-	TotalRamMb         int64
-	TotalDiskMb        int64
-	Status             string
-	BootstrapTokenHash *string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
 }
 
 type NameWord struct {
@@ -103,6 +87,23 @@ type NameWord struct {
 	UpdatedAt time.Time
 }
 
+type Node struct {
+	ID                 uuid.UUID
+	Provider           string
+	ProviderServerID   string
+	PrimaryIpv4        string
+	PrimaryIpv6        *string
+	Region             string
+	ProviderLocation   string
+	TotalCores         int32
+	TotalRamMb         int64
+	TotalDiskMb        int64
+	Status             string
+	BootstrapTokenHash *string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
 type Project struct {
 	ID          uuid.UUID
 	WorkspaceID uuid.UUID
@@ -110,15 +111,6 @@ type Project struct {
 	Slug        string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
-}
-
-type Provider struct {
-	ID                string
-	Name              string
-	ApiTokenEncrypted string
-	IsActive          pgtype.Bool
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
 }
 
 type RegistryCredential struct {
@@ -131,23 +123,6 @@ type RegistryCredential struct {
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	LastUsed       *time.Time
-}
-
-type Scaled struct {
-	ID        string
-	Version   string
-	MetalID   uuid.UUID
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
-type SystemsConfig struct {
-	Key         string
-	Value       string
-	IsSecret    bool
-	Description *string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
 }
 
 type User struct {

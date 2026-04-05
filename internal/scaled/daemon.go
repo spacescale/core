@@ -14,15 +14,13 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const defaultDaemonVersion = "dev" // stub for now needs a standard daemon version from go releaser later
-
 type Daemon struct {
 	cfg    config.Config
 	logger *slog.Logger
 	nats   *nats.Client
 }
 
-func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Daemon, error) {
+func New(cfg config.Config, logger *slog.Logger) (*Daemon, error) {
 	var err error
 	cfg, err = cfg.ValidateScaled()
 	if err != nil {
@@ -38,7 +36,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Daemon, 
 }
 
 func (d *Daemon) Run(ctx context.Context) error {
-	snapshot, identity, err := node.Bootstrap(ctx, d.nats, defaultDaemonVersion)
+	snapshot, identity, err := node.Bootstrap(ctx, d.nats)
 	if err != nil {
 		return err
 	}
@@ -49,7 +47,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return fmt.Errorf("init heartbeat kv: %w", err)
 	}
 
-	manager := workload.NewManager(d.logger, snapshot.TotalRamMb, snapshot.TotalThreads, identity.NodeID, snapshot.BootID, identity.Region)
+	manager := workload.NewManager(d.logger, snapshot.TotalRamMb, snapshot.TotalCores, identity.NodeID, snapshot.BootID, identity.Region)
 	if err := manager.Start(d.nats); err != nil {
 		return fmt.Errorf("start workload manager: %w", err)
 	}

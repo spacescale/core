@@ -3,7 +3,7 @@
 // Scope:
 // - Request/response contracts for app create and list endpoints.
 // - Initial status behavior (queued).
-// - Persistence side effects in deployments, machines, and app_env_vars tables.
+// - Persistence side effects in deployments, microvms, and app_env_vars tables.
 //
 // These are DB-backed integration tests by design so transport + service + SQL
 // behavior are exercised together as one externally observable contract.
@@ -24,19 +24,20 @@ import (
 )
 
 type createAppResponse struct {
-	ID            string `json:"id"`
-	ProjectID     string `json:"projectId"`
-	Name          string `json:"name"`
-	Slug          string `json:"slug"`
-	Subdomain     string `json:"subdomain"`
-	ImageRef      string `json:"imageRef"`
-	Tier          string `json:"tier"`
-	PrimaryRegion string `json:"primaryRegion"`
-	RuntimePort   int32  `json:"runtimePort"`
-	Status        string `json:"status"`
-	IsPublic      bool   `json:"isPublic"`
-	CreatedAt     string `json:"createdAt"`
-	UpdatedAt     string `json:"updatedAt"`
+	ID             string `json:"id"`
+	ProjectID      string `json:"projectId"`
+	Name           string `json:"name"`
+	Slug           string `json:"slug"`
+	Subdomain      string `json:"subdomain"`
+	ImageRef       string `json:"imageRef"`
+	PlanID         string `json:"planId"`
+	TargetReplicas int32  `json:"targetReplicas"`
+	PrimaryRegion  string `json:"primaryRegion"`
+	RuntimePort    int32  `json:"runtimePort"`
+	Status         string `json:"status"`
+	IsPublic       bool   `json:"isPublic"`
+	CreatedAt      string `json:"createdAt"`
+	UpdatedAt      string `json:"updatedAt"`
 }
 
 type listAppsResponse struct {
@@ -44,7 +45,7 @@ type listAppsResponse struct {
 }
 
 // TestCreateAppCreatesQueuedDeployment verifies create-app writes app,
-// deployment, and machine state, returns queued status, and stores env vars.
+// deployment, and microvm state, returns queued status, and stores env vars.
 func TestCreateAppCreatesQueuedDeployment(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
@@ -55,7 +56,7 @@ func TestCreateAppCreatesQueuedDeployment(t *testing.T) {
 	workspaceID := createWorkspaceForIdentity(t, ts, identityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 	project := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("project-%d", time.Now().UnixNano()))
 
-	body := []byte(`{"name":"api","imageRef":"ghcr.io/acme/spacescale-api:latest","tier":"growth","primaryRegion":"ca-east","runtimePort":9090,"isPublic":true,"envVars":[{"key":"database_url","value":"postgres://local","isSecret":true}]}`)
+	body := []byte(`{"name":"api","imageRef":"ghcr.io/acme/spacescale-api:latest","planId":"web-growth","primaryRegion":"ca-east","runtimePort":9090,"isPublic":true,"envVars":[{"key":"database_url","value":"postgres://local","isSecret":true}]}`)
 	resp, data := doRequest(
 		t,
 		ts,
@@ -75,7 +76,8 @@ func TestCreateAppCreatesQueuedDeployment(t *testing.T) {
 	require.NotEmpty(t, out.ID)
 	require.Equal(t, project.ID, out.ProjectID)
 	require.Equal(t, "api", out.Name)
-	require.Equal(t, "growth", out.Tier)
+	require.Equal(t, "web-growth", out.PlanID)
+	require.EqualValues(t, 1, out.TargetReplicas)
 	require.Equal(t, "ca-east", out.PrimaryRegion)
 	require.Equal(t, "queued", out.Status)
 	require.EqualValues(t, 9090, out.RuntimePort)
@@ -85,9 +87,11 @@ func TestCreateAppCreatesQueuedDeployment(t *testing.T) {
 	require.NoError(t, err)
 
 	var appStatus string
-	err = ts.pool.QueryRow(context.Background(), `SELECT status FROM apps WHERE id = $1`, appID).Scan(&appStatus)
+	var appTargetReplicas int32
+	err = ts.pool.QueryRow(context.Background(), `SELECT status, target_replicas FROM apps WHERE id = $1`, appID).Scan(&appStatus, &appTargetReplicas)
 	require.NoError(t, err)
 	require.Equal(t, "queued", appStatus)
+	require.EqualValues(t, 1, appTargetReplicas)
 
 	var deploymentID uuid.UUID
 	var deploymentStatus string
@@ -105,24 +109,37 @@ func TestCreateAppCreatesQueuedDeployment(t *testing.T) {
 	require.EqualValues(t, 9090, deploymentRuntimePort)
 	require.Nil(t, deploymentPublicURL)
 
-	var machineDeploymentID uuid.UUID
-	var machineNodeID *string
-	var machineRegion string
-	var machineTier string
-	var machineStatus string
-	var machineError *string
+	var microvmResourceType string
+	var microvmResourceID *uuid.UUID
+	var microvmWorkspaceID uuid.UUID
+	var microvmNodeID *uuid.UUID
+	var microvmRegion string
+	var microvmVCPU int32
+	var microvmRAMMB int64
+	var microvmCPUMode string
+	var microvmRootDiskMB int64
+	var microvmVolumeMB int64
+	var microvmStatus string
+	var microvmError *string
 	err = ts.pool.QueryRow(
 		context.Background(),
-		`SELECT deployment_id, node_id, region, tier, status, error_message FROM machines WHERE app_id = $1 ORDER BY created_at DESC LIMIT 1`,
-		appID,
-	).Scan(&machineDeploymentID, &machineNodeID, &machineRegion, &machineTier, &machineStatus, &machineError)
+		`SELECT workspace_id, resource_type, resource_id, node_id, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message FROM microvms WHERE resource_type = 'deployment' AND resource_id = $1 ORDER BY created_at DESC LIMIT 1`,
+		deploymentID,
+	).Scan(&microvmWorkspaceID, &microvmResourceType, &microvmResourceID, &microvmNodeID, &microvmRegion, &microvmVCPU, &microvmRAMMB, &microvmCPUMode, &microvmRootDiskMB, &microvmVolumeMB, &microvmStatus, &microvmError)
 	require.NoError(t, err)
-	require.Equal(t, deploymentID, machineDeploymentID)
-	require.Nil(t, machineNodeID)
-	require.Equal(t, "ca-east", machineRegion)
-	require.Equal(t, "growth", machineTier)
-	require.Equal(t, "queued", machineStatus)
-	require.Nil(t, machineError)
+	require.Equal(t, workspaceID, microvmWorkspaceID.String())
+	require.Equal(t, "deployment", microvmResourceType)
+	require.NotNil(t, microvmResourceID)
+	require.Equal(t, deploymentID, *microvmResourceID)
+	require.Nil(t, microvmNodeID)
+	require.Equal(t, "ca-east", microvmRegion)
+	require.EqualValues(t, 4, microvmVCPU)
+	require.EqualValues(t, 4096, microvmRAMMB)
+	require.Equal(t, "shared", microvmCPUMode)
+	require.EqualValues(t, 5120, microvmRootDiskMB)
+	require.Zero(t, microvmVolumeMB)
+	require.Equal(t, "queued", microvmStatus)
+	require.Nil(t, microvmError)
 
 	var key string
 	var encryptedValue string
@@ -149,7 +166,7 @@ func TestCreateAppDefaultsQueuedRuntimePort(t *testing.T) {
 	workspaceID := createWorkspaceForIdentity(t, ts, identityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 	project := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("project-%d", time.Now().UnixNano()))
 
-	body := []byte(`{"name":"worker","imageRef":"ghcr.io/acme/spacescale-worker:latest","tier":"starter","primaryRegion":"us-east"}`)
+	body := []byte(`{"name":"worker","imageRef":"ghcr.io/acme/spacescale-worker:latest","planId":"web-starter","primaryRegion":"us-east"}`)
 	resp, data := doRequest(
 		t,
 		ts,
@@ -166,7 +183,8 @@ func TestCreateAppDefaultsQueuedRuntimePort(t *testing.T) {
 
 	var out createAppResponse
 	require.NoError(t, json.Unmarshal(data, &out))
-	require.Equal(t, "starter", out.Tier)
+	require.Equal(t, "web-starter", out.PlanID)
+	require.EqualValues(t, 1, out.TargetReplicas)
 	require.Equal(t, "us-east", out.PrimaryRegion)
 	require.Equal(t, "queued", out.Status)
 	require.EqualValues(t, 8080, out.RuntimePort)
@@ -196,7 +214,7 @@ func TestCreateAppRejectsTooManyEnvVars(t *testing.T) {
 	payload := map[string]any{
 		"name":          "too-many-envs",
 		"imageRef":      "ghcr.io/acme/spacescale-api:latest",
-		"tier":          "scale",
+		"planId":        "web-pro",
 		"primaryRegion": "eu-west",
 		"envVars":       envVars,
 	}
@@ -221,7 +239,7 @@ func TestCreateAppRejectsTooManyEnvVars(t *testing.T) {
 	require.Equal(t, "invalid input", out.Error)
 }
 
-func TestCreateAppRequiresTierAndPrimaryRegion(t *testing.T) {
+func TestCreateAppRequiresPlanIDAndPrimaryRegion(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
@@ -261,9 +279,9 @@ func TestListApps(t *testing.T) {
 	projectA := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("project-a-%d", time.Now().UnixNano()))
 	projectB := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("project-b-%d", time.Now().UnixNano()))
 
-	appOne := createAppViaAPI(t, ts, identityKey, workspaceID, projectA.ID, `{"name":"api","imageRef":"ghcr.io/acme/api:latest","tier":"starter","primaryRegion":"eu-central"}`)
-	appTwo := createAppViaAPI(t, ts, identityKey, workspaceID, projectA.ID, `{"name":"worker","imageRef":"ghcr.io/acme/worker:latest","tier":"growth","primaryRegion":"eu-central"}`)
-	_ = createAppViaAPI(t, ts, identityKey, workspaceID, projectB.ID, `{"name":"cron","imageRef":"ghcr.io/acme/cron:latest","tier":"scale","primaryRegion":"eu-central"}`)
+	appOne := createAppViaAPI(t, ts, identityKey, workspaceID, projectA.ID, `{"name":"api","imageRef":"ghcr.io/acme/api:latest","planId":"web-starter","primaryRegion":"eu-central"}`)
+	appTwo := createAppViaAPI(t, ts, identityKey, workspaceID, projectA.ID, `{"name":"worker","imageRef":"ghcr.io/acme/worker:latest","planId":"web-growth","primaryRegion":"eu-central"}`)
+	_ = createAppViaAPI(t, ts, identityKey, workspaceID, projectB.ID, `{"name":"cron","imageRef":"ghcr.io/acme/cron:latest","planId":"web-pro","primaryRegion":"eu-central"}`)
 
 	resp, data := doRequest(
 		t,
@@ -284,13 +302,13 @@ func TestListApps(t *testing.T) {
 	require.Equal(t, appOne.ID, out.Apps[0].ID)
 	require.Equal(t, projectA.ID, out.Apps[0].ProjectID)
 	require.Equal(t, "api", out.Apps[0].Name)
-	require.Equal(t, "starter", out.Apps[0].Tier)
+	require.Equal(t, "web-starter", out.Apps[0].PlanID)
 	require.Equal(t, "eu-central", out.Apps[0].PrimaryRegion)
 	require.Equal(t, "queued", out.Apps[0].Status)
 	require.Equal(t, appTwo.ID, out.Apps[1].ID)
 	require.Equal(t, projectA.ID, out.Apps[1].ProjectID)
 	require.Equal(t, "worker", out.Apps[1].Name)
-	require.Equal(t, "growth", out.Apps[1].Tier)
+	require.Equal(t, "web-growth", out.Apps[1].PlanID)
 	require.Equal(t, "eu-central", out.Apps[1].PrimaryRegion)
 	require.Equal(t, "queued", out.Apps[1].Status)
 }
@@ -306,7 +324,7 @@ func TestListAppsRequiresOwnership(t *testing.T) {
 
 	workspaceID := createWorkspaceForIdentity(t, ts, ownerIdentityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 	project := createProjectViaAPI(t, ts, ownerIdentityKey, workspaceID, fmt.Sprintf("project-%d", time.Now().UnixNano()))
-	_ = createAppViaAPI(t, ts, ownerIdentityKey, workspaceID, project.ID, `{"name":"api","imageRef":"ghcr.io/acme/api:latest","tier":"starter","primaryRegion":"eu-central"}`)
+	_ = createAppViaAPI(t, ts, ownerIdentityKey, workspaceID, project.ID, `{"name":"api","imageRef":"ghcr.io/acme/api:latest","planId":"web-starter","primaryRegion":"eu-central"}`)
 
 	resp, data := doRequest(
 		t,

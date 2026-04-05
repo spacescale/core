@@ -82,7 +82,7 @@ description: |-
   7. `List Apps`
 
   ### Important For Create App
-  - `tier` is required
+  - `planId` is required
   - `primaryRegion` is required
   - for the live end-to-end flow, use `primaryRegion=eu-central`
   - the app create request will only dispatch successfully if a bootstrapped `scaled` node is actively bidding in that region

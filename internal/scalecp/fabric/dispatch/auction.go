@@ -14,15 +14,16 @@ var (
 )
 
 func (d *Dispatcher) auction(req Request) (Winner, error) {
-	d.logger.Info("starting placement auction",
+	logArgs := []any{
 		"app_id", req.AppID,
 		"deployment_id", req.DeploymentID,
-		"machine_id", req.MachineID,
+		"microvm_id", req.MicroVMID,
 		"region", req.Region,
-		"tier", req.Tier,
-	)
+	}
+	logArgs = append(logArgs, shapeLogAttrs(req.Shape)...)
+	d.logger.Info("starting placement auction", logArgs...)
 
-	msgs, err := d.nats.GatherProto(nats.NodeAuctionSubject(req.Region), &pb.AuctionRequest{MachineId: req.MachineID.String(), Tier: req.Tier})
+	msgs, err := d.nats.GatherProto(nats.NodeAuctionSubject(req.Region), &pb.AuctionRequest{MicrovmId: req.MicroVMID.String(), Shape: req.Shape})
 	if err != nil {
 		return Winner{}, err
 	}
@@ -33,7 +34,7 @@ func (d *Dispatcher) auction(req Request) (Winner, error) {
 		if err := nats.UnmarshalProto(msg, reply); err != nil {
 			continue
 		}
-		if reply.MachineId != req.MachineID.String() {
+		if reply.MicrovmId != req.MicroVMID.String() {
 			continue
 		}
 		if reply.NodeId == "" || reply.BootId == "" {
@@ -42,13 +43,14 @@ func (d *Dispatcher) auction(req Request) (Winner, error) {
 		bids = append(bids, reply)
 	}
 	if len(bids) == 0 {
-		d.logger.Warn("placement auction received no bids",
+		warnArgs := []any{
 			"app_id", req.AppID,
 			"deployment_id", req.DeploymentID,
-			"machine_id", req.MachineID,
+			"microvm_id", req.MicroVMID,
 			"region", req.Region,
-			"tier", req.Tier,
-		)
+		}
+		warnArgs = append(warnArgs, shapeLogAttrs(req.Shape)...)
+		d.logger.Warn("placement auction received no bids", warnArgs...)
 		return Winner{}, ErrNoAuctionBids
 	}
 
@@ -68,17 +70,18 @@ func (d *Dispatcher) auction(req Request) (Winner, error) {
 		return cmp.Compare(a.BootId, b.BootId)
 	})
 	winner := bids[0]
-	d.logger.Info("placement auction selected winner",
+	selectedArgs := []any{
 		"app_id", req.AppID,
 		"deployment_id", req.DeploymentID,
-		"machine_id", req.MachineID,
+		"microvm_id", req.MicroVMID,
 		"region", req.Region,
-		"tier", req.Tier,
 		"node_id", winner.NodeId,
 		"boot_id", winner.BootId,
 		"free_ram_mb", winner.FreeRamMb,
 		"bid_count", len(bids),
-	)
+	}
+	selectedArgs = append(selectedArgs, shapeLogAttrs(req.Shape)...)
+	d.logger.Info("placement auction selected winner", selectedArgs...)
 
 	return Winner{NodeID: winner.NodeId, BootID: winner.BootId, FreeRamMB: winner.FreeRamMb}, nil
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/spacescale/core/internal/scalecp/catalog"
 	"github.com/spacescale/core/internal/scalecp/db/sqlc"
 	pb "github.com/spacescale/core/internal/shared/pb/v1"
 )
@@ -31,6 +32,7 @@ import (
 const (
 	appPrimaryRegionMaxLen = 32
 	defaultAppRuntimePort  = 8080 // fallback when create input omits runtime port.
+	defaultTargetReplicas  = 1    // current create flow launches one microvm by default.
 	appNameMaxChars        = 63   // maximum app display-name length.
 	appImageRefMaxChars    = 1024 // maximum accepted image reference length.
 	appEnvVarKeyMaxChars   = 128  // maximum environment-variable key length.
@@ -38,32 +40,36 @@ const (
 	appEnvVarsMaxCount     = 50   // maximum environment variables accepted per create request.
 )
 
+const microvmResourceTypeDeployment = "deployment"
+
 // App is the service-layer model returned to HTTP handlers.
 type App struct {
-	ID            string    // app UUID as string.
-	ProjectID     string    // owning project UUID as string.
-	Name          string    // user-facing app name.
-	Slug          string    // URL-safe app identifier.
-	Subdomain     string    // DNS label used for routing.
-	ImageRef      string    // OCI image reference used for deployment.
-	Tier          string    // requested compute tier.
-	PrimaryRegion string    // requested home region.
-	RuntimePort   int32     // container port exposed by the app.
-	Status        string    // app lifecycle state.
-	IsPublic      bool      // whether public ingress is enabled.
-	CreatedAt     time.Time // record creation timestamp.
-	UpdatedAt     time.Time // record last-update timestamp.
+	ID             string    // app UUID as string.
+	ProjectID      string    // owning project UUID as string.
+	Name           string    // user-facing app name.
+	Slug           string    // URL-safe app identifier.
+	Subdomain      string    // DNS label used for routing.
+	ImageRef       string    // OCI image reference used for deployment.
+	PlanID         string    // requested product plan id.
+	TargetReplicas int32     // desired replica count for the active rollout.
+	PrimaryRegion  string    // requested home region.
+	RuntimePort    int32     // container port exposed by the app.
+	Status         string    // app lifecycle state.
+	IsPublic       bool      // whether public ingress is enabled.
+	CreatedAt      time.Time // record creation timestamp.
+	UpdatedAt      time.Time // record last-update timestamp.
 }
 
 type CreateAppResult struct {
 	App          App
 	AppID        uuid.UUID
 	DeploymentID uuid.UUID
-	MachineID    uuid.UUID
+	MicroVMID    uuid.UUID
 	Region       string
-	Tier         pb.Tier
+	Shape        *pb.MicroVMShape
 	ImageRef     string
 	Env          map[string]string
+	RuntimePort  uint32
 }
 
 // AppEnvVarInput defines one env var in create requests.
@@ -77,7 +83,7 @@ type AppEnvVarInput struct {
 type CreateAppParams struct {
 	Name                 string           // optional; derived from ImageRef when empty.
 	ImageRef             string           // required OCI image reference.
-	Tier                 string           // required compute tier.
+	PlanID               string           // required product plan id.
 	PrimaryRegion        string           // required placement region.
 	RuntimePort          *int             // optional; nil uses defaultAppRuntimePort.
 	IsPublic             *bool            // optional; nil defaults to false.
@@ -106,7 +112,7 @@ func NewAppService(queries *sqlc.Queries, pool *pgxpool.Pool, envCipher *EnvValu
 // - optional app<->registry association
 // - optional env var rows (encrypted values)
 func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, projectID string, p CreateAppParams) (CreateAppResult, error) {
-	projectUUID, err := s.authorizeOwnedProject(ctx, ownerUserID, workspaceID, projectID)
+	workspaceUUID, projectUUID, err := s.authorizeOwnedProject(ctx, ownerUserID, workspaceID, projectID)
 	if err != nil {
 		return CreateAppResult{}, err
 	}
@@ -115,11 +121,10 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 	if !ok {
 		return CreateAppResult{}, ErrInvalidInput
 	}
-	tier, ok := normalizeAppTier(p.Tier)
+	planID, plan, ok := normalizePlanID(p.PlanID)
 	if !ok {
 		return CreateAppResult{}, ErrInvalidInput
 	}
-	tierProto := appTierProto(tier)
 
 	primaryRegion, ok := normalizeAppPrimaryRegion(p.PrimaryRegion)
 	if !ok {
@@ -176,7 +181,7 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 			Slug:          slug,
 			Subdomain:     slug,
 			ImageRef:      imageRef,
-			Tier:          tier,
+			PlanID:        planID,
 			PrimaryRegion: primaryRegion,
 			RuntimePort:   runtimePort,
 			IsPublic:      isPublic,
@@ -199,11 +204,18 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 			return CreateAppResult{}, err
 		}
 
-		machine, err := txQueries.CreateQueuedMachine(ctx, sqlc.CreateQueuedMachineParams{
-			AppID:        row.ID,
-			DeploymentID: deployment.ID,
+		// The deployment owns the microvm so one app can have many deployments and
+		// each deployment can have many replicas without mixing rollout generations.
+		microvm, err := txQueries.CreateQueuedMicroVM(ctx, sqlc.CreateQueuedMicroVMParams{
+			WorkspaceID:  workspaceUUID,
+			ResourceType: microvmResourceTypeDeployment,
+			ResourceID:   &deployment.ID,
 			Region:       row.PrimaryRegion,
-			Tier:         row.Tier,
+			Vcpu:         int32(plan.Shape.Vcpu),
+			RamMb:        int64(plan.Shape.RamMb),
+			CpuMode:      cpuModeString(plan.Shape.CpuMode),
+			RootDiskMb:   int64(plan.Shape.RootDiskMb),
+			VolumeMb:     int64(plan.Shape.VolumeMb),
 		})
 		if err != nil {
 			_ = tx.Rollback(ctx)
@@ -256,11 +268,12 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 			App:          appFromRow(row),
 			AppID:        row.ID,
 			DeploymentID: deployment.ID,
-			MachineID:    machine.ID,
+			MicroVMID:    microvm.ID,
 			Region:       row.PrimaryRegion,
-			Tier:         tierProto,
+			Shape:        cloneMicroVMShape(plan.Shape),
 			ImageRef:     imageRef,
 			Env:          envMap,
+			RuntimePort:  uint32(runtimePort),
 		}, nil
 	}
 
@@ -268,7 +281,7 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 }
 
 func (s *AppService) ListApps(ctx context.Context, ownerUserID, workspaceID, projectID string) ([]App, error) {
-	projectUUID, err := s.authorizeOwnedProject(ctx, ownerUserID, workspaceID, projectID)
+	_, projectUUID, err := s.authorizeOwnedProject(ctx, ownerUserID, workspaceID, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +300,7 @@ func (s *AppService) ListApps(ctx context.Context, ownerUserID, workspaceID, pro
 }
 
 func (s *AppService) GetApp(ctx context.Context, ownerUserID, workspaceID, projectID, appID string) (App, error) {
-	projectUUID, err := s.authorizeOwnedProject(ctx, ownerUserID, workspaceID, projectID)
+	_, projectUUID, err := s.authorizeOwnedProject(ctx, ownerUserID, workspaceID, projectID)
 	if err != nil {
 		return App{}, err
 	}
@@ -313,18 +326,18 @@ func (s *AppService) GetApp(ctx context.Context, ownerUserID, workspaceID, proje
 
 // authorizeOwnedProject verifies that the owner can access the workspace and
 // project, and that the project belongs to that workspace.
-func (s *AppService) authorizeOwnedProject(ctx context.Context, ownerUserID, workspaceID, projectID string) (uuid.UUID, error) {
+func (s *AppService) authorizeOwnedProject(ctx context.Context, ownerUserID, workspaceID, projectID string) (uuid.UUID, uuid.UUID, error) {
 	ownerUUID, ok := parseUUID(ownerUserID)
 	if !ok {
-		return uuid.Nil, ErrInvalidInput
+		return uuid.Nil, uuid.Nil, ErrInvalidInput
 	}
 	workspaceUUID, ok := parseUUID(workspaceID)
 	if !ok {
-		return uuid.Nil, ErrInvalidInput
+		return uuid.Nil, uuid.Nil, ErrInvalidInput
 	}
 	projectUUID, ok := parseUUID(projectID)
 	if !ok {
-		return uuid.Nil, ErrInvalidInput
+		return uuid.Nil, uuid.Nil, ErrInvalidInput
 	}
 
 	_, err := s.queries.CheckProjectOwnership(ctx, sqlc.CheckProjectOwnershipParams{
@@ -334,12 +347,12 @@ func (s *AppService) authorizeOwnedProject(ctx context.Context, ownerUserID, wor
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return uuid.Nil, ErrUnauthorized
+			return uuid.Nil, uuid.Nil, ErrUnauthorized
 		}
-		return uuid.Nil, err
+		return uuid.Nil, uuid.Nil, err
 	}
 
-	return projectUUID, nil
+	return workspaceUUID, projectUUID, nil
 }
 
 // resolveRegistryCredential validates an optional registry credential id and
@@ -380,27 +393,13 @@ func normalizeImageRef(raw string) (string, bool) {
 	return ref, true
 }
 
-func normalizeAppTier(raw string) (string, bool) {
-	tier := strings.ToLower(strings.TrimSpace(raw))
-	switch tier {
-	case "starter", "growth", "scale":
-		return tier, true
-	default:
-		return "", false
+func normalizePlanID(raw string) (string, catalog.Plan, bool) {
+	planID := strings.ToLower(strings.TrimSpace(raw))
+	plan, ok := catalog.LookupPlan(planID)
+	if !ok {
+		return "", catalog.Plan{}, false
 	}
-}
-
-func appTierProto(tier string) pb.Tier {
-	switch tier {
-	case "starter":
-		return pb.Tier_TIER_STARTER
-	case "growth":
-		return pb.Tier_TIER_GROWTH
-	case "scale":
-		return pb.Tier_TIER_SCALE
-	default:
-		return pb.Tier_TIER_UNSPECIFIED
-	}
+	return planID, plan, true
 }
 
 func normalizeAppPrimaryRegion(raw string) (string, bool) {
@@ -547,18 +546,31 @@ func isASCIIDigit(ch byte) bool {
 // appFromRow maps a SQLC app row into the service App model.
 func appFromRow(r sqlc.App) App {
 	return App{
-		ID:            r.ID.String(),
-		ProjectID:     r.ProjectID.String(),
-		Name:          r.Name,
-		Slug:          r.Slug,
-		Subdomain:     r.Subdomain,
-		ImageRef:      r.ImageRef,
-		Tier:          r.Tier,
-		PrimaryRegion: r.PrimaryRegion,
-		RuntimePort:   r.RuntimePort,
-		Status:        r.Status,
-		IsPublic:      r.IsPublic,
-		CreatedAt:     r.CreatedAt,
-		UpdatedAt:     r.UpdatedAt,
+		ID:             r.ID.String(),
+		ProjectID:      r.ProjectID.String(),
+		Name:           r.Name,
+		Slug:           r.Slug,
+		Subdomain:      r.Subdomain,
+		ImageRef:       r.ImageRef,
+		PlanID:         r.PlanID,
+		TargetReplicas: r.TargetReplicas,
+		PrimaryRegion:  r.PrimaryRegion,
+		RuntimePort:    r.RuntimePort,
+		Status:         r.Status,
+		IsPublic:       r.IsPublic,
+		CreatedAt:      r.CreatedAt,
+		UpdatedAt:      r.UpdatedAt,
 	}
+}
+
+func cpuModeString(mode pb.CpuMode) string {
+	if mode == pb.CpuMode_CPU_MODE_PINNED {
+		return "pinned"
+	}
+	return "shared"
+}
+
+func cloneMicroVMShape(shape pb.MicroVMShape) *pb.MicroVMShape {
+	copy := shape
+	return &copy
 }
