@@ -1,6 +1,6 @@
-# Core Components
+# Core
 
-The repository is organized into two primary functional layers:
+This repository is organized into two primary functional layers:
 
 ### scalecp (Control Plane)
 
@@ -26,9 +26,11 @@ For technical deep dives into specific platform subsystems:
 ## API Reference
 
 The SpaceScale API is documented and testable via **Yaak** workspaces. The collection files are located in `docs/api/`.
+
 1. Download [Yaak](https://yaak.app/).
 2. Import the YAML workspace files to view the complete API specification and request examples.
 
 ## Development
 
-Instructions for environment setup, technical requirements, and local execution can be found in **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
+Instructions for environment setup, technical requirements, and local execution can be found in *
+*[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
