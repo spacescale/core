@@ -16,7 +16,10 @@ The stateless management layer that serves the public API, manages tenant metada
 distribution. It leverages PostgreSQL for durable state and NATS for its decentralized communication fabric.
 
 ### scaled (Edge Daemon)
-An autonomous agent running on physical hardware. It manages local resource capacity, interacts directly with the KVM/Firecracker subsystem, and maintains workload continuity. It is designed to operate independently, ensuring resilience during network partitions.
+
+An autonomous agent running on physical hardware. It manages local resource capacity, interacts directly with the
+KVM/Firecracker subsystem, and maintains workload continuity. It is designed to operate independently, ensuring
+resilience during network partitions.
 
 ---
 
