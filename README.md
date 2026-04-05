@@ -1,12 +1,4 @@
-# SpaceScale
-
-SpaceScale is a next-generation platform for high-density microVM orchestration. It provides a decentralized architecture for managing compute at scale, combining the hardware-level isolation of virtualization with the operational agility of modern container environments.
-
-The platform is designed to transform distributed hardware into a unified, autonomous compute fabric, enabling high-performance multi-tenant infrastructure across global regions.
-
----
-
-## Core Components
+# Core Components
 
 The repository is organized into two primary functional layers:
 
