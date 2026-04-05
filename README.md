@@ -24,7 +24,7 @@ For technical deep dives into specific platform subsystems:
 
 - **[Dynamic Node Provisioning](docs/dynamic-node-provisioning.md)**: Node lifecycle and onboarding.
 - **[Firecracker Best Practices](docs/firecracker-best-practices.md)**: Hardening and optimization.
-- **[Kernel Engineering](docs/kernel-build.md)**: Custom MicroVM kernel development.
+- **[Linux Kernel Guide](docs/kernel-build.md)**: Custom Linux Kernel Compilation Guide.
 
 ## API Reference
 
