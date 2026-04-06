@@ -12,7 +12,7 @@ func TestCapacityReserveSharedPoolLimit(t *testing.T) {
 	capacity := NewCapacity(131072, 8)
 	spec := HardwareSpec{VCPU: 4, RAM: 8192, IsPinned: false}
 
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 7; i++ {
 		microvmID := "growth-" + string(rune('a'+i))
 		_, ok := capacity.Reserve(microvmID, spec, time.Second)
 		require.True(t, ok)
@@ -69,12 +69,12 @@ func TestCapacityFreeMathClampsAtZero(t *testing.T) {
 	capacity := NewCapacity(1024, 4)
 	capacity.usedRAMMB = 900
 	capacity.reservedRAMMB = 200
-	capacity.usedPinnedThreads = 3
-	capacity.reservedPinnedThreads = 2
+	capacity.usedPinnedCores = 3
+	capacity.reservedPinnedCores = 2
 	capacity.usedSharedVCPU = 10
 	capacity.reservedSharedVCPU = 10
 
 	assert.Zero(t, capacity.freeRAMMBLocked())
-	assert.Zero(t, capacity.freePinnedThreadsLocked())
+	assert.Zero(t, capacity.freePinnedCoresLocked())
 	assert.Zero(t, capacity.freeSharedVCPULocked())
 }

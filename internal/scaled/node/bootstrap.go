@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/spacescale/core/internal/scaled/sysinfo"
+	"github.com/spacescale/core/internal/scaled/system"
 	"github.com/spacescale/core/internal/shared/nats"
 	pb "github.com/spacescale/core/internal/shared/pb/v1"
 )
@@ -17,10 +17,10 @@ const bootstrapRequestTimeout = 5 * time.Second
 
 var ErrInvalidBootstrapResponse = errors.New("invalid node bootstrap response")
 
-func Bootstrap(ctx context.Context, client *nats.Client) (sysinfo.Snapshot, Identity, error) {
-	snapshot, err := sysinfo.Read()
+func Bootstrap(ctx context.Context, client *nats.Client) (system.Snapshot, Identity, error) {
+	snapshot, err := system.Read()
 	if err != nil {
-		return sysinfo.Snapshot{}, Identity{}, err
+		return system.Snapshot{}, Identity{}, err
 	}
 
 	req := &pb.NodeBootstrapRequest{
@@ -32,7 +32,7 @@ func Bootstrap(ctx context.Context, client *nats.Client) (sysinfo.Snapshot, Iden
 
 	identity, err := loadOrRegisterIdentity(ctx, client, req)
 	if err != nil {
-		return sysinfo.Snapshot{}, Identity{}, err
+		return system.Snapshot{}, Identity{}, err
 	}
 
 	return snapshot, identity, nil

@@ -18,9 +18,11 @@ const (
 	// pool after host reserved cores and dedicated pinned workloads have already
 	// been removed from the node capacity.
 	//
-	// The platform now assumes SMT is disabled, so this ratio applies directly
-	// to physical cores.
-	sharedVCPUOvercommitRatio uint32 = 6
+	// Since SpaceScale operates on a Physical Core Truth model with SMT disabled,
+	// a ratio of 4 ensures that even under maximum contention, each virtual CPU
+	// is guaranteed at least 25% of a physical core's execution time. This balances
+	// high-density multi-tenancy with deterministic, "snappy" performance.
+	sharedVCPUOvercommitRatio uint32 = 4
 	// Nodes up to and including this size reserve one host core.
 	singleHostReserveCoreCeiling uint32 = 64
 	// Smaller nodes keep one core for the host. Very large nodes keep two.

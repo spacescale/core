@@ -8,6 +8,7 @@ import (
 	"log/slog"
 
 	"github.com/spacescale/core/internal/scaled/node"
+	"github.com/spacescale/core/internal/scaled/system"
 	"github.com/spacescale/core/internal/scaled/workload"
 	"github.com/spacescale/core/internal/shared/config"
 	"github.com/spacescale/core/internal/shared/nats"
@@ -27,6 +28,8 @@ func New(cfg config.Config, logger *slog.Logger) (*Daemon, error) {
 		return nil, fmt.Errorf("invalid scaled config: %w", err)
 	}
 
+	logger = logger.With("component", "scaled")
+
 	natsClient, err := nats.New(cfg.NATSURL, "scaled", logger)
 	if err != nil {
 		return nil, fmt.Errorf("nats init failed: %w", err)
@@ -36,11 +39,16 @@ func New(cfg config.Config, logger *slog.Logger) (*Daemon, error) {
 }
 
 func (d *Daemon) Run(ctx context.Context) error {
+
+	if err := system.Preflight(d.logger); err != nil {
+		return err
+	}
+
 	snapshot, identity, err := node.Bootstrap(ctx, d.nats)
 	if err != nil {
 		return err
 	}
-	d.logger.Info("scaled ready", "component", "scaled", "node_id", identity.NodeID, "region", identity.Region)
+	d.logger.Info("scaled ready", "node_id", identity.NodeID, "region", identity.Region)
 
 	heartbeats, err := d.nats.EnsureNodeHeartbeatKV(ctx)
 	if err != nil {
@@ -62,7 +70,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("run heartbeat loop: %w", err)
 	}
-	d.logger.Info("scaled stopped", "component", "scaled", "node_id", identity.NodeID)
+	d.logger.Info("scaled stopped", "node_id", identity.NodeID)
 	return nil
 }
 

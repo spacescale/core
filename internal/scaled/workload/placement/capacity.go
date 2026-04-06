@@ -1,4 +1,4 @@
-// Package placement provides the local execution and placement engine for microVMs.
+// Package placement provides the local execution and placement engine for microVM's.
 //
 // This file implements the Capacity ledger which tracks the real time physical
 // resources of the node. It uses optimistic concurrency control
@@ -15,8 +15,8 @@ import (
 	"time"
 )
 
-// reservation represents a temporary hold on physical resources while a node
-// waits to see if it won a placement auction.
+// reservation holds a temporary claim on node resources while the control plane
+// decides whether this node won the auction.
 type reservation struct {
 	RAMMB     uint64
 	VCPU      uint32
@@ -24,8 +24,8 @@ type reservation struct {
 	ExpiresAt time.Time
 }
 
-// Capacity tracks the hardware allocation state of the edge daemon.
-// It manages the split between dedicated resources and overcommitted shared resources.
+// Capacity tracks the hardware allocation state of the edge node.
+// It keeps dedicated core accounting separate from the shared vcpu pool.
 type Capacity struct {
 	mu sync.Mutex
 
@@ -34,25 +34,25 @@ type Capacity struct {
 	usedRAMMB     uint64
 	reservedRAMMB uint64
 
-	// Pinned CPU Allocation (Dedicated Physical Threads)
-	sellableThreads       uint32
-	usedPinnedThreads     uint32
-	reservedPinnedThreads uint32
+	// Dedicated host core allocation.
+	sellableCores       uint32
+	usedPinnedCores     uint32
+	reservedPinnedCores uint32
 
 	// Shared CPU Allocation (Overcommitted Virtual CPUs)
 	usedSharedVCPU     uint32
 	reservedSharedVCPU uint32
 
-	// In-Flight Reservations (Ghost Holds)
+	// In flight reservations keyed by microvm id.
 	reservations map[string]reservation
 }
 
-// NewCapacity initializes the node resource ledger using real hardware metrics.
-func NewCapacity(totalRAMMB uint64, totalThreads uint32) *Capacity {
+// NewCapacity initializes the node resource ledger from real host metrics.
+func NewCapacity(totalRAMMB uint64, totalCores uint32) *Capacity {
 	return &Capacity{
-		sellableRAMMB:   sellableRAMMB(totalRAMMB),
-		sellableThreads: sellableThreads(totalThreads),
-		reservations:    make(map[string]reservation),
+		sellableRAMMB: sellableRAMMB(totalRAMMB),
+		sellableCores: sellableCores(totalCores),
+		reservations:  make(map[string]reservation),
 	}
 }
 
@@ -91,7 +91,7 @@ func (c *Capacity) Reserve(microvmID string, spec HardwareSpec, ttl time.Duratio
 
 	c.reservedRAMMB += spec.RAM
 	if spec.IsPinned {
-		c.reservedPinnedThreads += spec.VCPU
+		c.reservedPinnedCores += spec.VCPU
 	} else {
 		c.reservedSharedVCPU += spec.VCPU
 	}
@@ -118,8 +118,8 @@ func (c *Capacity) Commit(microvmID string) (HardwareSpec, bool) {
 	c.usedRAMMB += res.RAMMB
 
 	if res.IsPinned {
-		c.reservedPinnedThreads -= res.VCPU
-		c.usedPinnedThreads += res.VCPU
+		c.reservedPinnedCores -= res.VCPU
+		c.usedPinnedCores += res.VCPU
 	} else {
 		c.reservedSharedVCPU -= res.VCPU
 		c.usedSharedVCPU += res.VCPU
@@ -143,10 +143,10 @@ func (c *Capacity) Revert(spec HardwareSpec) {
 	}
 
 	if spec.IsPinned {
-		if c.usedPinnedThreads >= spec.VCPU {
-			c.usedPinnedThreads -= spec.VCPU
+		if c.usedPinnedCores >= spec.VCPU {
+			c.usedPinnedCores -= spec.VCPU
 		} else {
-			c.usedPinnedThreads = 0
+			c.usedPinnedCores = 0
 		}
 		return
 	}
@@ -186,7 +186,7 @@ func (c *Capacity) canFitLocked(spec HardwareSpec) bool {
 	}
 
 	if spec.IsPinned {
-		return c.freePinnedThreadsLocked() >= spec.VCPU
+		return c.freePinnedCoresLocked() >= spec.VCPU
 	}
 
 	return c.freeSharedVCPULocked() >= spec.VCPU
@@ -200,26 +200,26 @@ func (c *Capacity) freeRAMMBLocked() uint64 {
 	return c.sellableRAMMB - allocated
 }
 
-func (c *Capacity) freePinnedThreadsLocked() uint32 {
-	allocated := c.usedPinnedThreads + c.reservedPinnedThreads
-	if allocated > c.sellableThreads {
+func (c *Capacity) freePinnedCoresLocked() uint32 {
+	allocated := c.usedPinnedCores + c.reservedPinnedCores
+	if allocated > c.sellableCores {
 		return 0 // Defensive return preventing catastrophic uint32 underflow
 	}
-	return c.sellableThreads - allocated
+	return c.sellableCores - allocated
 }
 
 // freeSharedVCPULocked calculates available virtual capacity.
-// It subtracts dedicated physical threads from the total pool then multiplies
-// the remaining threads by the overcommit ratio. It then subtracts currently
+// It subtracts dedicated physical cores from the total pool then multiplies
+// the remaining cores by the overcommit ratio. It then subtracts currently
 // allocated shared virtual CPUs to find the remaining pool.
 func (c *Capacity) freeSharedVCPULocked() uint32 {
-	dedicatedThreads := c.usedPinnedThreads + c.reservedPinnedThreads
-	if dedicatedThreads > c.sellableThreads {
+	dedicatedCores := c.usedPinnedCores + c.reservedPinnedCores
+	if dedicatedCores > c.sellableCores {
 		return 0 // Defensive guard
 	}
-	sharedThreads := c.sellableThreads - dedicatedThreads
+	sharedCores := c.sellableCores - dedicatedCores
 
-	sharedCapacity := sharedThreads * sharedVCPUOvercommitRatio
+	sharedCapacity := sharedCores * sharedVCPUOvercommitRatio
 
 	allocatedShared := c.usedSharedVCPU + c.reservedSharedVCPU
 	if allocatedShared > sharedCapacity {
@@ -251,7 +251,7 @@ func (c *Capacity) releaseLocked(microvmID string) {
 
 	c.reservedRAMMB -= res.RAMMB
 	if res.IsPinned {
-		c.reservedPinnedThreads -= res.VCPU
+		c.reservedPinnedCores -= res.VCPU
 	} else {
 		c.reservedSharedVCPU -= res.VCPU
 	}
