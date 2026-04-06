@@ -1,9 +1,9 @@
 // Package placement implements the decentralized scheduling engine for the edge node.
 //
 // This file provides the Bidder, which is responsible for listening to regional
-// Control Plane placement auctions over NATS. It translates abstract requested
-// Tiers into physical hardware requirements, consults the local Capacity ledger,
-// and replies with a bid if the node can accommodate the workload.
+// control plane placement auctions over NATS. It validates the resolved microvm
+// shape, consults the local Capacity ledger, and replies with a bid if the node
+// can accommodate the workload.
 package placement
 
 import (
@@ -64,31 +64,38 @@ func (b *Bidder) handle(client *nats.Client, msg *nats.Msg) error {
 	if err := nats.UnmarshalProto(msg, &req); err != nil {
 		return err
 	}
-	if req.MachineId == "" {
-		return errors.New("auction request missing machine id")
+	if req.MicrovmId == "" {
+		return errors.New("auction request missing microvm id")
 	}
 
-	spec, err := TranslateTier(req.Tier)
+	spec, err := specFromShape(req.Shape)
 	if err != nil {
 		return err
 	}
 
-	freeRAM, ok := b.capacity.Reserve(req.MachineId, spec, reservationTTL)
+	freeRAM, ok := b.capacity.Reserve(req.MicrovmId, spec, reservationTTL)
 	if !ok {
 		return nil
 	}
 
-	b.logger.Info("submitted bid", "machine_id", req.MachineId, "tier", req.Tier, "free_ram_mb", freeRAM)
+	b.logger.Info(
+		"submitted bid",
+		"microvm_id", req.MicrovmId,
+		"vcpu", req.GetShape().GetVcpu(),
+		"ram_mb", req.GetShape().GetRamMb(),
+		"cpu_mode", cpuModeLogValue(req.GetShape()),
+		"free_ram_mb", freeRAM,
+	)
 
 	reply := &pb.AuctionReply{
-		MachineId: req.MachineId,
+		MicrovmId: req.MicrovmId,
 		NodeId:    b.nodeID,
 		BootId:    b.bootID,
 		FreeRamMb: freeRAM,
 	}
 
 	if err := client.PublishProto(msg.Reply, reply); err != nil {
-		b.capacity.Release(req.MachineId)
+		b.capacity.Release(req.MicrovmId)
 		return err
 	}
 

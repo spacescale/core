@@ -1,9 +1,11 @@
 -- +goose Up
--- pgcrypto enables gen_random_uuid() for DB-side UUIDs.
+-- pgcrypto gives the schema a safe database side uuid generator.
 CREATE
     EXTENSION IF NOT EXISTS pgcrypto;
 
 
+-- users holds the durable authenticated identity record for one person.
+-- Everything else in the tenant model hangs off this table through ownership.
 CREATE TABLE users
 (
     id                   UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
@@ -16,8 +18,8 @@ CREATE TABLE users
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-
--- Cascade deletes keep workspace data consistent if a user is removed.
+-- workspaces are the billing and isolation boundary for customer resources.
+-- If an account is removed, its workspaces disappear with it.
 CREATE TABLE workspaces
 (
     id            UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
@@ -27,8 +29,8 @@ CREATE TABLE workspaces
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (owner_user_id, name)
 );
-
--- Cascade deletes keep project data consistent if a user is removed.
+-- projects group deployable products inside one workspace.
+-- A project gives apps and future managed resources a stable home.
 CREATE TABLE projects
 (
     id           UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
@@ -38,16 +40,17 @@ CREATE TABLE projects
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
--- Supports listing projects by workspace.
+-- projects are listed by workspace constantly, so keep that path indexed.
 CREATE INDEX projects_workspace_id_idx
     ON projects (workspace_id);
 
 
+-- users list and resolve workspaces by owner all the time.
 CREATE INDEX workspaces_owner_user_id_idx
     ON workspaces (owner_user_id);
 
--- Slug/subdomain are unique per project for URL {app}.{project}.{base_domain}.
+-- apps are the long lived product object customers think about.
+-- An app survives across many deployments and across many microvms over time.
 CREATE TABLE apps
 (
     id           UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
@@ -56,7 +59,8 @@ CREATE TABLE apps
     slug         TEXT        NOT NULL,
     subdomain    TEXT        NOT NULL,
     image_ref    TEXT        NOT NULL,
-    tier         TEXT        NOT NULL DEFAULT 'starter',
+    plan_id      TEXT        NOT NULL CHECK (plan_id = BTRIM(plan_id) AND CHAR_LENGTH(plan_id) BETWEEN 1 AND 120),
+    target_replicas INT      NOT NULL DEFAULT 1 CHECK (target_replicas > 0),
     primary_region TEXT      NOT NULL DEFAULT 'us-east',
     runtime_port INT         NOT NULL DEFAULT 8080,
     is_public    BOOLEAN     NOT NULL DEFAULT FALSE,
@@ -67,12 +71,12 @@ CREATE TABLE apps
     UNIQUE (project_id, subdomain)
 );
 
+-- deployments capture one concrete release of an app.
+-- This is the row that rolling updates and replica groups should hang off.
 CREATE TABLE deployments
 (
-    -- app_id ties deployments to apps; cascade keeps history consistent on app deletion.
     id            UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
     app_id        UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
-    -- Deployment status reflects image-only lifecycle.
     status        TEXT        NOT NULL CHECK (status IN ('queued', 'deploying', 'running', 'failed')),
     image_ref     TEXT        NOT NULL,
     runtime_port  INT         NOT NULL,
@@ -81,14 +85,14 @@ CREATE TABLE deployments
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
--- Supports listing deployments newest-first per app.
+-- Deployments are read newest first for app release history and rollout logic.
 CREATE INDEX deployments_app_id_created_at_idx ON deployments (app_id, created_at DESC);
 
 
+-- app_env_vars stores encrypted environment variables for one app.
+-- Values never land in plaintext in Postgres.
 CREATE TABLE app_env_vars
 (
-    -- app_id ties env vars to apps; cascade removes them on app deletion.
     id              UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
     app_id          UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
     key             TEXT        NOT NULL,
@@ -105,85 +109,64 @@ CREATE TABLE app_env_vars
 CREATE INDEX app_env_vars_cipher_claim_idx ON app_env_vars (cipher_key_id, created_at) WHERE cipher_version = 'v1' AND cipher_algo = 'aesgcm';
 
 
--- PURPOSE: The globally shared memory for the SpaceScale Control Plane.
-CREATE TABLE systems_configs (
-    key TEXT PRIMARY KEY CHECK (CHAR_LENGTH(BTRIM(key)) > 0),
-    value TEXT NOT NULL, -- actual config value, might also be encrypted if secret is true
-    is_secret BOOLEAN NOT NULL DEFAULT FALSE,
-    description TEXT,-- human readable desc
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    -- expected day 0 data might be ssh public and private key pair used to boostrap nodes automatically
-    -- after purchase from IaaS provider
-);
 
--- list of IaaS providers and their api token spacescale depends on, metal only
-CREATE TABLE providers (
-        id TEXT PRIMARY KEY CHECK (CHAR_LENGTH(BTRIM(id)) > 0), --no uuid provider basically less than 10
-        name TEXT UNIQUE NOT NULL, --  'hetzner' europe and us', 'ovh for canada ', 'vultr' and soon spacescale colo
-        api_token_encrypted TEXT NOT NULL,
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ      NOT NULL DEFAULT NOW()
-);
-
--- Table of all Baremetal servers managed by scalecp
-CREATE TABLE metals (
+-- nodes is the inventory of real schedulable hosts managed by the platform.
+-- This row becomes the durable runtime identity once scaled boots and joins the
+-- system. Provider details still live here because this is the only host record.
+CREATE TABLE nodes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE RESTRICT,
+    provider TEXT NOT NULL CHECK (provider IN ('ovh', 'colo')),
     provider_server_id TEXT NOT NULL,
     primary_ipv4 TEXT UNIQUE NOT NULL,
     primary_ipv6 TEXT UNIQUE,
-    host_os_family TEXT,         -- ubuntu, debian, rocky, etc
-    host_os_version TEXT,        -- 24.04, 12, 9.4
-    host_image_ref TEXT,         -- provider image slug / internal image version
-    region TEXT NOT NULL, --normalized region
-    provider_location TEXT NOT NULL,  -- raw provider location code like FSN1-DC10 or gra1
-    tier_target TEXT NOT NULL CHECK (tier_target IN ('shared', 'dedicated')), --- for isolating shared/dedicated
-    total_cpu_core INT NOT NULL CHECK (total_cpu_core > 0), -- cores are not threads we can get that directly from iaas provider
-    total_threads INT NOT NULL DEFAULT 0 CHECK (total_threads >= 0), -- updated by scaled once node becomes active
-    total_ram_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_ram_mb >= 0), -- updated by scaled once node becomes active
-    total_disk_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_disk_mb >= 0), --updated by scaled once node becomes active
-    status TEXT NOT NULL DEFAULT 'provisioning' CHECK (status IN ('provisioning', 'active', 'retired', 'faulty', 'maintenance')), -- node becomes active if daemon connects as well
-    bootstrap_token_hash TEXT UNIQUE, -- inject  token at init bootstrap, used by daemon to prove identity
+    region TEXT NOT NULL,
+    provider_location TEXT NOT NULL,
+    total_cores INT NOT NULL DEFAULT 0 CHECK (total_cores >= 0),
+    total_ram_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_ram_mb >= 0),
+    total_disk_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_disk_mb >= 0),
+    status TEXT NOT NULL DEFAULT 'provisioning' CHECK (status IN ('provisioning', 'active', 'retired', 'faulty', 'maintenance')),
+    bootstrap_token_hash TEXT UNIQUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index to instantly find a specific server when a provider sends an API webhook/event
-CREATE INDEX metals_provider_server_idx ON metals (provider_id, provider_server_id);
-
--- Durable scaled daemon identity bound to one metal host.
-CREATE TABLE scaled
+-- microvms is the generic inventory of running compute.
+-- Each row is one Firecracker process on one host.
+-- Ownership is polymorphic on purpose so future resources do not force another
+-- schema rewrite. App backed microvms point at deployments today. Internal
+-- system workloads and future managed products can point somewhere else later.
+CREATE TABLE microvms
 (
-    id               TEXT PRIMARY KEY CHECK (id = BTRIM(id) AND CHAR_LENGTH(id) BETWEEN 1 AND 255),
-    version TEXT NOT NULL, -- running daemon version
-    metal_id UUID NOT NULL UNIQUE REFERENCES metals(id) ON DELETE CASCADE,
-    created_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
-    updated_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW()
-);
-
-
-CREATE TABLE machines
-(
-    id            UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
-    app_id        UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
-    deployment_id UUID        NOT NULL REFERENCES deployments (id) ON DELETE CASCADE,
-    node_id       TEXT                 REFERENCES scaled (id) ON DELETE RESTRICT,
-    region        TEXT        NOT NULL,
-    tier          TEXT        NOT NULL,
-    status        TEXT        NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'assigned', 'starting', 'running', 'stopping', 'destroyed', 'failed')),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL REFERENCES workspaces (id) ON DELETE CASCADE,
+    resource_type TEXT NOT NULL CHECK (resource_type = BTRIM(resource_type) AND CHAR_LENGTH(resource_type) BETWEEN 1 AND 64),
+    resource_id UUID,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    node_id UUID REFERENCES nodes(id) ON DELETE RESTRICT,
+    region TEXT NOT NULL,
+    vcpu INT NOT NULL CHECK (vcpu > 0),
+    ram_mb BIGINT NOT NULL CHECK (ram_mb > 0),
+    cpu_mode TEXT NOT NULL CHECK (cpu_mode IN ('shared', 'pinned')),
+    root_disk_mb BIGINT NOT NULL CHECK (root_disk_mb > 0),
+    volume_mb BIGINT NOT NULL DEFAULT 0 CHECK (volume_mb >= 0),
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'assigned', 'starting', 'running', 'stopping', 'destroyed', 'failed')),
     error_message TEXT,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX machines_app_id_idx ON machines (app_id);
-CREATE INDEX machines_deployment_id_idx ON machines (deployment_id);
-CREATE INDEX machines_node_id_idx ON machines (node_id);
-CREATE INDEX machines_region_status_idx ON machines (region, status);
+-- Workspace lookups drive tenancy, billing, and generic cleanup.
+CREATE INDEX microvms_workspace_id_idx ON microvms (workspace_id);
+
+-- Generic resource ownership lookups let one controller find all microvms for
+-- one deployment or any future product resource.
+CREATE INDEX microvms_resource_idx ON microvms (resource_type, resource_id);
+
+-- Placement and reconciliation both need fast scans by region and lifecycle.
+CREATE INDEX microvms_region_status_idx ON microvms (region, status);
 
 
+-- registry_credentials stores encrypted pull credentials owned by one project.
 CREATE TABLE registry_credentials
 (
     id              UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
@@ -195,30 +178,28 @@ CREATE TABLE registry_credentials
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_used       TIMESTAMPTZ,
-    UNIQUE (project_id, name)
+	UNIQUE (project_id, name)
 );
 
 
+-- app_registry_credentials connects an app to the registry secret it uses.
 CREATE TABLE app_registry_credentials
 (
     app_id                 UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
     registry_credential_id UUID        NOT NULL REFERENCES registry_credentials (id) ON DELETE CASCADE,
     created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_used              TIMESTAMPTZ,
-    PRIMARY KEY (app_id, registry_credential_id)
+	PRIMARY KEY (app_id, registry_credential_id)
 );
 
--- Supports lookup by registry credential (audit/cleanup).
+-- Registry first lookups are needed for audit and cleanup work.
 CREATE INDEX app_registry_credentials_registry_idx ON app_registry_credentials (registry_credential_id);
 
 -- +goose Down
 DROP TABLE IF EXISTS app_registry_credentials;
 DROP TABLE IF EXISTS app_env_vars;
-DROP TABLE IF EXISTS machines;
-DROP TABLE IF EXISTS scaled;
-DROP TABLE IF EXISTS metals;
-DROP TABLE IF EXISTS providers;
-DROP TABLE IF EXISTS systems_configs;
+DROP TABLE IF EXISTS microvms;
+DROP TABLE IF EXISTS nodes;
 DROP TABLE IF EXISTS deployments;
 DROP TABLE IF EXISTS apps;
 DROP TABLE IF EXISTS registry_credentials;

@@ -21,72 +21,146 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// The abstract service tiers
-type Tier int32
+// CpuMode describes how guest CPUs map onto the host.
+type CpuMode int32
 
 const (
-	Tier_TIER_UNSPECIFIED Tier = 0
-	Tier_TIER_STARTER     Tier = 1 // 2 vCPU / 4 GB (Shared)
-	Tier_TIER_GROWTH      Tier = 2 // 4 vCPU / 8 GB (Dedicated/Pinned)
-	Tier_TIER_SCALE       Tier = 3 // 8 vCPU / 16 GB (Dedicated/Pinned)
+	CpuMode_CPU_MODE_UNSPECIFIED CpuMode = 0
+	CpuMode_CPU_MODE_SHARED      CpuMode = 1
+	CpuMode_CPU_MODE_PINNED      CpuMode = 2
 )
 
-// Enum value maps for Tier.
+// Enum value maps for CpuMode.
 var (
-	Tier_name = map[int32]string{
-		0: "TIER_UNSPECIFIED",
-		1: "TIER_STARTER",
-		2: "TIER_GROWTH",
-		3: "TIER_SCALE",
+	CpuMode_name = map[int32]string{
+		0: "CPU_MODE_UNSPECIFIED",
+		1: "CPU_MODE_SHARED",
+		2: "CPU_MODE_PINNED",
 	}
-	Tier_value = map[string]int32{
-		"TIER_UNSPECIFIED": 0,
-		"TIER_STARTER":     1,
-		"TIER_GROWTH":      2,
-		"TIER_SCALE":       3,
+	CpuMode_value = map[string]int32{
+		"CPU_MODE_UNSPECIFIED": 0,
+		"CPU_MODE_SHARED":      1,
+		"CPU_MODE_PINNED":      2,
 	}
 )
 
-func (x Tier) Enum() *Tier {
-	p := new(Tier)
+func (x CpuMode) Enum() *CpuMode {
+	p := new(CpuMode)
 	*p = x
 	return p
 }
 
-func (x Tier) String() string {
+func (x CpuMode) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (Tier) Descriptor() protoreflect.EnumDescriptor {
+func (CpuMode) Descriptor() protoreflect.EnumDescriptor {
 	return file_proto_v1_workload_proto_enumTypes[0].Descriptor()
 }
 
-func (Tier) Type() protoreflect.EnumType {
+func (CpuMode) Type() protoreflect.EnumType {
 	return &file_proto_v1_workload_proto_enumTypes[0]
 }
 
-func (x Tier) Number() protoreflect.EnumNumber {
+func (x CpuMode) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use Tier.Descriptor instead.
-func (Tier) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use CpuMode.Descriptor instead.
+func (CpuMode) EnumDescriptor() ([]byte, []int) {
 	return file_proto_v1_workload_proto_rawDescGZIP(), []int{0}
 }
 
+// MicroVMShape is the resolved runtime shape sent to the edge.
+type MicroVMShape struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Vcpu          uint32                 `protobuf:"varint,1,opt,name=vcpu,proto3" json:"vcpu,omitempty"`
+	RamMb         uint64                 `protobuf:"varint,2,opt,name=ram_mb,json=ramMb,proto3" json:"ram_mb,omitempty"`
+	CpuMode       CpuMode                `protobuf:"varint,3,opt,name=cpu_mode,json=cpuMode,proto3,enum=spacescale.v1.CpuMode" json:"cpu_mode,omitempty"`
+	RootDiskMb    uint64                 `protobuf:"varint,4,opt,name=root_disk_mb,json=rootDiskMb,proto3" json:"root_disk_mb,omitempty"`
+	VolumeMb      uint64                 `protobuf:"varint,5,opt,name=volume_mb,json=volumeMb,proto3" json:"volume_mb,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MicroVMShape) Reset() {
+	*x = MicroVMShape{}
+	mi := &file_proto_v1_workload_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MicroVMShape) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MicroVMShape) ProtoMessage() {}
+
+func (x *MicroVMShape) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_v1_workload_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MicroVMShape.ProtoReflect.Descriptor instead.
+func (*MicroVMShape) Descriptor() ([]byte, []int) {
+	return file_proto_v1_workload_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *MicroVMShape) GetVcpu() uint32 {
+	if x != nil {
+		return x.Vcpu
+	}
+	return 0
+}
+
+func (x *MicroVMShape) GetRamMb() uint64 {
+	if x != nil {
+		return x.RamMb
+	}
+	return 0
+}
+
+func (x *MicroVMShape) GetCpuMode() CpuMode {
+	if x != nil {
+		return x.CpuMode
+	}
+	return CpuMode_CPU_MODE_UNSPECIFIED
+}
+
+func (x *MicroVMShape) GetRootDiskMb() uint64 {
+	if x != nil {
+		return x.RootDiskMb
+	}
+	return 0
+}
+
+func (x *MicroVMShape) GetVolumeMb() uint64 {
+	if x != nil {
+		return x.VolumeMb
+	}
+	return 0
+}
+
 // Broadcast by the CP to all nodes in a region.
-// Subject: node.auction.<region>.machine
+// Subject: node.auction.<region>.microvm
 type AuctionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	MachineId     string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
-	Tier          Tier                   `protobuf:"varint,2,opt,name=tier,proto3,enum=spacescale.v1.Tier" json:"tier,omitempty"`
+	MicrovmId     string                 `protobuf:"bytes,1,opt,name=microvm_id,json=microvmId,proto3" json:"microvm_id,omitempty"`
+	Shape         *MicroVMShape          `protobuf:"bytes,2,opt,name=shape,proto3" json:"shape,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AuctionRequest) Reset() {
 	*x = AuctionRequest{}
-	mi := &file_proto_v1_workload_proto_msgTypes[0]
+	mi := &file_proto_v1_workload_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -98,7 +172,7 @@ func (x *AuctionRequest) String() string {
 func (*AuctionRequest) ProtoMessage() {}
 
 func (x *AuctionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_v1_workload_proto_msgTypes[0]
+	mi := &file_proto_v1_workload_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -111,28 +185,28 @@ func (x *AuctionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuctionRequest.ProtoReflect.Descriptor instead.
 func (*AuctionRequest) Descriptor() ([]byte, []int) {
-	return file_proto_v1_workload_proto_rawDescGZIP(), []int{0}
+	return file_proto_v1_workload_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *AuctionRequest) GetMachineId() string {
+func (x *AuctionRequest) GetMicrovmId() string {
 	if x != nil {
-		return x.MachineId
+		return x.MicrovmId
 	}
 	return ""
 }
 
-func (x *AuctionRequest) GetTier() Tier {
+func (x *AuctionRequest) GetShape() *MicroVMShape {
 	if x != nil {
-		return x.Tier
+		return x.Shape
 	}
-	return Tier_TIER_UNSPECIFIED
+	return nil
 }
 
 // Fired back by eligible scaled daemons if they have physical capacity.
 // NATS Request-Reply handles the routing back to the CP.
 type AuctionReply struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	MachineId     string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`    // Correlates the bid to the exact request
+	MicrovmId     string                 `protobuf:"bytes,1,opt,name=microvm_id,json=microvmId,proto3" json:"microvm_id,omitempty"`    // Correlates the bid to the exact request
 	NodeId        string                 `protobuf:"bytes,2,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`             // Permanent daemon identity
 	BootId        string                 `protobuf:"bytes,3,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`             // Target ID for the subsequent launch command
 	FreeRamMb     uint64                 `protobuf:"varint,4,opt,name=free_ram_mb,json=freeRamMb,proto3" json:"free_ram_mb,omitempty"` // The Tie-Breaker: CP picks the emptiest node
@@ -142,7 +216,7 @@ type AuctionReply struct {
 
 func (x *AuctionReply) Reset() {
 	*x = AuctionReply{}
-	mi := &file_proto_v1_workload_proto_msgTypes[1]
+	mi := &file_proto_v1_workload_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -154,7 +228,7 @@ func (x *AuctionReply) String() string {
 func (*AuctionReply) ProtoMessage() {}
 
 func (x *AuctionReply) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_v1_workload_proto_msgTypes[1]
+	mi := &file_proto_v1_workload_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -167,12 +241,12 @@ func (x *AuctionReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuctionReply.ProtoReflect.Descriptor instead.
 func (*AuctionReply) Descriptor() ([]byte, []int) {
-	return file_proto_v1_workload_proto_rawDescGZIP(), []int{1}
+	return file_proto_v1_workload_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *AuctionReply) GetMachineId() string {
+func (x *AuctionReply) GetMicrovmId() string {
 	if x != nil {
-		return x.MachineId
+		return x.MicrovmId
 	}
 	return ""
 }
@@ -199,32 +273,33 @@ func (x *AuctionReply) GetFreeRamMb() uint64 {
 }
 
 // Sent directly to the winning node's personal inbox.
-// Subject: node.cmd.<boot_id>.machine.launch
-type MachineLaunchRequest struct {
+// Subject: node.cmd.<boot_id>.microvm.launch
+type MicroVMLaunchRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	MachineId     string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
-	Tier          Tier                   `protobuf:"varint,2,opt,name=tier,proto3,enum=spacescale.v1.Tier" json:"tier,omitempty"`
+	MicrovmId     string                 `protobuf:"bytes,1,opt,name=microvm_id,json=microvmId,proto3" json:"microvm_id,omitempty"`
+	Shape         *MicroVMShape          `protobuf:"bytes,2,opt,name=shape,proto3" json:"shape,omitempty"`
 	ImageRef      string                 `protobuf:"bytes,3,opt,name=image_ref,json=imageRef,proto3" json:"image_ref,omitempty"`
 	Env           map[string]string      `protobuf:"bytes,4,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	RuntimePort   uint32                 `protobuf:"varint,5,opt,name=runtime_port,json=runtimePort,proto3" json:"runtime_port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *MachineLaunchRequest) Reset() {
-	*x = MachineLaunchRequest{}
-	mi := &file_proto_v1_workload_proto_msgTypes[2]
+func (x *MicroVMLaunchRequest) Reset() {
+	*x = MicroVMLaunchRequest{}
+	mi := &file_proto_v1_workload_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *MachineLaunchRequest) String() string {
+func (x *MicroVMLaunchRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*MachineLaunchRequest) ProtoMessage() {}
+func (*MicroVMLaunchRequest) ProtoMessage() {}
 
-func (x *MachineLaunchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_v1_workload_proto_msgTypes[2]
+func (x *MicroVMLaunchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_v1_workload_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -235,43 +310,50 @@ func (x *MachineLaunchRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use MachineLaunchRequest.ProtoReflect.Descriptor instead.
-func (*MachineLaunchRequest) Descriptor() ([]byte, []int) {
-	return file_proto_v1_workload_proto_rawDescGZIP(), []int{2}
+// Deprecated: Use MicroVMLaunchRequest.ProtoReflect.Descriptor instead.
+func (*MicroVMLaunchRequest) Descriptor() ([]byte, []int) {
+	return file_proto_v1_workload_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *MachineLaunchRequest) GetMachineId() string {
+func (x *MicroVMLaunchRequest) GetMicrovmId() string {
 	if x != nil {
-		return x.MachineId
+		return x.MicrovmId
 	}
 	return ""
 }
 
-func (x *MachineLaunchRequest) GetTier() Tier {
+func (x *MicroVMLaunchRequest) GetShape() *MicroVMShape {
 	if x != nil {
-		return x.Tier
+		return x.Shape
 	}
-	return Tier_TIER_UNSPECIFIED
+	return nil
 }
 
-func (x *MachineLaunchRequest) GetImageRef() string {
+func (x *MicroVMLaunchRequest) GetImageRef() string {
 	if x != nil {
 		return x.ImageRef
 	}
 	return ""
 }
 
-func (x *MachineLaunchRequest) GetEnv() map[string]string {
+func (x *MicroVMLaunchRequest) GetEnv() map[string]string {
 	if x != nil {
 		return x.Env
 	}
 	return nil
 }
 
+func (x *MicroVMLaunchRequest) GetRuntimePort() uint32 {
+	if x != nil {
+		return x.RuntimePort
+	}
+	return 0
+}
+
 // Returned by the scaled daemon to acknowledge the launch intent.
-type MachineLaunchResponse struct {
+type MicroVMLaunchResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	MachineId     string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
+	MicrovmId     string                 `protobuf:"bytes,1,opt,name=microvm_id,json=microvmId,proto3" json:"microvm_id,omitempty"`
 	Accepted      bool                   `protobuf:"varint,2,opt,name=accepted,proto3" json:"accepted,omitempty"` // True if the Ghost Reservation was successful
 	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`      // e.g., "starting", "failed"
 	ErrorMessage  string                 `protobuf:"bytes,4,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
@@ -279,21 +361,21 @@ type MachineLaunchResponse struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *MachineLaunchResponse) Reset() {
-	*x = MachineLaunchResponse{}
-	mi := &file_proto_v1_workload_proto_msgTypes[3]
+func (x *MicroVMLaunchResponse) Reset() {
+	*x = MicroVMLaunchResponse{}
+	mi := &file_proto_v1_workload_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *MachineLaunchResponse) String() string {
+func (x *MicroVMLaunchResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*MachineLaunchResponse) ProtoMessage() {}
+func (*MicroVMLaunchResponse) ProtoMessage() {}
 
-func (x *MachineLaunchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_v1_workload_proto_msgTypes[3]
+func (x *MicroVMLaunchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_v1_workload_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -304,33 +386,33 @@ func (x *MachineLaunchResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use MachineLaunchResponse.ProtoReflect.Descriptor instead.
-func (*MachineLaunchResponse) Descriptor() ([]byte, []int) {
-	return file_proto_v1_workload_proto_rawDescGZIP(), []int{3}
+// Deprecated: Use MicroVMLaunchResponse.ProtoReflect.Descriptor instead.
+func (*MicroVMLaunchResponse) Descriptor() ([]byte, []int) {
+	return file_proto_v1_workload_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *MachineLaunchResponse) GetMachineId() string {
+func (x *MicroVMLaunchResponse) GetMicrovmId() string {
 	if x != nil {
-		return x.MachineId
+		return x.MicrovmId
 	}
 	return ""
 }
 
-func (x *MachineLaunchResponse) GetAccepted() bool {
+func (x *MicroVMLaunchResponse) GetAccepted() bool {
 	if x != nil {
 		return x.Accepted
 	}
 	return false
 }
 
-func (x *MachineLaunchResponse) GetStatus() string {
+func (x *MicroVMLaunchResponse) GetStatus() string {
 	if x != nil {
 		return x.Status
 	}
 	return ""
 }
 
-func (x *MachineLaunchResponse) GetErrorMessage() string {
+func (x *MicroVMLaunchResponse) GetErrorMessage() string {
 	if x != nil {
 		return x.ErrorMessage
 	}
@@ -341,38 +423,44 @@ var File_proto_v1_workload_proto protoreflect.FileDescriptor
 
 const file_proto_v1_workload_proto_rawDesc = "" +
 	"\n" +
-	"\x17proto/v1/workload.proto\x12\rspacescale.v1\"X\n" +
+	"\x17proto/v1/workload.proto\x12\rspacescale.v1\"\xab\x01\n" +
+	"\fMicroVMShape\x12\x12\n" +
+	"\x04vcpu\x18\x01 \x01(\rR\x04vcpu\x12\x15\n" +
+	"\x06ram_mb\x18\x02 \x01(\x04R\x05ramMb\x121\n" +
+	"\bcpu_mode\x18\x03 \x01(\x0e2\x16.spacescale.v1.CpuModeR\acpuMode\x12 \n" +
+	"\froot_disk_mb\x18\x04 \x01(\x04R\n" +
+	"rootDiskMb\x12\x1b\n" +
+	"\tvolume_mb\x18\x05 \x01(\x04R\bvolumeMb\"b\n" +
 	"\x0eAuctionRequest\x12\x1d\n" +
 	"\n" +
-	"machine_id\x18\x01 \x01(\tR\tmachineId\x12'\n" +
-	"\x04tier\x18\x02 \x01(\x0e2\x13.spacescale.v1.TierR\x04tier\"\x7f\n" +
+	"microvm_id\x18\x01 \x01(\tR\tmicrovmId\x121\n" +
+	"\x05shape\x18\x02 \x01(\v2\x1b.spacescale.v1.MicroVMShapeR\x05shape\"\x7f\n" +
 	"\fAuctionReply\x12\x1d\n" +
 	"\n" +
-	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x17\n" +
+	"microvm_id\x18\x01 \x01(\tR\tmicrovmId\x12\x17\n" +
 	"\anode_id\x18\x02 \x01(\tR\x06nodeId\x12\x17\n" +
 	"\aboot_id\x18\x03 \x01(\tR\x06bootId\x12\x1e\n" +
-	"\vfree_ram_mb\x18\x04 \x01(\x04R\tfreeRamMb\"\xf3\x01\n" +
-	"\x14MachineLaunchRequest\x12\x1d\n" +
+	"\vfree_ram_mb\x18\x04 \x01(\x04R\tfreeRamMb\"\xa0\x02\n" +
+	"\x14MicroVMLaunchRequest\x12\x1d\n" +
 	"\n" +
-	"machine_id\x18\x01 \x01(\tR\tmachineId\x12'\n" +
-	"\x04tier\x18\x02 \x01(\x0e2\x13.spacescale.v1.TierR\x04tier\x12\x1b\n" +
+	"microvm_id\x18\x01 \x01(\tR\tmicrovmId\x121\n" +
+	"\x05shape\x18\x02 \x01(\v2\x1b.spacescale.v1.MicroVMShapeR\x05shape\x12\x1b\n" +
 	"\timage_ref\x18\x03 \x01(\tR\bimageRef\x12>\n" +
-	"\x03env\x18\x04 \x03(\v2,.spacescale.v1.MachineLaunchRequest.EnvEntryR\x03env\x1a6\n" +
+	"\x03env\x18\x04 \x03(\v2,.spacescale.v1.MicroVMLaunchRequest.EnvEntryR\x03env\x12!\n" +
+	"\fruntime_port\x18\x05 \x01(\rR\vruntimePort\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8f\x01\n" +
-	"\x15MachineLaunchResponse\x12\x1d\n" +
+	"\x15MicroVMLaunchResponse\x12\x1d\n" +
 	"\n" +
-	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x1a\n" +
+	"microvm_id\x18\x01 \x01(\tR\tmicrovmId\x12\x1a\n" +
 	"\baccepted\x18\x02 \x01(\bR\baccepted\x12\x16\n" +
 	"\x06status\x18\x03 \x01(\tR\x06status\x12#\n" +
-	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage*O\n" +
-	"\x04Tier\x12\x14\n" +
-	"\x10TIER_UNSPECIFIED\x10\x00\x12\x10\n" +
-	"\fTIER_STARTER\x10\x01\x12\x0f\n" +
-	"\vTIER_GROWTH\x10\x02\x12\x0e\n" +
-	"\n" +
-	"TIER_SCALE\x10\x03B5Z3github.com/spacescale/core/internal/shared/pb/v1;pbb\x06proto3"
+	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage*M\n" +
+	"\aCpuMode\x12\x18\n" +
+	"\x14CPU_MODE_UNSPECIFIED\x10\x00\x12\x13\n" +
+	"\x0fCPU_MODE_SHARED\x10\x01\x12\x13\n" +
+	"\x0fCPU_MODE_PINNED\x10\x02B5Z3github.com/spacescale/core/internal/shared/pb/v1;pbb\x06proto3"
 
 var (
 	file_proto_v1_workload_proto_rawDescOnce sync.Once
@@ -387,24 +475,26 @@ func file_proto_v1_workload_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_v1_workload_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proto_v1_workload_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_proto_v1_workload_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_proto_v1_workload_proto_goTypes = []any{
-	(Tier)(0),                     // 0: spacescale.v1.Tier
-	(*AuctionRequest)(nil),        // 1: spacescale.v1.AuctionRequest
-	(*AuctionReply)(nil),          // 2: spacescale.v1.AuctionReply
-	(*MachineLaunchRequest)(nil),  // 3: spacescale.v1.MachineLaunchRequest
-	(*MachineLaunchResponse)(nil), // 4: spacescale.v1.MachineLaunchResponse
-	nil,                           // 5: spacescale.v1.MachineLaunchRequest.EnvEntry
+	(CpuMode)(0),                  // 0: spacescale.v1.CpuMode
+	(*MicroVMShape)(nil),          // 1: spacescale.v1.MicroVMShape
+	(*AuctionRequest)(nil),        // 2: spacescale.v1.AuctionRequest
+	(*AuctionReply)(nil),          // 3: spacescale.v1.AuctionReply
+	(*MicroVMLaunchRequest)(nil),  // 4: spacescale.v1.MicroVMLaunchRequest
+	(*MicroVMLaunchResponse)(nil), // 5: spacescale.v1.MicroVMLaunchResponse
+	nil,                           // 6: spacescale.v1.MicroVMLaunchRequest.EnvEntry
 }
 var file_proto_v1_workload_proto_depIdxs = []int32{
-	0, // 0: spacescale.v1.AuctionRequest.tier:type_name -> spacescale.v1.Tier
-	0, // 1: spacescale.v1.MachineLaunchRequest.tier:type_name -> spacescale.v1.Tier
-	5, // 2: spacescale.v1.MachineLaunchRequest.env:type_name -> spacescale.v1.MachineLaunchRequest.EnvEntry
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	0, // 0: spacescale.v1.MicroVMShape.cpu_mode:type_name -> spacescale.v1.CpuMode
+	1, // 1: spacescale.v1.AuctionRequest.shape:type_name -> spacescale.v1.MicroVMShape
+	1, // 2: spacescale.v1.MicroVMLaunchRequest.shape:type_name -> spacescale.v1.MicroVMShape
+	6, // 3: spacescale.v1.MicroVMLaunchRequest.env:type_name -> spacescale.v1.MicroVMLaunchRequest.EnvEntry
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_proto_v1_workload_proto_init() }
@@ -418,7 +508,7 @@ func file_proto_v1_workload_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_v1_workload_proto_rawDesc), len(file_proto_v1_workload_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   5,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

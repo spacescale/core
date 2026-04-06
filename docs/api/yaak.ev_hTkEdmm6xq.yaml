@@ -51,8 +51,8 @@ variables:
     value: 'eu-central'
     id: primaryRegion
   - enabled: true
-    name: APP_TIER
-    value: 'starter'
-    id: appTier
+    name: APP_PLAN_ID
+    value: 'web-starter'
+    id: appPlanId
 color: var(--primary)
 sortPriority: 0.0

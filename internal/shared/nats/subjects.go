@@ -9,9 +9,9 @@
 // Architecture: The Decentralized Auction
 //
 // SpaceScale avoids centralized, database-locked scheduling. Instead, it relies
-// on an event-driven Request-Reply pattern. The Control Plane broadcasts intent
-// (e.g., "Need a machine for the Growth tier"), and Edge nodes independently
-// calculate their real-time physical capacity to bid on the workload.
+// on an event-driven Request-Reply pattern. The control plane broadcasts one
+// resolved microvm shape, and edge nodes independently calculate their real time
+// physical capacity to bid on that workload.
 //
 // Subjects vs. Queue Groups
 //
@@ -40,13 +40,13 @@ const (
 	// SubjectNodeState is fired by the Edge daemon when its operational status changes e.g. from READY TO CORDONED
 	SubjectNodeState = "node.state.changed"
 
-	// subjectNodeAuction is the regional broadcast frequency. CP publishes to this subject to solicit bids for new MicroVM
+	// subjectNodeAuction is the regional broadcast frequency. CP publishes to this subject to solicit bids for new microvms.
 	// %s must be formatted with the target region  e,g, us-east
-	subjectNodeAuction = "node.auction.%s.machine"
+	subjectNodeAuction = "node.auction.%s.microvm"
 
-	// subjectNodeMachineLaunch is the personal inbox for a specific Edge daemon. CP publishes container image and env after a node wins an auction
+	// subjectNodeMicroVMLaunch is the personal inbox for a specific edge daemon. CP publishes launch intent after a node wins an auction.
 	// The %s must be formatted with the target node's boot_id.
-	subjectNodeMachineLaunch = "node.cmd.%s.machine.launch"
+	subjectNodeMicroVMLaunch = "node.cmd.%s.microvm.launch"
 )
 
 // QUEUE GROUPS CONTROL PLANE LOAD BALANCING
@@ -64,15 +64,15 @@ const (
 
 // NodeAuctionSubject generates the regional broadcast frequency for placement auctions.
 //
-// Example: "node.auction.us-east.machine"
+// Example: "node.auction.us-east.microvm"
 func NodeAuctionSubject(region string) string {
 	return fmt.Sprintf(subjectNodeAuction, region)
 }
 
-// NodeMachineLaunchSubject generates the specific inbox for a node to receive
+// NodeMicroVMLaunchSubject generates the specific inbox for a node to receive
 // its launch commands after winning an auction.
 //
-// Example: "node.cmd.boot-12345.machine.launch"
-func NodeMachineLaunchSubject(bootID string) string {
-	return fmt.Sprintf(subjectNodeMachineLaunch, bootID)
+// Example: "node.cmd.boot-12345.microvm.launch"
+func NodeMicroVMLaunchSubject(bootID string) string {
+	return fmt.Sprintf(subjectNodeMicroVMLaunch, bootID)
 }

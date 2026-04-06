@@ -12,9 +12,9 @@ import (
 )
 
 const createApp = `-- name: CreateApp :one
-INSERT INTO apps (project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, status, is_public, created_at, updated_at)
+INSERT INTO apps (project_id, name, slug, subdomain, image_ref, plan_id, primary_region, runtime_port, status, is_public, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', $9, now(), now())
-RETURNING id, project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, is_public, status, created_at, updated_at
+RETURNING id, project_id, name, slug, subdomain, image_ref, plan_id, target_replicas, primary_region, runtime_port, is_public, status, created_at, updated_at
 `
 
 type CreateAppParams struct {
@@ -23,7 +23,7 @@ type CreateAppParams struct {
 	Slug          string
 	Subdomain     string
 	ImageRef      string
-	Tier          string
+	PlanID        string
 	PrimaryRegion string
 	RuntimePort   int32
 	IsPublic      bool
@@ -36,7 +36,7 @@ func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, erro
 		arg.Slug,
 		arg.Subdomain,
 		arg.ImageRef,
-		arg.Tier,
+		arg.PlanID,
 		arg.PrimaryRegion,
 		arg.RuntimePort,
 		arg.IsPublic,
@@ -49,7 +49,8 @@ func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, erro
 		&i.Slug,
 		&i.Subdomain,
 		&i.ImageRef,
-		&i.Tier,
+		&i.PlanID,
+		&i.TargetReplicas,
 		&i.PrimaryRegion,
 		&i.RuntimePort,
 		&i.IsPublic,
@@ -68,7 +69,7 @@ type CreateAppEnvVarsParams struct {
 }
 
 const getAppByIDAndProjectID = `-- name: GetAppByIDAndProjectID :one
-SELECT id, project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, is_public, status, created_at, updated_at
+SELECT id, project_id, name, slug, subdomain, image_ref, plan_id, target_replicas, primary_region, runtime_port, is_public, status, created_at, updated_at
 FROM apps
 WHERE id = $1
   AND project_id = $2
@@ -89,7 +90,8 @@ func (q *Queries) GetAppByIDAndProjectID(ctx context.Context, arg GetAppByIDAndP
 		&i.Slug,
 		&i.Subdomain,
 		&i.ImageRef,
-		&i.Tier,
+		&i.PlanID,
+		&i.TargetReplicas,
 		&i.PrimaryRegion,
 		&i.RuntimePort,
 		&i.IsPublic,
@@ -130,7 +132,7 @@ func (q *Queries) GetRegistryCredentialByIDAndProjectID(ctx context.Context, arg
 }
 
 const listAppsByProjectID = `-- name: ListAppsByProjectID :many
-SELECT id, project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, is_public, status, created_at, updated_at
+SELECT id, project_id, name, slug, subdomain, image_ref, plan_id, target_replicas, primary_region, runtime_port, is_public, status, created_at, updated_at
 FROM apps
 WHERE project_id = $1
 ORDER BY created_at ASC, id ASC
@@ -152,7 +154,8 @@ func (q *Queries) ListAppsByProjectID(ctx context.Context, projectID uuid.UUID) 
 			&i.Slug,
 			&i.Subdomain,
 			&i.ImageRef,
-			&i.Tier,
+			&i.PlanID,
+			&i.TargetReplicas,
 			&i.PrimaryRegion,
 			&i.RuntimePort,
 			&i.IsPublic,
@@ -175,7 +178,7 @@ UPDATE apps
 SET status = 'deploying',
     updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, is_public, status, created_at, updated_at
+RETURNING id, project_id, name, slug, subdomain, image_ref, plan_id, target_replicas, primary_region, runtime_port, is_public, status, created_at, updated_at
 `
 
 func (q *Queries) MarkAppDeploying(ctx context.Context, id uuid.UUID) (App, error) {
@@ -188,7 +191,8 @@ func (q *Queries) MarkAppDeploying(ctx context.Context, id uuid.UUID) (App, erro
 		&i.Slug,
 		&i.Subdomain,
 		&i.ImageRef,
-		&i.Tier,
+		&i.PlanID,
+		&i.TargetReplicas,
 		&i.PrimaryRegion,
 		&i.RuntimePort,
 		&i.IsPublic,
@@ -204,7 +208,7 @@ UPDATE apps
 SET status = 'failed',
     updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, is_public, status, created_at, updated_at
+RETURNING id, project_id, name, slug, subdomain, image_ref, plan_id, target_replicas, primary_region, runtime_port, is_public, status, created_at, updated_at
 `
 
 func (q *Queries) MarkAppFailed(ctx context.Context, id uuid.UUID) (App, error) {
@@ -217,7 +221,8 @@ func (q *Queries) MarkAppFailed(ctx context.Context, id uuid.UUID) (App, error) 
 		&i.Slug,
 		&i.Subdomain,
 		&i.ImageRef,
-		&i.Tier,
+		&i.PlanID,
+		&i.TargetReplicas,
 		&i.PrimaryRegion,
 		&i.RuntimePort,
 		&i.IsPublic,
@@ -233,7 +238,7 @@ UPDATE apps
 SET status = 'running',
     updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, is_public, status, created_at, updated_at
+RETURNING id, project_id, name, slug, subdomain, image_ref, plan_id, target_replicas, primary_region, runtime_port, is_public, status, created_at, updated_at
 `
 
 func (q *Queries) MarkAppRunning(ctx context.Context, id uuid.UUID) (App, error) {
@@ -246,7 +251,8 @@ func (q *Queries) MarkAppRunning(ctx context.Context, id uuid.UUID) (App, error)
 		&i.Slug,
 		&i.Subdomain,
 		&i.ImageRef,
-		&i.Tier,
+		&i.PlanID,
+		&i.TargetReplicas,
 		&i.PrimaryRegion,
 		&i.RuntimePort,
 		&i.IsPublic,

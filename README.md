@@ -1,28 +1,36 @@
-# Core                      
-> SpaceScale currently has two binaries:
-- `scalecp`: control plane that serves the API, owns durable state, and consumes events over NATS
-- `scaled`:  the node daemon that bootstraps itself with `scalecp`, reports node state and health over NATS, and
-  manages VM lifecycle and workload execution on a host
+# Core
 
-## Communication                      
-NATS keeps node-to-control-plane communication simple across multiple servers by handling routing, reconnects, and
-cluster membership at the transport layer .JetStream KV stores live node state and Postgres stores durable state.
+This repository is organized into two primary functional layers:
 
-## Requirements               
-- Go 1.26.x
-- protoc
-- docker compose
-- goose
-- sqlc
+### scalecp (Control Plane)
 
-## Platform Notes                       
-- `scalecp` runs fine on macOS for local development
-- `scaled` targets Linux, it's built for managing guest vms, and node lifecycle on servers. 
-- Firecracker and real node lifecycle work should be treated as Linux-host development
+The stateless management layer that serves the public API, manages tenant metadata, and orchestrates workload
+distribution. It leverages PostgreSQL for durable state and NATS for its decentralized communication fabric.
 
-## Quickstart          
-```shell            
-make run # starts api server
-```                 
-The entry point to each program is found in `cmd` and the `makefile` exposes other build and run targets. Platform is
-still evolving very fast.
+### scaled (Edge Daemon)
+
+An autonomous agent running on physical hardware. It manages local resource capacity, interacts directly with the
+KVM/Firecracker subsystem, and maintains workload continuity. It is designed to operate independently, ensuring
+resilience during network partitions.
+
+---
+
+## Documentation
+
+For technical deep dives into specific platform subsystems:
+
+- **[Dynamic Node Provisioning](docs/dynamic-node-provisioning.md)**: Node lifecycle and onboarding.
+- **[Firecracker Best Practices](docs/firecracker-best-practices.md)**: Hardening and optimization.
+- **[Linux Kernel Guide](docs/kernel-build.md)**: Custom Linux Kernel Compilation Guide.
+
+## API Reference
+
+The SpaceScale API is documented and testable via **Yaak** workspaces. The collection files are located in `docs/api/`.
+
+1. Download [Yaak](https://yaak.app/).
+2. Import the YAML workspace files to view the complete API specification and request examples.
+
+## Development
+
+Instructions for environment setup, technical requirements, and local execution can be found in *
+*[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.

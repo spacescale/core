@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/internal/scalecp/db/sqlc"
 	"github.com/spacescale/core/internal/shared/nats"
-	"github.com/spacescale/core/internal/shared/pb/v1"
+	pb "github.com/spacescale/core/internal/shared/pb/v1"
 )
 
 type Dispatcher struct {
@@ -23,18 +23,41 @@ type Dispatcher struct {
 type Request struct {
 	AppID        uuid.UUID
 	DeploymentID uuid.UUID
-	MachineID    uuid.UUID
+	MicroVMID    uuid.UUID
 
-	Region   string
-	Tier     pb.Tier
-	ImageRef string
-	Env      map[string]string
+	Region      string
+	Shape       *pb.MicroVMShape
+	ImageRef    string
+	Env         map[string]string
+	RuntimePort uint32
 }
 
 type Winner struct {
 	NodeID    string
 	BootID    string
 	FreeRamMB uint64
+}
+
+func shapeLogAttrs(shape *pb.MicroVMShape) []any {
+	if shape == nil {
+		return []any{"vcpu", uint32(0), "ram_mb", uint64(0), "cpu_mode", "unspecified", "root_disk_mb", uint64(0), "volume_mb", uint64(0)}
+	}
+
+	cpuMode := "unspecified"
+	if shape.CpuMode == pb.CpuMode_CPU_MODE_SHARED {
+		cpuMode = "shared"
+	}
+	if shape.CpuMode == pb.CpuMode_CPU_MODE_PINNED {
+		cpuMode = "pinned"
+	}
+
+	return []any{
+		"vcpu", shape.Vcpu,
+		"ram_mb", shape.RamMb,
+		"cpu_mode", cpuMode,
+		"root_disk_mb", shape.RootDiskMb,
+		"volume_mb", shape.VolumeMb,
+	}
 }
 
 // New creates a stateless Dispatcher bound to the Postgres intent layer

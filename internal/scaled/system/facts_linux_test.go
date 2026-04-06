@@ -1,4 +1,4 @@
-package sysinfo
+package system
 
 import (
 	"strings"
@@ -16,10 +16,8 @@ func TestRead(t *testing.T) {
 	assert.Equal(t, strings.TrimSpace(snapshot.BootID), snapshot.BootID)
 	assert.Len(t, snapshot.BootID, 36)
 	assert.Contains(t, snapshot.BootID, "-")
-	assert.Greater(t, snapshot.TotalThreads, uint32(0))
+	assert.Greater(t, snapshot.TotalCores, uint32(0))
 	assert.Greater(t, snapshot.TotalRamMb, uint64(0))
-	assert.Greater(t, snapshot.AvailableRamMb, uint64(0))
-	assert.GreaterOrEqual(t, snapshot.TotalRamMb, snapshot.AvailableRamMb)
 	assert.Greater(t, snapshot.TotalDiskMb, uint64(0))
 	assert.GreaterOrEqual(t, snapshot.TotalDiskMb, snapshot.AvailableDiskMb)
 }
@@ -73,4 +71,16 @@ func TestReadDiskStatsRejectsMissingPath(t *testing.T) {
 	_, err := readDiskStats("/path/that/should/not/exist")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "statfs")
+}
+
+func TestReadPhysicalCoreCount(t *testing.T) {
+	count, err := readPhysicalCoreCount()
+	require.NoError(t, err)
+	assert.Greater(t, count, uint32(0))
+}
+
+func TestReadTopologyValueRejectsMissingPath(t *testing.T) {
+	_, err := readTopologyValue("/path/that/should/not/exist")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read topology")
 }

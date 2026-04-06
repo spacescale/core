@@ -14,15 +14,15 @@ import (
 )
 
 const (
-	machineLaunchAcceptedStatus = "starting"
-	machineLaunchFailedStatus   = "failed"
+	microVMLaunchAcceptedStatus = "starting"
+	microVMLaunchFailedStatus   = "failed"
 )
 
 // Executor acts as the final decision boundary for the edge node during a placement auction.
 // It listens to a targeted NATS inbox corresponding to the node's boot ID.
 //
-// When the Control Plane selects this node as the winner of an auction, it sends
-// a MachineLaunchRequest here. The Executor is responsible for permanently committing
+// When the control plane selects this node as the winner of an auction, it sends
+// a MicroVMLaunchRequest here. The Executor is responsible for permanently committing
 // the optimistically reserved capacity and initiating the workload boot sequence.
 type Executor struct {
 	logger   *slog.Logger
@@ -43,7 +43,7 @@ func NewExecutor(logger *slog.Logger, c *Capacity, bootID string) *Executor {
 // This subject includes the boot ID to guarantee that stale launch commands
 // from previous boot lifecycles are naturally dropped.
 func (e *Executor) Register(client *nats.Client) error {
-	subject := nats.NodeMachineLaunchSubject(e.bootID)
+	subject := nats.NodeMicroVMLaunchSubject(e.bootID)
 	_, err := client.Subscribe(subject, func(msg *nats.Msg) error {
 		return e.handle(client, msg)
 	})
@@ -55,47 +55,44 @@ func (e *Executor) Register(client *nats.Client) error {
 
 func (e *Executor) handle(client *nats.Client, msg *nats.Msg) error {
 	if msg.Reply == "" {
-		return errors.New("machine launch request missing reply subject")
+		return errors.New("microvm launch request missing reply subject")
 	}
 
-	var req pb.MachineLaunchRequest
+	var req pb.MicroVMLaunchRequest
 	if err := nats.UnmarshalProto(msg, &req); err != nil {
 		return err
 	}
-	if req.MachineId == "" {
-		return errors.New("machine launch request missing machine id")
+	if req.MicrovmId == "" {
+		return errors.New("microvm launch request missing microvm id")
 	}
 
-	if _, err := TranslateTier(req.Tier); err != nil {
+	if _, err := specFromShape(req.Shape); err != nil {
 		return err
 	}
 
-	committedSpec, ok := e.capacity.Commit(req.MachineId)
+	committedSpec, ok := e.capacity.Commit(req.MicrovmId)
 	if !ok {
-		return client.PublishProto(msg.Reply, &pb.MachineLaunchResponse{
-			MachineId:    req.MachineId,
+		return client.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
+			MicrovmId:    req.MicrovmId,
 			Accepted:     false,
-			Status:       machineLaunchFailedStatus,
+			Status:       microVMLaunchFailedStatus,
 			ErrorMessage: "reservation expired or not found",
 		})
 	}
 
-	pinnedStr := "shared"
-	if committedSpec.IsPinned {
-		pinnedStr = "pinned"
-	}
-	e.logger.Info("won placement auction",
-		"machine_id", req.MachineId,
-		"tier", req.Tier,
+	e.logger.Info("won microvm placement auction",
+		"microvm_id", req.MicrovmId,
 		"vcpu", committedSpec.VCPU,
 		"ram_mb", committedSpec.RAM,
-		"cpu_mode", pinnedStr,
+		"cpu_mode", cpuModeLogValue(req.GetShape()),
+		"root_disk_mb", req.GetShape().GetRootDiskMb(),
+		"volume_mb", req.GetShape().GetVolumeMb(),
 	)
 
-	reply := &pb.MachineLaunchResponse{
-		MachineId: req.MachineId,
+	reply := &pb.MicroVMLaunchResponse{
+		MicrovmId: req.MicrovmId,
 		Accepted:  true,
-		Status:    machineLaunchAcceptedStatus,
+		Status:    microVMLaunchAcceptedStatus,
 	}
 
 	if err := client.PublishProto(msg.Reply, reply); err != nil {

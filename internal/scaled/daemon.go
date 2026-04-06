@@ -8,13 +8,12 @@ import (
 	"log/slog"
 
 	"github.com/spacescale/core/internal/scaled/node"
+	"github.com/spacescale/core/internal/scaled/system"
 	"github.com/spacescale/core/internal/scaled/workload"
 	"github.com/spacescale/core/internal/shared/config"
 	"github.com/spacescale/core/internal/shared/nats"
 	"golang.org/x/sync/errgroup"
 )
-
-const defaultDaemonVersion = "dev" // stub for now needs a standard daemon version from go releaser later
 
 type Daemon struct {
 	cfg    config.Config
@@ -22,12 +21,14 @@ type Daemon struct {
 	nats   *nats.Client
 }
 
-func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Daemon, error) {
+func New(cfg config.Config, logger *slog.Logger) (*Daemon, error) {
 	var err error
 	cfg, err = cfg.ValidateScaled()
 	if err != nil {
 		return nil, fmt.Errorf("invalid scaled config: %w", err)
 	}
+
+	logger = logger.With("component", "scaled")
 
 	natsClient, err := nats.New(cfg.NATSURL, "scaled", logger)
 	if err != nil {
@@ -38,18 +39,23 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Daemon, 
 }
 
 func (d *Daemon) Run(ctx context.Context) error {
-	snapshot, identity, err := node.Bootstrap(ctx, d.nats, defaultDaemonVersion)
+
+	if err := system.Preflight(d.logger); err != nil {
+		return err
+	}
+
+	snapshot, identity, err := node.Bootstrap(ctx, d.nats)
 	if err != nil {
 		return err
 	}
-	d.logger.Info("scaled ready", "component", "scaled", "node_id", identity.NodeID, "region", identity.Region)
+	d.logger.Info("scaled ready", "node_id", identity.NodeID, "region", identity.Region)
 
 	heartbeats, err := d.nats.EnsureNodeHeartbeatKV(ctx)
 	if err != nil {
 		return fmt.Errorf("init heartbeat kv: %w", err)
 	}
 
-	manager := workload.NewManager(d.logger, snapshot.TotalRamMb, snapshot.TotalThreads, identity.NodeID, snapshot.BootID, identity.Region)
+	manager := workload.NewManager(d.logger, snapshot.TotalRamMb, snapshot.TotalCores, identity.NodeID, snapshot.BootID, identity.Region)
 	if err := manager.Start(d.nats); err != nil {
 		return fmt.Errorf("start workload manager: %w", err)
 	}
@@ -64,7 +70,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("run heartbeat loop: %w", err)
 	}
-	d.logger.Info("scaled stopped", "component", "scaled", "node_id", identity.NodeID)
+	d.logger.Info("scaled stopped", "node_id", identity.NodeID)
 	return nil
 }
 

@@ -1,5 +1,5 @@
 -- name: CreateApp :one
-INSERT INTO apps (project_id, name, slug, subdomain, image_ref, tier, primary_region, runtime_port, status, is_public, created_at, updated_at)
+INSERT INTO apps (project_id, name, slug, subdomain, image_ref, plan_id, primary_region, runtime_port, status, is_public, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', $9, now(), now())
 RETURNING *;
 

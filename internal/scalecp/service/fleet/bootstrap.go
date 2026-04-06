@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/internal/scalecp/db/sqlc"
@@ -18,11 +17,10 @@ var (
 )
 
 type BootstrapInput struct {
-	Token        string
-	Version      string
-	TotalThreads int32
-	TotalRamMb   int64
-	TotalDiskMb  int64
+	Token       string
+	TotalCores  int32
+	TotalRamMb  int64
+	TotalDiskMb int64
 }
 
 type BootstrapResult struct {
@@ -41,7 +39,6 @@ func NewBootstrapService(queries *sqlc.Queries, pool *pgxpool.Pool) *BootstrapSe
 
 func (s *BootstrapService) Register(ctx context.Context, input BootstrapInput) (BootstrapResult, error) {
 	tokenHash := hashBootstrapToken(input.Token)
-
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return BootstrapResult{}, err
@@ -49,10 +46,9 @@ func (s *BootstrapService) Register(ctx context.Context, input BootstrapInput) (
 	defer func() {
 		_ = tx.Rollback(ctx)
 	}()
-
 	qtx := s.queries.WithTx(tx)
-	metal, err := qtx.UpdateProvisioningMetalFromBootstrap(ctx, sqlc.UpdateProvisioningMetalFromBootstrapParams{
-		TotalThreads:       input.TotalThreads,
+	node, err := qtx.UpdateProvisioningNodeFromBootstrap(ctx, sqlc.UpdateProvisioningNodeFromBootstrapParams{
+		TotalCores:         input.TotalCores,
 		TotalRamMb:         input.TotalRamMb,
 		TotalDiskMb:        input.TotalDiskMb,
 		BootstrapTokenHash: &tokenHash,
@@ -63,23 +59,12 @@ func (s *BootstrapService) Register(ctx context.Context, input BootstrapInput) (
 		}
 		return BootstrapResult{}, err
 	}
-
-	scaled, err := qtx.UpsertScaledBootstrap(ctx, sqlc.UpsertScaledBootstrapParams{
-		ID:      uuid.NewString(),
-		Version: input.Version,
-		MetalID: metal.ID,
-	})
-	if err != nil {
-		return BootstrapResult{}, err
-	}
-
 	if err := tx.Commit(ctx); err != nil {
 		return BootstrapResult{}, err
 	}
-
 	return BootstrapResult{
-		NodeID: scaled.ID,
-		Region: metal.Region,
+		NodeID: node.ID.String(),
+		Region: node.Region,
 	}, nil
 }
 

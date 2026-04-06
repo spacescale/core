@@ -26,11 +26,10 @@ const (
 type NodeBootstrapRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	BootstrapToken string                 `protobuf:"bytes,1,opt,name=bootstrap_token,json=bootstrapToken,proto3" json:"bootstrap_token,omitempty"` // one time bootstrap secret baked onto the host
-	Version        string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`                                     // daemon version
 	BootId         string                 `protobuf:"bytes,3,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`                         // boot id to stores ths initial also, if system boots it changes
-	TotalThreads   uint32                 `protobuf:"varint,4,opt,name=total_threads,json=totalThreads,proto3" json:"total_threads,omitempty"`      //  96 From /proc/cpuinfo
-	TotalRamMb     uint64                 `protobuf:"varint,5,opt,name=total_ram_mb,json=totalRamMb,proto3" json:"total_ram_mb,omitempty"`          // 262144 From /proc/meminfo
-	TotalDiskMb    uint64                 `protobuf:"varint,6,opt,name=total_disk_mb,json=totalDiskMb,proto3" json:"total_disk_mb,omitempty"`       // Total NVMe space
+	TotalCores     uint32                 `protobuf:"varint,4,opt,name=total_cores,json=totalCores,proto3" json:"total_cores,omitempty"`
+	TotalRamMb     uint64                 `protobuf:"varint,5,opt,name=total_ram_mb,json=totalRamMb,proto3" json:"total_ram_mb,omitempty"`    // 262144 From /proc/meminfo
+	TotalDiskMb    uint64                 `protobuf:"varint,6,opt,name=total_disk_mb,json=totalDiskMb,proto3" json:"total_disk_mb,omitempty"` // Total NVMe space
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -72,13 +71,6 @@ func (x *NodeBootstrapRequest) GetBootstrapToken() string {
 	return ""
 }
 
-func (x *NodeBootstrapRequest) GetVersion() string {
-	if x != nil {
-		return x.Version
-	}
-	return ""
-}
-
 func (x *NodeBootstrapRequest) GetBootId() string {
 	if x != nil {
 		return x.BootId
@@ -86,9 +78,9 @@ func (x *NodeBootstrapRequest) GetBootId() string {
 	return ""
 }
 
-func (x *NodeBootstrapRequest) GetTotalThreads() uint32 {
+func (x *NodeBootstrapRequest) GetTotalCores() uint32 {
 	if x != nil {
-		return x.TotalThreads
+		return x.TotalCores
 	}
 	return 0
 }
@@ -240,12 +232,12 @@ var File_proto_v1_node_proto protoreflect.FileDescriptor
 
 const file_proto_v1_node_proto_rawDesc = "" +
 	"\n" +
-	"\x13proto/v1/node.proto\x12\rspacescale.v1\"\xdd\x01\n" +
+	"\x13proto/v1/node.proto\x12\rspacescale.v1\"\xbf\x01\n" +
 	"\x14NodeBootstrapRequest\x12'\n" +
-	"\x0fbootstrap_token\x18\x01 \x01(\tR\x0ebootstrapToken\x12\x18\n" +
-	"\aversion\x18\x02 \x01(\tR\aversion\x12\x17\n" +
-	"\aboot_id\x18\x03 \x01(\tR\x06bootId\x12#\n" +
-	"\rtotal_threads\x18\x04 \x01(\rR\ftotalThreads\x12 \n" +
+	"\x0fbootstrap_token\x18\x01 \x01(\tR\x0ebootstrapToken\x12\x17\n" +
+	"\aboot_id\x18\x03 \x01(\tR\x06bootId\x12\x1f\n" +
+	"\vtotal_cores\x18\x04 \x01(\rR\n" +
+	"totalCores\x12 \n" +
 	"\ftotal_ram_mb\x18\x05 \x01(\x04R\n" +
 	"totalRamMb\x12\"\n" +
 	"\rtotal_disk_mb\x18\x06 \x01(\x04R\vtotalDiskMb\"^\n" +

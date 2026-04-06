@@ -1,7 +1,7 @@
-// Package placement provides the local execution and placement engine for microVMs.
+// Package placement provides the local execution and placement engine for microVM's.
 //
 // This file implements the Capacity ledger which tracks the real time physical
-// resources of the bare metal node. It uses optimistic concurrency control
+// resources of the node. It uses optimistic concurrency control
 // via temporary reservations to prevent scheduling race conditions such as OOM
 // during decentralized NATS auctions.
 //
@@ -15,8 +15,8 @@ import (
 	"time"
 )
 
-// reservation represents a temporary hold on physical resources while a node
-// waits to see if it won a placement auction.
+// reservation holds a temporary claim on node resources while the control plane
+// decides whether this node won the auction.
 type reservation struct {
 	RAMMB     uint64
 	VCPU      uint32
@@ -24,8 +24,8 @@ type reservation struct {
 	ExpiresAt time.Time
 }
 
-// Capacity tracks the hardware allocation state of the edge daemon.
-// It manages the split between dedicated resources and overcommitted shared resources.
+// Capacity tracks the hardware allocation state of the edge node.
+// It keeps dedicated core accounting separate from the shared vcpu pool.
 type Capacity struct {
 	mu sync.Mutex
 
@@ -34,25 +34,25 @@ type Capacity struct {
 	usedRAMMB     uint64
 	reservedRAMMB uint64
 
-	// Pinned CPU Allocation (Dedicated Physical Threads)
-	sellableThreads       uint32
-	usedPinnedThreads     uint32
-	reservedPinnedThreads uint32
+	// Dedicated host core allocation.
+	sellableCores       uint32
+	usedPinnedCores     uint32
+	reservedPinnedCores uint32
 
 	// Shared CPU Allocation (Overcommitted Virtual CPUs)
 	usedSharedVCPU     uint32
 	reservedSharedVCPU uint32
 
-	// In-Flight Reservations (Ghost Holds)
+	// In flight reservations keyed by microvm id.
 	reservations map[string]reservation
 }
 
-// NewCapacity initializes the node resource ledger using real hardware metrics.
-func NewCapacity(totalRAMMB uint64, totalThreads uint32) *Capacity {
+// NewCapacity initializes the node resource ledger from real host metrics.
+func NewCapacity(totalRAMMB uint64, totalCores uint32) *Capacity {
 	return &Capacity{
-		sellableRAMMB:   sellableRAMMB(totalRAMMB),
-		sellableThreads: sellableThreads(totalThreads),
-		reservations:    make(map[string]reservation),
+		sellableRAMMB: sellableRAMMB(totalRAMMB),
+		sellableCores: sellableCores(totalCores),
+		reservations:  make(map[string]reservation),
 	}
 }
 
@@ -61,9 +61,9 @@ func NewCapacity(totalRAMMB uint64, totalThreads uint32) *Capacity {
 // same lock to prevent Time Of Check to Time Of Use race conditions.
 //
 // It returns the remaining free RAM which acts as the auction tiebreaker
-// and true if successful. If a reservation for the machineID already exists
+// and true if successful. If a reservation for the microvm id already exists
 // or if there is insufficient physical capacity it returns false.
-func (c *Capacity) Reserve(machineID string, spec HardwareSpec, ttl time.Duration) (uint64, bool) {
+func (c *Capacity) Reserve(microvmID string, spec HardwareSpec, ttl time.Duration) (uint64, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -72,8 +72,8 @@ func (c *Capacity) Reserve(machineID string, spec HardwareSpec, ttl time.Duratio
 	// This prevents the need for a separate background ticker goroutine.
 	c.releaseExpiredLocked(now)
 
-	// Idempotency check. If we already reserved this machine we cannot reserve it again.
-	if _, exists := c.reservations[machineID]; exists {
+	// Idempotency check. If we already reserved this microvm we cannot reserve it again.
+	if _, exists := c.reservations[microvmID]; exists {
 		return 0, false
 	}
 
@@ -82,7 +82,7 @@ func (c *Capacity) Reserve(machineID string, spec HardwareSpec, ttl time.Duratio
 		return 0, false
 	}
 
-	c.reservations[machineID] = reservation{
+	c.reservations[microvmID] = reservation{
 		RAMMB:     spec.RAM,
 		VCPU:      spec.VCPU,
 		IsPinned:  spec.IsPinned,
@@ -91,7 +91,7 @@ func (c *Capacity) Reserve(machineID string, spec HardwareSpec, ttl time.Duratio
 
 	c.reservedRAMMB += spec.RAM
 	if spec.IsPinned {
-		c.reservedPinnedThreads += spec.VCPU
+		c.reservedPinnedCores += spec.VCPU
 	} else {
 		c.reservedSharedVCPU += spec.VCPU
 	}
@@ -101,25 +101,25 @@ func (c *Capacity) Reserve(machineID string, spec HardwareSpec, ttl time.Duratio
 
 // Commit moves a reservation into permanent usage. This is called when
 // the Control Plane explicitly awards the workload to this node via a Launch command.
-func (c *Capacity) Commit(machineID string) (HardwareSpec, bool) {
+func (c *Capacity) Commit(microvmID string) (HardwareSpec, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.releaseExpiredLocked(time.Now())
 
-	res, ok := c.reservations[machineID]
+	res, ok := c.reservations[microvmID]
 	if !ok {
 		return HardwareSpec{}, false
 	}
 
-	delete(c.reservations, machineID)
+	delete(c.reservations, microvmID)
 
 	c.reservedRAMMB -= res.RAMMB
 	c.usedRAMMB += res.RAMMB
 
 	if res.IsPinned {
-		c.reservedPinnedThreads -= res.VCPU
-		c.usedPinnedThreads += res.VCPU
+		c.reservedPinnedCores -= res.VCPU
+		c.usedPinnedCores += res.VCPU
 	} else {
 		c.reservedSharedVCPU -= res.VCPU
 		c.usedSharedVCPU += res.VCPU
@@ -143,10 +143,10 @@ func (c *Capacity) Revert(spec HardwareSpec) {
 	}
 
 	if spec.IsPinned {
-		if c.usedPinnedThreads >= spec.VCPU {
-			c.usedPinnedThreads -= spec.VCPU
+		if c.usedPinnedCores >= spec.VCPU {
+			c.usedPinnedCores -= spec.VCPU
 		} else {
-			c.usedPinnedThreads = 0
+			c.usedPinnedCores = 0
 		}
 		return
 	}
@@ -160,10 +160,10 @@ func (c *Capacity) Revert(spec HardwareSpec) {
 
 // Release manually drops a temporary hold. This is called if a node bids on an
 // auction but the network explicitly fails immediately bypassing the TTL.
-func (c *Capacity) Release(machineID string) {
+func (c *Capacity) Release(microvmID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.releaseLocked(machineID)
+	c.releaseLocked(microvmID)
 }
 
 // ReleaseExpired sweeps the map for any dead temporary holds.
@@ -186,7 +186,7 @@ func (c *Capacity) canFitLocked(spec HardwareSpec) bool {
 	}
 
 	if spec.IsPinned {
-		return c.freePinnedThreadsLocked() >= spec.VCPU
+		return c.freePinnedCoresLocked() >= spec.VCPU
 	}
 
 	return c.freeSharedVCPULocked() >= spec.VCPU
@@ -200,26 +200,26 @@ func (c *Capacity) freeRAMMBLocked() uint64 {
 	return c.sellableRAMMB - allocated
 }
 
-func (c *Capacity) freePinnedThreadsLocked() uint32 {
-	allocated := c.usedPinnedThreads + c.reservedPinnedThreads
-	if allocated > c.sellableThreads {
+func (c *Capacity) freePinnedCoresLocked() uint32 {
+	allocated := c.usedPinnedCores + c.reservedPinnedCores
+	if allocated > c.sellableCores {
 		return 0 // Defensive return preventing catastrophic uint32 underflow
 	}
-	return c.sellableThreads - allocated
+	return c.sellableCores - allocated
 }
 
 // freeSharedVCPULocked calculates available virtual capacity.
-// It subtracts dedicated physical threads from the total pool then multiplies
-// the remaining threads by the overcommit ratio. It then subtracts currently
+// It subtracts dedicated physical cores from the total pool then multiplies
+// the remaining cores by the overcommit ratio. It then subtracts currently
 // allocated shared virtual CPUs to find the remaining pool.
 func (c *Capacity) freeSharedVCPULocked() uint32 {
-	dedicatedThreads := c.usedPinnedThreads + c.reservedPinnedThreads
-	if dedicatedThreads > c.sellableThreads {
+	dedicatedCores := c.usedPinnedCores + c.reservedPinnedCores
+	if dedicatedCores > c.sellableCores {
 		return 0 // Defensive guard
 	}
-	sharedThreads := c.sellableThreads - dedicatedThreads
+	sharedCores := c.sellableCores - dedicatedCores
 
-	sharedCapacity := sharedThreads * sharedVCPUOvercommitRatio
+	sharedCapacity := sharedCores * sharedVCPUOvercommitRatio
 
 	allocatedShared := c.usedSharedVCPU + c.reservedSharedVCPU
 	if allocatedShared > sharedCapacity {
@@ -232,26 +232,26 @@ func (c *Capacity) freeSharedVCPULocked() uint32 {
 // releaseExpiredLocked sweeps the active reservations and deletes any that have passed their TTL.
 // It assumes the caller holds the mutex.
 func (c *Capacity) releaseExpiredLocked(now time.Time) {
-	for machineID, res := range c.reservations {
+	for microvmID, res := range c.reservations {
 		if now.After(res.ExpiresAt) {
-			c.releaseLocked(machineID)
+			c.releaseLocked(microvmID)
 		}
 	}
 }
 
 // releaseLocked drops a temporary hold and returns the capacity to the free pool.
 // It assumes the caller holds the mutex.
-func (c *Capacity) releaseLocked(machineID string) {
-	res, ok := c.reservations[machineID]
+func (c *Capacity) releaseLocked(microvmID string) {
+	res, ok := c.reservations[microvmID]
 	if !ok {
 		return
 	}
 
-	delete(c.reservations, machineID)
+	delete(c.reservations, microvmID)
 
 	c.reservedRAMMB -= res.RAMMB
 	if res.IsPinned {
-		c.reservedPinnedThreads -= res.VCPU
+		c.reservedPinnedCores -= res.VCPU
 	} else {
 		c.reservedSharedVCPU -= res.VCPU
 	}

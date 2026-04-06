@@ -87,17 +87,12 @@ func validateBootstrapRequest(req *pb.NodeBootstrapRequest) (fleet.BootstrapInpu
 		return fleet.BootstrapInput{}, fleet.ErrInvalidBootstrapRequest
 	}
 
-	version := strings.TrimSpace(req.GetVersion())
-	if version == "" {
-		return fleet.BootstrapInput{}, fleet.ErrInvalidBootstrapRequest
-	}
-
 	bootID := strings.TrimSpace(req.GetBootId())
 	if bootID == "" {
 		return fleet.BootstrapInput{}, fleet.ErrInvalidBootstrapRequest
 	}
 
-	totalThreads, ok := uint32ToInt32(req.GetTotalThreads())
+	totalCores, ok := uint32ToInt32(req.GetTotalCores())
 	if !ok {
 		return fleet.BootstrapInput{}, fleet.ErrInvalidBootstrapRequest
 	}
@@ -113,11 +108,10 @@ func validateBootstrapRequest(req *pb.NodeBootstrapRequest) (fleet.BootstrapInpu
 	}
 
 	return fleet.BootstrapInput{
-		Token:        token,
-		Version:      version,
-		TotalThreads: totalThreads,
-		TotalRamMb:   totalRamMB,
-		TotalDiskMb:  totalDiskMB,
+		Token:       token,
+		TotalCores:  totalCores,
+		TotalRamMb:  totalRamMB,
+		TotalDiskMb: totalDiskMB,
 	}, nil
 }
 

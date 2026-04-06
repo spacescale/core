@@ -6,14 +6,8 @@ IP="65.109.67.102"
 SSH_TARGET="root@65.109.67.102"
 REGION="eu-central"
 PROVIDER_LOCATION="fsn1"
-PROVIDER_ID="manual"
-PROVIDER_NAME="manual"
+PROVIDER_ID="colo"
 PROVIDER_SERVER_ID="manual-65.109.67.102"
-TIER="shared"
-CPU_CORES="1"
-HOST_OS_FAMILY="debian"
-HOST_OS_VERSION="13"
-HOST_IMAGE_REF="manual-install"
 STATE_DIR="/var/lib/spacescale"
 INSTALL_PATH="/usr/local/bin/scaled"
 
@@ -42,54 +36,30 @@ print(hashlib.sha256(sys.argv[1].encode()).hexdigest())
 PY
 )"
 
-# Ensure the manual provider exists before seeding the metal row.
+# Create or reset the test node back to provisioning with the fresh token hash.
 psql_db -X -q -v ON_ERROR_STOP=1 <<SQL
-INSERT INTO providers (id, name, api_token_encrypted)
-VALUES ('${PROVIDER_ID}', '${PROVIDER_NAME}', 'manual-placeholder')
-ON CONFLICT (id) DO UPDATE
-SET name = EXCLUDED.name,
-    updated_at = now();
-SQL
-
-# Create or reset the test metal back to provisioning with the fresh token hash.
-psql_db -X -q -v ON_ERROR_STOP=1 <<SQL
-INSERT INTO metals (
-  provider_id,
+INSERT INTO nodes (
+  provider,
   provider_server_id,
   primary_ipv4,
-  host_os_family,
-  host_os_version,
-  host_image_ref,
   region,
   provider_location,
-  tier_target,
-  total_cpu_core,
   bootstrap_token_hash
 )
 VALUES (
   '${PROVIDER_ID}',
   '${PROVIDER_SERVER_ID}',
   '${IP}',
-  '${HOST_OS_FAMILY}',
-  '${HOST_OS_VERSION}',
-  '${HOST_IMAGE_REF}',
   '${REGION}',
   '${PROVIDER_LOCATION}',
-  '${TIER}',
-  ${CPU_CORES},
   '${BOOTSTRAP_TOKEN_HASH}'
 )
 ON CONFLICT (primary_ipv4) DO UPDATE
-SET provider_id = EXCLUDED.provider_id,
+SET provider = EXCLUDED.provider,
     provider_server_id = EXCLUDED.provider_server_id,
-    host_os_family = EXCLUDED.host_os_family,
-    host_os_version = EXCLUDED.host_os_version,
-    host_image_ref = EXCLUDED.host_image_ref,
     region = EXCLUDED.region,
     provider_location = EXCLUDED.provider_location,
-    tier_target = EXCLUDED.tier_target,
-    total_cpu_core = EXCLUDED.total_cpu_core,
-    total_threads = 0,
+    total_cores = 0,
     total_ram_mb = 0,
     total_disk_mb = 0,
     status = 'provisioning',
@@ -114,7 +84,7 @@ rm -f "bin/scaled"
 rmdir "bin" >/dev/null 2>&1 || true
 
 cat <<EOF
-Provisioned manual metal for $IP
+Provisioned manual node for $IP
 
 Notes for scaled:
   bootstrap token written to $STATE_DIR/bootstrap_token on $SSH_TARGET

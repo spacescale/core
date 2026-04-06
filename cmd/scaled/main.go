@@ -32,7 +32,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	d, err := scaled.New(ctx, cfg, log)
+	d, err := scaled.New(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize scaled: %w", err)
 	}

@@ -12,7 +12,7 @@ body:
     {
       "name": "manual-e2e",
       "imageRef": "ghcr.io/acme/spacescale-api:latest",
-      "tier": "${[ APP_TIER ]}",
+      "planId": "web-starter",
       "primaryRegion": "${[ PRIMARY_REGION ]}",
       "runtimePort": 8080,
       "isPublic": false,
@@ -46,7 +46,7 @@ description: |-
 
   ### Body Contract
   - `imageRef` (required): OCI image reference
-  - `tier` (required): `starter`, `growth`, or `scale`
+  - `planId` (required): product plan id such as `web-starter` or `db-prod`
   - `primaryRegion` (required): placement region and must match an active node region for end-to-end dispatch
   - `name` (optional): display name; when omitted service derives from image ref
   - `runtimePort` (optional): defaults to `8080`
@@ -59,7 +59,8 @@ description: |-
     - duplicate keys (after normalization) are rejected
 
   ### Behavior Notes
-  - create operation persists app, deployment, machine, optional registry binding, and encrypted env vars atomically
+  - create operation persists app, deployment, microvm, optional registry binding, and encrypted env vars atomically
+  - new apps default to `targetReplicas = 1`, so create currently launches one microvm
   - when dispatch is active, `scalecp` immediately runs auction + targeted launch after create
   - current manual node region is `eu-central`, so use `primaryRegion=eu-central` for the live end-to-end path
 
@@ -73,7 +74,8 @@ description: |-
     - `slug`
     - `subdomain`
     - `imageRef`
-    - `tier`
+    - `planId`
+    - `targetReplicas`
     - `primaryRegion`
     - `runtimePort`
     - `status` (`deploying` when dispatch succeeds, `queued` only when no dispatcher is wired)
