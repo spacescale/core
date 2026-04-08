@@ -1,9 +1,8 @@
 package dispatch
 
 import (
-	"cmp"
 	"errors"
-	"slices"
+	"fmt"
 
 	"github.com/spacescale/core/internal/shared/nats"
 	"github.com/spacescale/core/internal/shared/pb/v1"
@@ -23,26 +22,14 @@ func (d *Dispatcher) auction(req Request) (Winner, error) {
 	logArgs = append(logArgs, shapeLogAttrs(req.Shape)...)
 	d.logger.Info("starting placement auction", logArgs...)
 
-	msgs, err := d.nats.GatherProto(nats.NodeAuctionSubject(req.Region), &pb.AuctionRequest{MicrovmId: req.MicroVMID.String(), Shape: req.Shape})
+	// Placement is intentionally first-response-wins for now. The NATS client arms
+	// the private inbox with AutoUnsubscribe(1) before publishing the auction, so the
+	// server drops slower bids instead of forwarding them to this control plane.
+	msg, err := d.nats.FirstReplyProto(nats.NodeAuctionSubject(req.Region), &pb.AuctionRequest{MicrovmId: req.MicroVMID.String(), Shape: req.Shape})
 	if err != nil {
 		return Winner{}, err
 	}
-
-	bids := make([]*pb.AuctionReply, 0, len(msgs))
-	for _, msg := range msgs {
-		reply := &pb.AuctionReply{}
-		if err := nats.UnmarshalProto(msg, reply); err != nil {
-			continue
-		}
-		if reply.MicrovmId != req.MicroVMID.String() {
-			continue
-		}
-		if reply.NodeId == "" || reply.BootId == "" {
-			continue
-		}
-		bids = append(bids, reply)
-	}
-	if len(bids) == 0 {
+	if msg == nil {
 		warnArgs := []any{
 			"app_id", req.AppID,
 			"deployment_id", req.DeploymentID,
@@ -54,34 +41,28 @@ func (d *Dispatcher) auction(req Request) (Winner, error) {
 		return Winner{}, ErrNoAuctionBids
 	}
 
-	// Assuming 'bids' is [] *pb.AuctionReply
-	slices.SortFunc(bids, func(a, b *pb.AuctionReply) int {
-		// Step 1: Sort by Free RAM in DESCENDING order.
-		if r := cmp.Compare(b.FreeRamMb, a.FreeRamMb); r != 0 {
-			return r
-		}
+	reply := &pb.AuctionReply{}
+	if err := nats.UnmarshalProto(msg, reply); err != nil {
+		return Winner{}, fmt.Errorf("decode first auction reply: %w", err)
+	}
+	if reply.MicrovmId != req.MicroVMID.String() {
+		return Winner{}, errors.New("auction reply microvm id mismatch")
+	}
+	if reply.NodeId == "" || reply.BootId == "" {
+		return Winner{}, errors.New("auction reply missing node identity")
+	}
 
-		// Step 2: Tie-breaker - Node ID in ASCENDING order.
-		if r := cmp.Compare(a.NodeId, b.NodeId); r != 0 {
-			return r
-		}
-
-		// Step 3: Final tie-breaker - Boot ID in ASCENDING order.
-		return cmp.Compare(a.BootId, b.BootId)
-	})
-	winner := bids[0]
 	selectedArgs := []any{
 		"app_id", req.AppID,
 		"deployment_id", req.DeploymentID,
 		"microvm_id", req.MicroVMID,
 		"region", req.Region,
-		"node_id", winner.NodeId,
-		"boot_id", winner.BootId,
-		"free_ram_mb", winner.FreeRamMb,
-		"bid_count", len(bids),
+		"node_id", reply.NodeId,
+		"boot_id", reply.BootId,
+		"free_ram_mb", reply.FreeRamMb,
 	}
 	selectedArgs = append(selectedArgs, shapeLogAttrs(req.Shape)...)
-	d.logger.Info("placement auction selected winner", selectedArgs...)
+	d.logger.Info("placement auction selected first responder", selectedArgs...)
 
-	return Winner{NodeID: winner.NodeId, BootID: winner.BootId, FreeRamMB: winner.FreeRamMb}, nil
+	return Winner{NodeID: reply.NodeId, BootID: reply.BootId}, nil
 }

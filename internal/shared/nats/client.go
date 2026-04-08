@@ -7,9 +7,9 @@
 // Architectural Note:
 // The system relies heavily on two messaging patterns:
 //  1. Fire-and-Forget (Publish): Used for alerts and state changes.
-//  2. Scatter-Gather (PublishRequest + SubscribeSync): Used for the placement
-//     auction, where the Control Plane broadcasts a requirement and collects
-//     multiple bids over a precise time window.
+//  2. First-Reply Broadcast (PublishRequest + SubscribeSync + AutoUnsubscribe(1)):
+//     Used for the placement auction, where the Control Plane broadcasts one
+//     requirement and NATS severs the private reply inbox after the first bid lands.
 package nats
 
 import (
@@ -27,8 +27,8 @@ const (
 	// for the NATS server to acknowledge pending network operations
 	defaultFlushTimeout = 5 * time.Second
 
-	// defaultGatherTimeout is the strict, hardcoded operational window for all scatter-gather network operations
-	defaultGatherTimeout = 200 * time.Millisecond
+	// defaultFirstReplyTimeout is the strict operational window for first-response-wins broadcasts.
+	defaultFirstReplyTimeout = 200 * time.Millisecond
 )
 
 // Client wraps a NATS connection with a small API used by Spacescale.
@@ -199,16 +199,28 @@ func (c *Client) RequestProto(subject string, req, resp proto.Message, timeout t
 	return nil
 }
 
-// Gather broadcasts a request with a private reply inbox and collects all
-// replies received during the timeout window.
-// It flushes the connection prior to publishing to prevent subscription race conditions.
-func (c *Client) Gather(subject string, payload []byte) ([]*Msg, error) {
-	inbox := natsgo.NewInbox()              // Create a temporary, unique burner inbox for this specific gather operation.
-	sub, err := c.conn.SubscribeSync(inbox) // Synchronously subscribe to the burner inbox. No background goroutines.
+// FirstReply broadcasts a request and waits for exactly one reply on a private inbox.
+//
+// The important part is AutoUnsubscribe(1): the subscription is armed before the
+// request is published, so NATS enforces the cutoff at the server. Once the first
+// reply is delivered, the server removes the inbox subscription immediately and any
+// slower replies are dropped before they ever reach the control plane.
+func (c *Client) FirstReply(subject string, payload []byte) (*Msg, error) {
+	inbox := natsgo.NewInbox()
+	sub, err := c.conn.SubscribeSync(inbox)
 	if err != nil {
 		return nil, fmt.Errorf("subscribe inbox %q: %w", inbox, err)
 	}
-	defer sub.Unsubscribe()
+	defer func() {
+		_ = sub.Unsubscribe()
+	}()
+
+	if err := sub.AutoUnsubscribe(1); err != nil {
+		return nil, fmt.Errorf("auto unsubscribe inbox %q: %w", inbox, err)
+	}
+
+	// Flush after both the subscription and the server-side auto-unsubscribe rule are
+	// registered so the publish cannot outrun the inbox setup.
 	if err := c.Flush(defaultFlushTimeout); err != nil {
 		return nil, fmt.Errorf("flush inbox %q: %w", inbox, err)
 	}
@@ -217,39 +229,24 @@ func (c *Client) Gather(subject string, payload []byte) ([]*Msg, error) {
 		return nil, fmt.Errorf("publish request %q: %w", subject, err)
 	}
 
-	replies := make([]*Msg, 0, 4) // prepare empty slice to hold incoming bid
-	deadline := time.Now().Add(defaultGatherTimeout)
-
-	// we use loop to gather the replies
-	for {
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
-			return replies, nil
+	msg, err := sub.NextMsg(defaultFirstReplyTimeout)
+	if err != nil {
+		if errors.Is(err, natsgo.ErrTimeout) {
+			return nil, nil
 		}
-		// Block and wait for the next message, but ONLY for the remaining time.
-		msg, err := sub.NextMsg(remaining)
-		if err != nil {
-			if errors.Is(err, natsgo.ErrTimeout) {
-				return replies, nil
-			}
-			return nil, fmt.Errorf("collect replies for %q: %w", subject, err)
-		}
-		// We caught a bid! Add it to the pile and loop back.
-		replies = append(replies, msg)
-		//early exit 10 node is enough to start the tie breaker
-		if len(replies) >= 10 {
-			return replies, nil
-		}
+		return nil, fmt.Errorf("wait first reply for %q: %w", subject, err)
 	}
+
+	return msg, nil
 }
 
-// GatherProto marshals a Protobuf request, executes a Gather, and returns the
-// raw slice of reply messages for the caller to unmarshal.
-func (c *Client) GatherProto(subject string, req proto.Message) ([]*Msg, error) {
+// FirstReplyProto marshals a protobuf request, executes FirstReply, and returns
+// the raw reply message for the caller to unmarshal.
+func (c *Client) FirstReplyProto(subject string, req proto.Message) (*Msg, error) {
 	payload, err := proto.Marshal(req)
 	if err != nil {
-		return nil, fmt.Errorf("marshal gather proto for %q: %w", subject, err)
+		return nil, fmt.Errorf("marshal first reply proto for %q: %w", subject, err)
 	}
 
-	return c.Gather(subject, payload)
+	return c.FirstReply(subject, payload)
 }

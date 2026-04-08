@@ -33,9 +33,8 @@ type Request struct {
 }
 
 type Winner struct {
-	NodeID    string
-	BootID    string
-	FreeRamMB uint64
+	NodeID string
+	BootID string
 }
 
 func shapeLogAttrs(shape *pb.MicroVMShape) []any {

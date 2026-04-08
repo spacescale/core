@@ -285,3 +285,14 @@ func LookupPlan(raw string) (Plan, bool) {
 	plan, ok := Plans[strings.ToLower(strings.TrimSpace(raw))]
 	return plan, ok
 }
+
+//The Unit Economics (Internal Logic)
+//
+//Shared vCPU (4:1 Density): $15.00 / month
+//
+//pCore (Dedicated Physical Core - 1:1): $75.00 / month
+//
+//RAM (ECC Memory): $8.00 / GB / month
+//
+//Storage (NVMe Volume): $0.20 / GB / month
+// The Term PCore Will be shown at the front end
