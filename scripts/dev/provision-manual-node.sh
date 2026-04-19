@@ -73,6 +73,20 @@ SQL
 ssh "$SSH_TARGET" "install -d -m 0755 '$STATE_DIR'"
 # shellcheck disable=SC2029
 printf '%s\n' "$BOOTSTRAP_TOKEN" | ssh "$SSH_TARGET" "cat > '$STATE_DIR/bootstrap_token' && chmod 600 '$STATE_DIR/bootstrap_token'"
+# Remove any previously cached local runtime state so the next manual scaled run
+# starts from a clean slate.
+#
+# We intentionally do not assume a systemd unit exists on this test metal. This
+# script prepares the machine and installs the binary, but the actual scaled
+# process is expected to be started manually by the developer.
+#
+# The cleanup covers:
+# - stale node identity that would bypass bootstrap
+# - old runtime assets so the resolver proves itself again
+# - any old bootstrap token file contents are replaced above
+# - any previously running manual scaled process
+# shellcheck disable=SC2029
+ssh "$SSH_TARGET" "rm -f '$STATE_DIR/identity.json' && rm -rf '$STATE_DIR/runtime' && pkill -x scaled >/dev/null 2>&1 || true"
 
 # Build a fresh linux amd64 scaled binary, copy it to the host, and clean up locally.
 mkdir -p bin
@@ -90,4 +104,12 @@ Notes for scaled:
   bootstrap token written to $STATE_DIR/bootstrap_token on $SSH_TARGET
   identity file will be created at $STATE_DIR/identity.json after the first bootstrap handshake
   binary installed at $INSTALL_PATH
+  old runtime cache removed from $STATE_DIR/runtime on $SSH_TARGET
+  any previous manual scaled process stopped on $SSH_TARGET
+
+Start scaled manually:
+  ssh $SSH_TARGET 'bash -lc /usr/local/bin/scaled'
+
+To watch the runtime reconcile logs live:
+  ssh $SSH_TARGET 'bash -lc /usr/local/bin/scaled'
 EOF
