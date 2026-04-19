@@ -8,6 +8,7 @@ import (
 	"log/slog"
 
 	"github.com/spacescale/core/internal/scaled/node"
+	"github.com/spacescale/core/internal/scaled/runtime"
 	"github.com/spacescale/core/internal/scaled/system"
 	"github.com/spacescale/core/internal/scaled/workload"
 	"github.com/spacescale/core/internal/shared/config"
@@ -19,6 +20,7 @@ type Daemon struct {
 	cfg    config.Config
 	logger *slog.Logger
 	nats   *nats.Client
+	assets runtime.Paths
 }
 
 func New(cfg config.Config, logger *slog.Logger) (*Daemon, error) {
@@ -43,6 +45,26 @@ func (d *Daemon) Run(ctx context.Context) error {
 	if err := system.Preflight(d.logger); err != nil {
 		return err
 	}
+
+	// Reconcile runtime assets before the node is allowed to become ready.
+	//
+	// This is the startup boundary where scaled proves that the local host now
+	// has every file it will need for the first Firecracker launch path.
+	// If any required asset is missing or broken, startup stops here and the
+	// node never joins bootstrap readiness or workload handling.
+	resolver := runtime.NewResolver(d.logger)
+	assets, err := resolver.Reconcile(ctx)
+	if err != nil {
+		return fmt.Errorf("reconcile runtime assets: %w", err)
+	}
+
+	d.assets = assets
+	d.logger.Info("runtime assets ready",
+		"firecracker_path", assets.FirecrackerPath,
+		"jailer_path", assets.JailerPath,
+		"kernel_path", assets.KernelPath,
+		"scoutd_path", assets.ScoutdPath,
+	)
 
 	snapshot, identity, err := node.Bootstrap(ctx, d.nats)
 	if err != nil {
