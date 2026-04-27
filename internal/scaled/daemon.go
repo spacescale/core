@@ -59,12 +59,6 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 
 	d.assets = assets
-	d.logger.Info("runtime assets ready",
-		"firecracker_path", assets.FirecrackerPath,
-		"jailer_path", assets.JailerPath,
-		"kernel_path", assets.KernelPath,
-		"scoutd_path", assets.ScoutdPath,
-	)
 
 	snapshot, identity, err := node.Bootstrap(ctx, d.nats)
 	if err != nil {

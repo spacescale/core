@@ -19,7 +19,7 @@ func TestCurrentPaths(t *testing.T) {
 	assert.Equal(t, "/var/lib/spacescale/runtime/host/firecracker-v1.15.1-x86_64", paths.FirecrackerPath)
 	assert.Equal(t, "/var/lib/spacescale/runtime/host/jailer-v1.15.1-x86_64", paths.JailerPath)
 	assert.Equal(t, "/var/lib/spacescale/runtime/guest/vmlinux-v6.1.80-x86_64", paths.KernelPath)
-	assert.Equal(t, "/var/lib/spacescale/runtime/guest/scoutd-v0.1.0-x86_64-linux-musl", paths.ScoutdPath)
+	assert.Equal(t, "/var/lib/spacescale/runtime/guest/scoutd-rootfs-v0.1.3-x86_64-ext4", paths.RootFSPath)
 }
 
 func TestResolverReconcileDownloadsMissingAssets(t *testing.T) {
@@ -36,8 +36,8 @@ func TestResolverReconcileDownloadsMissingAssets(t *testing.T) {
 			_, _ = w.Write([]byte("jailer"))
 		case kernelObjectKey:
 			_, _ = w.Write([]byte("kernel"))
-		case scoutdObjectKey:
-			_, _ = w.Write([]byte("scoutd"))
+		case rootfsObjectKey:
+			_, _ = w.Write([]byte("rootfs"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -58,7 +58,7 @@ func TestResolverReconcileDownloadsMissingAssets(t *testing.T) {
 	assert.FileExists(t, paths.FirecrackerPath)
 	assert.FileExists(t, paths.JailerPath)
 	assert.FileExists(t, paths.KernelPath)
-	assert.FileExists(t, paths.ScoutdPath)
+	assert.FileExists(t, paths.RootFSPath)
 
 	firecrackerInfo, err := os.Stat(paths.FirecrackerPath)
 	require.NoError(t, err)
@@ -72,14 +72,14 @@ func TestResolverReconcileDownloadsMissingAssets(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, kernelInfo.Mode()&0o111)
 
-	scoutdInfo, err := os.Stat(paths.ScoutdPath)
+	rootfsInfo, err := os.Stat(paths.RootFSPath)
 	require.NoError(t, err)
-	assert.NotZero(t, scoutdInfo.Mode()&0o111)
+	assert.Zero(t, rootfsInfo.Mode()&0o111)
 
 	assert.Equal(t, 1, hits[firecrackerObjectKey])
 	assert.Equal(t, 1, hits[jailerObjectKey])
 	assert.Equal(t, 1, hits[kernelObjectKey])
-	assert.Equal(t, 1, hits[scoutdObjectKey])
+	assert.Equal(t, 1, hits[rootfsObjectKey])
 }
 
 func TestResolverReconcileReusesCachedAssets(t *testing.T) {
@@ -96,8 +96,8 @@ func TestResolverReconcileReusesCachedAssets(t *testing.T) {
 			_, _ = w.Write([]byte("jailer"))
 		case kernelObjectKey:
 			_, _ = w.Write([]byte("kernel"))
-		case scoutdObjectKey:
-			_, _ = w.Write([]byte("scoutd"))
+		case rootfsObjectKey:
+			_, _ = w.Write([]byte("rootfs"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -121,7 +121,7 @@ func TestResolverReconcileReusesCachedAssets(t *testing.T) {
 	assert.Equal(t, 1, hits[firecrackerObjectKey])
 	assert.Equal(t, 1, hits[jailerObjectKey])
 	assert.Equal(t, 1, hits[kernelObjectKey])
-	assert.Equal(t, 1, hits[scoutdObjectKey])
+	assert.Equal(t, 1, hits[rootfsObjectKey])
 }
 
 func TestValidateLocalAssetReturnsFalseWhenMissing(t *testing.T) {

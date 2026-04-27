@@ -7,7 +7,7 @@
 // firecracker
 // jailer
 // the guest kernel
-// scoutd
+// the scoutd guest rootfs
 //
 // For the current phase of the project we hardcode the production bucket and we
 // hardcode the exact object names we expect to stage locally
@@ -38,7 +38,7 @@ const (
 	firecrackerObjectKey = "firecracker-v1.15.1-x86_64"
 	jailerObjectKey      = "jailer-v1.15.1-x86_64"
 	kernelObjectKey      = "vmlinux-v6.1.80-x86_64"
-	scoutdObjectKey      = "scoutd-v0.1.0-x86_64-linux-musl"
+	rootfsObjectKey      = "scoutd-rootfs-v0.1.3-x86_64-ext4"
 )
 
 // Paths holds the concrete local paths that later runtime code will consume
@@ -51,7 +51,7 @@ type Paths struct {
 	FirecrackerPath string
 	JailerPath      string
 	KernelPath      string
-	ScoutdPath      string
+	RootFSPath      string
 }
 
 // currentPaths returns the fixed local cache paths used by the current daemon
@@ -65,6 +65,6 @@ func currentPaths(root string) Paths {
 		FirecrackerPath: filepath.Join(root, "host", firecrackerObjectKey),
 		JailerPath:      filepath.Join(root, "host", jailerObjectKey),
 		KernelPath:      filepath.Join(root, "guest", kernelObjectKey),
-		ScoutdPath:      filepath.Join(root, "guest", scoutdObjectKey),
+		RootFSPath:      filepath.Join(root, "guest", rootfsObjectKey),
 	}
 }

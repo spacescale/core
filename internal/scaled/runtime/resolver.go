@@ -51,7 +51,7 @@ func NewResolver(logger *slog.Logger) *Resolver {
 // Reuse or download firecracker
 // Reuse or download jailer
 // Reuse or download the kernel
-// Reuse or download scoutd
+// Reuse or download the scoutd rootfs
 // Return the final local paths
 func (r *Resolver) Reconcile(ctx context.Context) (Paths, error) {
 	paths := currentPaths(r.rootDir)
@@ -69,7 +69,7 @@ func (r *Resolver) Reconcile(ctx context.Context) (Paths, error) {
 	if err := r.ensureAsset(ctx, "kernel", kernelObjectKey, paths.KernelPath, false); err != nil {
 		return Paths{}, err
 	}
-	if err := r.ensureAsset(ctx, "scoutd", scoutdObjectKey, paths.ScoutdPath, true); err != nil {
+	if err := r.ensureAsset(ctx, "rootfs", rootfsObjectKey, paths.RootFSPath, false); err != nil {
 		return Paths{}, err
 	}
 
