@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	firecracker "github.com/firecracker-microvm/firecracker-go-sdk"
-	models "github.com/firecracker-microvm/firecracker-go-sdk/client/models"
+	"github.com/firecracker-microvm/firecracker-go-sdk"
+	"github.com/firecracker-microvm/firecracker-go-sdk/client/models"
 
 	scaledruntime "github.com/spacescale/core/internal/scaled/runtime"
 )
@@ -139,9 +139,10 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 		return nil, err
 	}
 
-	// reserveLaunch blocks duplicate launches while this goroutine is still
-	// preparing files and waiting for scoutd. Once activate succeeds, ownership
-	// moves from the launching map to the active map.
+	// reserveLaunch marks this microVM ID as in-flight so another goroutine cannot
+	// launch the same VM while this one is preparing files and waiting for scoutd.
+	// If launch fails, the reservation is released. If launch succeeds, activate
+	// moves the VM from launching to active.
 	launchCommitted := false
 	defer func() {
 		if !launchCommitted {
@@ -149,12 +150,15 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 		}
 	}()
 
-	// vm becomes non-nil as soon as cleanup has something useful to own. The named
-	// return err lets this defer append cleanup failures to the original launch
-	// error instead of hiding either one.
+	// After vm is assigned, later launch steps may create resources that need
+	// teardown: workspace files, vsock listeners, a CID, or a Firecracker process.
+	// If Launch returns an error, clean up that partial VM. Launch uses a named
+	// return err so cleanup failures can be joined with the original launch error
+	// instead of replacing it.
 	var vm *ActiveVM
 	defer func() {
 		if err != nil && vm != nil {
+			// Preserve the original launch failure while reporting any cleanup failure too.
 			err = errors.Join(err, l.cleanupActive(vm, true))
 		}
 	}()
@@ -169,9 +173,10 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 		return nil, err
 	}
 
-	// Use a VM lifecycle context that is independent of the request context.
-	// Before hello, any launch error triggers cleanup and cancels this context.
-	// After hello, Stop or process exit owns teardown.
+	// The request ctx only bounds boot and the scoutd hello wait. Firecracker gets
+	// its own lifecycle ctx so a successfully accepted VM is not killed when the
+	// request ctx is canceled after Launch returns. If launch fails before hello,
+	// cleanup cancels this ctx; after hello, Stop or watchVM owns teardown.
 	vmCtx, cancel := context.WithCancel(context.Background())
 	vm = &ActiveVM{
 		MicroVMID: req.MicroVMID,
@@ -187,8 +192,9 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 		return nil, err
 	}
 
-	// The SDK links the copied rootfs into the jail. Because Firecracker drops to
-	// the dedicated uid/gid, that account must be able to open the writable drive.
+	// The copied rootfs is opened by the Firecracker process after the jailer drops
+	// privileges to the dedicated uid/gid. Give that account ownership and writable
+	// access while keeping the disk image private from other host users.
 	if err := os.Chown(workspace.RootFSPath, l.cfg.JailerUID, l.cfg.JailerGID); err != nil {
 		return nil, fmt.Errorf("chown rootfs for jailer user: %w", err)
 	}
@@ -196,44 +202,65 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 		return nil, fmt.Errorf("chmod rootfs for jailer user: %w", err)
 	}
 
+	// Allocate the guest vsock CID before building the Firecracker config. CID 2 is
+	// the host; every active guest needs its own CID so scoutd traffic is routed to
+	// the correct VM.
 	cid, err := l.cids.Acquire()
 	if err != nil {
 		return nil, err
 	}
 	vm.GuestCID = cid
 
-	// scoutd connects very early during guest boot, so the host-side Unix sockets
-	// must exist before Firecracker starts the VM.
+	// Firecracker exposes guest-initiated vsock connections as host Unix sockets
+	// named from this workspace path. scoutd connects very early during guest boot,
+	// so the host listeners must exist before machine.Start.
 	listeners, err := openVSockListeners(workspace)
 	if err != nil {
 		return nil, err
 	}
 	vm.listeners = listeners
 
+	// Keep jailer stdout/stderr in the VM workspace. The file stays open while the
+	// SDK starts the jailer so startup failures leave useful host-side logs behind.
 	jailerLog, err := openJailerLog(workspace.RootDir)
 	if err != nil {
 		return nil, err
 	}
 	defer jailerLog.Close()
 
+	// Build the SDK config after all referenced host resources exist. The config
+	// intentionally mixes host paths for files the SDK links into the jail and
+	// jail-visible paths for files Firecracker opens after chroot.
 	fcCfg := l.buildFirecrackerConfig(req, workspace, cid, jailerLog)
+
+	// NewMachine wires SDK handlers and jailer metadata. It does not start the
+	// jailer or Firecracker process yet.
 	machine, err := firecracker.NewMachine(vmCtx, fcCfg)
 	if err != nil {
 		return nil, fmt.Errorf("create firecracker machine: %w", err)
 	}
 	vm.machine = machine
 
+	// Start launches the jailer, builds the chroot, drops to the dedicated uid/gid,
+	// and execs Firecracker. Any failure after this point must stop a partial VMM.
 	if err := machine.Start(vmCtx); err != nil {
 		return nil, fmt.Errorf("start firecracker machine: %w", err)
 	}
 
+	// Accept the launch only after guest userspace proves it booted by sending the
+	// scoutd hello frame on the control vsock socket. The request ctx controls how
+	// long we wait for that proof.
 	if err := listeners.WaitForHello(ctx); err != nil {
 		return nil, fmt.Errorf("wait for scoutd hello: %w", err)
 	}
 
+	// Hello succeeded: move the VM from launching to active ownership before
+	// returning it to the caller.
 	l.activate(vm)
 	launchCommitted = true
 
+	// From here the VM lifecycle is asynchronous. Stop handles explicit teardown;
+	// watchVM handles Firecracker exiting on its own.
 	go l.watchVM(vm)
 
 	l.logger.Info("microvm booted scoutd",
@@ -350,6 +377,7 @@ func (l *Launcher) reserveLaunch(microvmID string) error {
 	if _, ok := l.active[microvmID]; ok {
 		return errMicroVMAlreadyActive
 	}
+
 	if _, ok := l.launching[microvmID]; ok {
 		return errMicroVMAlreadyActive
 	}
