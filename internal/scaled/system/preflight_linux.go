@@ -12,14 +12,18 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"os/user"
+	"strconv"
 	"strings"
+	"syscall"
 )
 
 var (
-	preflightEnsureKVM   = ensureKVM
-	preflightDisableSwap = disableSwap
-	preflightDisableKSM  = disableKSM
-	preflightDisableSMT  = disableSMT
+	preflightEnsureKVM               = ensureKVM
+	preflightDisableSwap             = disableSwap
+	preflightDisableKSM              = disableKSM
+	preflightDisableSMT              = disableSMT
+	preflightEnsureFirecrackerJailer = EnsureFirecrackerJailerAccount
 )
 
 const (
@@ -62,7 +66,27 @@ const (
 	// empty list, the pre-flight check will fail to prevent the node from
 	// running in a low-performance "swapping" state.
 	procSwapsPath = "/proc/swaps"
+
+	// FirecrackerJailerAccountName is the dedicated Linux account used for
+	// jailed Firecracker VMM processes. scaled prepares the jail as root, then
+	// the jailer drops Firecracker into this non-root account.
+	FirecrackerJailerAccountName = "spacescale-firecracker"
+
+	// nologinShellPath prevents the Firecracker jailer account from being used
+	// for interactive shell login. The account exists only as a process identity
+	// for jailed VMM execution.
+	nologinShellPath = "/usr/sbin/nologin"
 )
+
+// FirecrackerJailerIdentity is the numeric Linux identity for the dedicated
+// non-root account that jailed Firecracker processes run as.
+type FirecrackerJailerIdentity struct {
+	// UID is the Linux user ID passed into the Firecracker jailer config.
+	UID int
+
+	// GID is the Linux group ID passed into the Firecracker jailer config.
+	GID int
+}
 
 // Preflight performs a rigorous audit of the host operating system to verify
 // that all hardware virtualization and security primitives are operational.
@@ -76,6 +100,17 @@ func Preflight(logger *slog.Logger) error {
 		return err
 	}
 	logger.Info("system preflight verified kvm")
+
+	jailerIdentity, err := preflightEnsureFirecrackerJailer()
+	if err != nil {
+		return err
+	}
+	logger.Info("system preflight ensured firecracker jailer user",
+		"user", FirecrackerJailerAccountName,
+		"uid", jailerIdentity.UID,
+		"gid", jailerIdentity.GID,
+	)
+
 	if err := preflightDisableSwap(); err != nil {
 		return err
 	}
@@ -328,6 +363,171 @@ func disableSMT() error {
 	default:
 		return fmt.Errorf("system preflight: smt still enabled with value %q (expected off/forceoff)", current)
 	}
+}
+
+// EnsureFirecrackerJailerAccount makes sure the dedicated Firecracker jailer
+// Linux account exists and returns its UID/GID.
+//
+// The account is intentionally tied to the group owner of /dev/kvm so jailed
+// Firecracker processes can open KVM without running as root. If the account is
+// missing, preflight creates it with a nologin shell and then looks it up again
+// so launcher code can pass the numeric UID/GID into the jailer config.
+func EnsureFirecrackerJailerAccount() (FirecrackerJailerIdentity, error) {
+	// /dev/kvm's group is the host's source of truth for who may access hardware
+	// virtualization. The jailer account must belong to this group.
+	kvmGID, err := kvmDeviceGID()
+	if err != nil {
+		return FirecrackerJailerIdentity{}, err
+	}
+
+	// Refuse root as the KVM group. Firecracker should drop into a dedicated
+	// non-root identity, not continue as root after the jail is created.
+	if kvmGID <= 0 {
+		return FirecrackerJailerIdentity{}, fmt.Errorf("system preflight: %s group must be non-root", kvmDevicePath)
+	}
+
+	// Verify that the numeric KVM group actually resolves on this host before we
+	// attach the jailer user to it.
+	if _, err := user.LookupGroupId(strconv.Itoa(kvmGID)); err != nil {
+		return FirecrackerJailerIdentity{}, fmt.Errorf("system preflight: lookup group for %s gid %d: %w", kvmDevicePath, kvmGID, err)
+	}
+
+	// If the dedicated account is missing, create it. Any lookup error other than
+	// "unknown user" is treated as a real host identity failure.
+	if _, err := user.Lookup(FirecrackerJailerAccountName); err != nil {
+		var unknown user.UnknownUserError
+		if !errors.As(err, &unknown) {
+			return FirecrackerJailerIdentity{}, fmt.Errorf("system preflight: lookup firecracker jailer user: %w", err)
+		}
+		if err := createFirecrackerJailerUser(kvmGID); err != nil {
+			return FirecrackerJailerIdentity{}, err
+		}
+	}
+
+	// Return numeric IDs because the Firecracker SDK jailer config expects UID
+	// and GID values, not Linux account names.
+	return LookupFirecrackerJailerIdentity()
+}
+
+// LookupFirecrackerJailerIdentity resolves the dedicated Firecracker jailer
+// Linux account into the numeric UID/GID that Firecracker's jailer needs.
+//
+// This function does not create the account. It only verifies the host already
+// has a valid jailer user, that the user is non-root, and that its primary group
+// matches the group owner of /dev/kvm so the jailed VMM can access KVM.
+func LookupFirecrackerJailerIdentity() (FirecrackerJailerIdentity, error) {
+	// /dev/kvm tells us which Linux group is allowed to use hardware
+	// virtualization on this host.
+	kvmGID, err := kvmDeviceGID()
+	if err != nil {
+		return FirecrackerJailerIdentity{}, err
+	}
+
+	// Look up the dedicated jailer account by name. This account is the identity
+	// the Firecracker process drops into after the jailer has prepared the jail.
+	u, err := user.Lookup(FirecrackerJailerAccountName)
+	if err != nil {
+		return FirecrackerJailerIdentity{}, fmt.Errorf("lookup firecracker jailer user %q: %w", FirecrackerJailerAccountName, err)
+	}
+
+	// The os/user package returns UID/GID as strings because system account
+	// databases are text based. Convert them to ints for the Firecracker config.
+	uid, err := strconv.Atoi(u.Uid)
+	if err != nil {
+		return FirecrackerJailerIdentity{}, fmt.Errorf("parse firecracker jailer uid %q: %w", u.Uid, err)
+	}
+
+	// Parse the account's primary group ID. We expect this to be the /dev/kvm
+	// group so the jailed VMM can open KVM without running as root.
+	gid, err := strconv.Atoi(u.Gid)
+	if err != nil {
+		return FirecrackerJailerIdentity{}, fmt.Errorf("parse firecracker jailer gid %q: %w", u.Gid, err)
+	}
+
+	// UID 0 is root. A jailer identity must be non-root or the chroot boundary is
+	// much less useful as a security boundary.
+	if uid <= 0 {
+		return FirecrackerJailerIdentity{}, fmt.Errorf("firecracker jailer user %q must be non-root", FirecrackerJailerAccountName)
+	}
+
+	// The jailer user must be in the same primary group as /dev/kvm. Otherwise
+	// Firecracker may start as a restricted user but fail when it tries to create
+	// the VM through KVM.
+	if gid != kvmGID {
+		return FirecrackerJailerIdentity{}, fmt.Errorf("firecracker jailer user %q gid %d does not match %s gid %d", FirecrackerJailerAccountName, gid, kvmDevicePath, kvmGID)
+	}
+
+	// Return the numeric identity because the Firecracker jailer config takes
+	// UID/GID numbers, not Linux account names.
+	return FirecrackerJailerIdentity{UID: uid, GID: gid}, nil
+}
+
+func createFirecrackerJailerUser(kvmGID int) error {
+	shell := nologinShellPath
+
+	if _, err := os.Stat(shell); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("system preflight: stat %s: %w", shell, err)
+		}
+		// Some minimal Linux images do not ship /usr/sbin/nologin. /bin/false is
+		// a safe fallback for a service account because it exits immediately and
+		// still prevents interactive shell login.
+		shell = "/bin/false"
+	}
+
+	// Ask Linux to create a locked-down service account for Firecracker.
+	// We use useradd instead of editing /etc/passwd and /etc/group ourselves
+	// because useradd handles distro account rules, file locking, and shadow
+	// database updates safely.
+	args := []string{
+		"--system",                    // Create a system/service account, not a normal human user.
+		"--no-create-home",            // Do not create /home/spacescale-firecracker.
+		"--gid", strconv.Itoa(kvmGID), // Make /dev/kvm's group the primary group.
+		"--shell", shell, // Block interactive login with nologin or /bin/false.
+		FirecrackerJailerAccountName, // The Linux username to create.
+	}
+
+	// Go can look up users through os/user, but the standard library does not
+	// provide a native API for creating Linux users. Account creation is host
+	// administration work, so shelling out to useradd is the safer boundary.
+	output, err := exec.Command("useradd", args...).CombinedOutput()
+	if err != nil {
+		if _, lookupErr := user.Lookup(FirecrackerJailerAccountName); lookupErr == nil {
+			return nil
+		}
+		if trimmed := strings.TrimSpace(string(output)); trimmed != "" {
+			return fmt.Errorf("system preflight: create firecracker jailer user: %w: %s", err, trimmed)
+		}
+		return fmt.Errorf("system preflight: create firecracker jailer user: %w", err)
+	}
+	return nil
+}
+
+// kvmDeviceGID returns the Linux group ID that owns /dev/kvm.
+//
+// Firecracker needs access to /dev/kvm to create hardware-accelerated
+// microVMs. By reading the device file's group owner, scaled can create or
+// validate a jailer account that belongs to the same group instead of running
+// Firecracker as root.
+func kvmDeviceGID() (int, error) {
+	// Stat the actual KVM device file. The generic os.FileInfo tells us the path
+	// exists, and its Sys field carries Linux-specific ownership metadata.
+	info, err := os.Stat(kvmDevicePath)
+	if err != nil {
+		return 0, fmt.Errorf("system preflight: stat %s: %w", kvmDevicePath, err)
+	}
+
+	// On Linux, os.Stat stores the raw stat(2) result as *syscall.Stat_t. That is
+	// where the numeric UID/GID live. If this cast fails, we cannot safely know
+	// which group should own the Firecracker jailer account.
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, fmt.Errorf("system preflight: stat %s: missing linux stat metadata", kvmDevicePath)
+	}
+
+	// stat.Gid is the group owner of /dev/kvm, usually the kvm group. The jailer
+	// user must use this GID so jailed Firecracker can open /dev/kvm.
+	return int(stat.Gid), nil
 }
 
 func readSysfsValue(path string) (string, error) {

@@ -14,22 +14,28 @@ func TestPreflight(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	originalEnsureKVM := preflightEnsureKVM
+	originalEnsureFirecrackerJailer := preflightEnsureFirecrackerJailer
 	originalDisableSwap := preflightDisableSwap
 	originalDisableKSM := preflightDisableKSM
 	originalDisableSMT := preflightDisableSMT
 	defer func() {
 		preflightEnsureKVM = originalEnsureKVM
+		preflightEnsureFirecrackerJailer = originalEnsureFirecrackerJailer
 		preflightDisableSwap = originalDisableSwap
 		preflightDisableKSM = originalDisableKSM
 		preflightDisableSMT = originalDisableSMT
 	}()
 
 	t.Run("runs checks in order", func(t *testing.T) {
-		calls := make([]string, 0, 4)
+		calls := make([]string, 0, 5)
 
 		preflightEnsureKVM = func() error {
 			calls = append(calls, "kvm")
 			return nil
+		}
+		preflightEnsureFirecrackerJailer = func() (FirecrackerJailerIdentity, error) {
+			calls = append(calls, "jailer")
+			return FirecrackerJailerIdentity{UID: 100, GID: 100}, nil
 		}
 		preflightDisableSwap = func() error {
 			calls = append(calls, "swap")
@@ -47,16 +53,20 @@ func TestPreflight(t *testing.T) {
 		err := Preflight(logger)
 
 		require.NoError(t, err)
-		assert.Equal(t, []string{"kvm", "swap", "ksm", "smt"}, calls)
+		assert.Equal(t, []string{"kvm", "jailer", "swap", "ksm", "smt"}, calls)
 	})
 
 	t.Run("stops on first failure", func(t *testing.T) {
-		calls := make([]string, 0, 4)
+		calls := make([]string, 0, 5)
 		wantErr := errors.New("swap failed")
 
 		preflightEnsureKVM = func() error {
 			calls = append(calls, "kvm")
 			return nil
+		}
+		preflightEnsureFirecrackerJailer = func() (FirecrackerJailerIdentity, error) {
+			calls = append(calls, "jailer")
+			return FirecrackerJailerIdentity{UID: 100, GID: 100}, nil
 		}
 		preflightDisableSwap = func() error {
 			calls = append(calls, "swap")
@@ -75,6 +85,6 @@ func TestPreflight(t *testing.T) {
 
 		require.Error(t, err)
 		assert.ErrorIs(t, err, wantErr)
-		assert.Equal(t, []string{"kvm", "swap"}, calls)
+		assert.Equal(t, []string{"kvm", "jailer", "swap"}, calls)
 	})
 }

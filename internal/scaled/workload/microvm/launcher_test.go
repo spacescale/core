@@ -3,14 +3,28 @@
 package microvm
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	firecracker "github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/spacescale/core/internal/scaled/runtime"
+	"github.com/spacescale/core/internal/scaled/system"
 	"github.com/stretchr/testify/require"
 )
+
+func stubJailerIdentity(t *testing.T, uid, gid int) {
+	t.Helper()
+
+	original := lookupJailerIdentity
+	lookupJailerIdentity = func() (system.FirecrackerJailerIdentity, error) {
+		return system.FirecrackerJailerIdentity{UID: uid, GID: gid}, nil
+	}
+	t.Cleanup(func() {
+		lookupJailerIdentity = original
+	})
+}
 
 func TestNewLauncherRequiresDedicatedNonRootJailerUser(t *testing.T) {
 	paths := runtime.Paths{
@@ -20,18 +34,27 @@ func TestNewLauncherRequiresDedicatedNonRootJailerUser(t *testing.T) {
 		RootFSPath:      "/runtime/rootfs.ext4",
 	}
 
-	_, err := NewLauncher(nil, LauncherConfig{
-		RuntimePaths: paths,
-		JailerUID:    0,
-		JailerGID:    100,
+	original := lookupJailerIdentity
+	t.Cleanup(func() {
+		lookupJailerIdentity = original
 	})
+
+	lookupJailerIdentity = func() (system.FirecrackerJailerIdentity, error) {
+		return system.FirecrackerJailerIdentity{}, errors.New("missing jailer user")
+	}
+	_, err := NewLauncher(nil, paths)
 	require.Error(t, err)
 
-	_, err = NewLauncher(nil, LauncherConfig{
-		RuntimePaths: paths,
-		JailerUID:    100,
-		JailerGID:    0,
-	})
+	lookupJailerIdentity = func() (system.FirecrackerJailerIdentity, error) {
+		return system.FirecrackerJailerIdentity{UID: 0, GID: 100}, nil
+	}
+	_, err = NewLauncher(nil, paths)
+	require.Error(t, err)
+
+	lookupJailerIdentity = func() (system.FirecrackerJailerIdentity, error) {
+		return system.FirecrackerJailerIdentity{UID: 100, GID: 0}, nil
+	}
+	_, err = NewLauncher(nil, paths)
 	require.Error(t, err)
 }
 
@@ -84,11 +107,9 @@ func TestBuildFirecrackerConfigUsesJailVisiblePaths(t *testing.T) {
 		RootFSPath:      "/var/lib/spacescale/runtime/guest/scoutd-rootfs-v0.1.3-x86_64-ext4",
 	}
 
-	launcher, err := NewLauncher(nil, LauncherConfig{
-		RuntimePaths: paths,
-		JailerUID:    123,
-		JailerGID:    456,
-	})
+	stubJailerIdentity(t, 123, 456)
+
+	launcher, err := NewLauncher(nil, paths)
 	require.NoError(t, err)
 
 	workspace, err := newWorkspace(
@@ -125,6 +146,8 @@ func TestBuildFirecrackerConfigUsesJailVisiblePaths(t *testing.T) {
 	require.False(t, firecracker.BoolValue(cfg.MachineCfg.Smt))
 
 	require.NotNil(t, cfg.JailerCfg)
+	require.Equal(t, 123, *cfg.JailerCfg.UID)
+	require.Equal(t, 456, *cfg.JailerCfg.GID)
 	require.Equal(t, "vm-123", cfg.JailerCfg.ID)
 	require.Equal(t, workspace.JailerBaseDir, cfg.JailerCfg.ChrootBaseDir)
 	require.Equal(t, paths.FirecrackerPath, cfg.JailerCfg.ExecFile)

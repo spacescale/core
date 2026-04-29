@@ -16,6 +16,7 @@ import (
 	"github.com/firecracker-microvm/firecracker-go-sdk/client/models"
 
 	scaledruntime "github.com/spacescale/core/internal/scaled/runtime"
+	"github.com/spacescale/core/internal/scaled/system"
 )
 
 // scoutdKernelArgs is the fixed first-boot command line for the minimal scoutd
@@ -27,19 +28,8 @@ var (
 	errInvalidLauncherConfig = errors.New("invalid microvm launcher config")
 	errInvalidLaunchRequest  = errors.New("invalid microvm launch request")
 	errMicroVMAlreadyActive  = errors.New("microvm already active")
+	lookupJailerIdentity     = system.LookupFirecrackerJailerIdentity
 )
-
-// LauncherConfig is the host-local configuration needed to start jailed
-// Firecracker processes.
-//
-// JailerUID and JailerGID must identify a dedicated non-root host account for
-// Firecracker. The jailer starts with enough privilege to build the jail, then
-// drops the VMM process to this uid/gid.
-type LauncherConfig struct {
-	RuntimePaths scaledruntime.Paths
-	JailerUID    int
-	JailerGID    int
-}
 
 // LaunchRequest is the local, transport-free scoutd boot request.
 //
@@ -66,46 +56,55 @@ type ActiveVM struct {
 
 // Launcher owns local Firecracker process lifecycle for this scaled process.
 type Launcher struct {
-	logger *slog.Logger
-	cfg    LauncherConfig
-	cids   *cidAllocator
+	logger       *slog.Logger
+	runtimePaths scaledruntime.Paths
+	jailerUID    int
+	jailerGID    int
+	cids         *cidAllocator
 
 	mu        sync.Mutex
 	active    map[string]*ActiveVM
 	launching map[string]struct{}
 }
 
-// NewLauncher validates static host configuration and creates the in-memory
-// lifecycle owner for local Firecracker VMs.
-func NewLauncher(logger *slog.Logger, cfg LauncherConfig) (*Launcher, error) {
+// NewLauncher validates host-local runtime asset paths, resolves the dedicated
+// Firecracker jailer identity, and creates the in-memory lifecycle owner for
+// local Firecracker VMs.
+func NewLauncher(logger *slog.Logger, runtimePaths scaledruntime.Paths) (*Launcher, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	if cfg.JailerUID <= 0 {
-		return nil, fmt.Errorf("%w: dedicated non-root jailer uid is required", errInvalidLauncherConfig)
-	}
-	if cfg.JailerGID <= 0 {
-		return nil, fmt.Errorf("%w: dedicated non-root jailer gid is required", errInvalidLauncherConfig)
-	}
-	if cfg.RuntimePaths.FirecrackerPath == "" {
+	if runtimePaths.FirecrackerPath == "" {
 		return nil, fmt.Errorf("%w: firecracker path is required", errInvalidLauncherConfig)
 	}
-	if cfg.RuntimePaths.JailerPath == "" {
+	if runtimePaths.JailerPath == "" {
 		return nil, fmt.Errorf("%w: jailer path is required", errInvalidLauncherConfig)
 	}
-	if cfg.RuntimePaths.KernelPath == "" {
+	if runtimePaths.KernelPath == "" {
 		return nil, fmt.Errorf("%w: kernel path is required", errInvalidLauncherConfig)
 	}
-	if cfg.RuntimePaths.RootFSPath == "" {
+	if runtimePaths.RootFSPath == "" {
 		return nil, fmt.Errorf("%w: rootfs path is required", errInvalidLauncherConfig)
+	}
+	jailerIdentity, err := lookupJailerIdentity()
+	if err != nil {
+		return nil, fmt.Errorf("%w: resolve firecracker jailer identity: %w", errInvalidLauncherConfig, err)
+	}
+	if jailerIdentity.UID <= 0 {
+		return nil, fmt.Errorf("%w: firecracker jailer uid must be non-root", errInvalidLauncherConfig)
+	}
+	if jailerIdentity.GID <= 0 {
+		return nil, fmt.Errorf("%w: firecracker jailer gid must be non-root", errInvalidLauncherConfig)
 	}
 
 	return &Launcher{
-		logger:    logger.With("subsystem", "microvm"),
-		cfg:       cfg,
-		cids:      newCIDAllocator(),
-		active:    make(map[string]*ActiveVM),
-		launching: make(map[string]struct{}),
+		logger:       logger.With("subsystem", "microvm"),
+		runtimePaths: runtimePaths,
+		jailerUID:    jailerIdentity.UID,
+		jailerGID:    jailerIdentity.GID,
+		cids:         newCIDAllocator(),
+		active:       make(map[string]*ActiveVM),
+		launching:    make(map[string]struct{}),
 	}, nil
 }
 
@@ -132,7 +131,7 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 	if err := req.validate(); err != nil {
 		return nil, err
 	}
-	if err := validateRuntimeAssets(l.cfg.RuntimePaths); err != nil {
+	if err := validateRuntimeAssets(l.runtimePaths); err != nil {
 		return nil, err
 	}
 	if err := l.reserveLaunch(req.MicroVMID); err != nil {
@@ -167,7 +166,7 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 		microVMStateDir,
 		microVMJailerStateDir,
 		req.MicroVMID,
-		l.cfg.RuntimePaths.FirecrackerPath,
+		l.runtimePaths.FirecrackerPath,
 	)
 	if err != nil {
 		return nil, err
@@ -188,14 +187,14 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 		return nil, fmt.Errorf("prepare workspace: %w", err)
 	}
 
-	if err := prepareRootFS(l.cfg.RuntimePaths.RootFSPath, workspace.RootFSPath); err != nil {
+	if err := prepareRootFS(l.runtimePaths.RootFSPath, workspace.RootFSPath); err != nil {
 		return nil, err
 	}
 
 	// The copied rootfs is opened by the Firecracker process after the jailer drops
 	// privileges to the dedicated uid/gid. Give that account ownership and writable
 	// access while keeping the disk image private from other host users.
-	if err := os.Chown(workspace.RootFSPath, l.cfg.JailerUID, l.cfg.JailerGID); err != nil {
+	if err := os.Chown(workspace.RootFSPath, l.jailerUID, l.jailerGID); err != nil {
 		return nil, fmt.Errorf("chown rootfs for jailer user: %w", err)
 	}
 	if err := os.Chmod(workspace.RootFSPath, 0o640); err != nil {
@@ -285,12 +284,12 @@ func (l *Launcher) Stop(_ context.Context, microvmID string) error {
 // files the SDK/jailer must link into the jail; jail-visible paths are used for
 // paths Firecracker opens after chroot.
 func (l *Launcher) buildFirecrackerConfig(req LaunchRequest, workspace Workspace, cid uint32, jailerOutput io.Writer) firecracker.Config {
-	uid := l.cfg.JailerUID
-	gid := l.cfg.JailerGID
+	uid := l.jailerUID
+	gid := l.jailerGID
 
 	return firecracker.Config{
 		SocketPath:      workspace.FirecrackerSocketPathInJail(),
-		KernelImagePath: l.cfg.RuntimePaths.KernelPath,
+		KernelImagePath: l.runtimePaths.KernelPath,
 		KernelArgs:      scoutdKernelArgs,
 		Drives:          firecracker.NewDrivesBuilder(workspace.RootFSPath).Build(),
 		LogPath:         workspace.FirecrackerLogPathInJail(),
@@ -311,9 +310,9 @@ func (l *Launcher) buildFirecrackerConfig(req LaunchRequest, workspace Workspace
 			ID:             req.MicroVMID,
 			NumaNode:       firecracker.Int(0),
 			ChrootBaseDir:  workspace.JailerBaseDir,
-			ChrootStrategy: firecracker.NewNaiveChrootStrategy(l.cfg.RuntimePaths.KernelPath),
-			ExecFile:       l.cfg.RuntimePaths.FirecrackerPath,
-			JailerBinary:   l.cfg.RuntimePaths.JailerPath,
+			ChrootStrategy: firecracker.NewNaiveChrootStrategy(l.runtimePaths.KernelPath),
+			ExecFile:       l.runtimePaths.FirecrackerPath,
+			JailerBinary:   l.runtimePaths.JailerPath,
 			Stdout:         jailerOutput,
 			Stderr:         jailerOutput,
 			CgroupVersion:  "2",
