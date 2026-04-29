@@ -77,8 +77,7 @@ type MicroVMShape struct {
 	Vcpu          uint32                 `protobuf:"varint,1,opt,name=vcpu,proto3" json:"vcpu,omitempty"`
 	RamMb         uint64                 `protobuf:"varint,2,opt,name=ram_mb,json=ramMb,proto3" json:"ram_mb,omitempty"`
 	CpuMode       CpuMode                `protobuf:"varint,3,opt,name=cpu_mode,json=cpuMode,proto3,enum=spacescale.v1.CpuMode" json:"cpu_mode,omitempty"`
-	RootDiskMb    uint64                 `protobuf:"varint,4,opt,name=root_disk_mb,json=rootDiskMb,proto3" json:"root_disk_mb,omitempty"`
-	VolumeMb      uint64                 `protobuf:"varint,5,opt,name=volume_mb,json=volumeMb,proto3" json:"volume_mb,omitempty"`
+	VolumeMb      uint64                 `protobuf:"varint,4,opt,name=volume_mb,json=volumeMb,proto3" json:"volume_mb,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -132,13 +131,6 @@ func (x *MicroVMShape) GetCpuMode() CpuMode {
 		return x.CpuMode
 	}
 	return CpuMode_CPU_MODE_UNSPECIFIED
-}
-
-func (x *MicroVMShape) GetRootDiskMb() uint64 {
-	if x != nil {
-		return x.RootDiskMb
-	}
-	return 0
 }
 
 func (x *MicroVMShape) GetVolumeMb() uint64 {
@@ -423,14 +415,12 @@ var File_proto_v1_workload_proto protoreflect.FileDescriptor
 
 const file_proto_v1_workload_proto_rawDesc = "" +
 	"\n" +
-	"\x17proto/v1/workload.proto\x12\rspacescale.v1\"\xab\x01\n" +
+	"\x17proto/v1/workload.proto\x12\rspacescale.v1\"\x89\x01\n" +
 	"\fMicroVMShape\x12\x12\n" +
 	"\x04vcpu\x18\x01 \x01(\rR\x04vcpu\x12\x15\n" +
 	"\x06ram_mb\x18\x02 \x01(\x04R\x05ramMb\x121\n" +
-	"\bcpu_mode\x18\x03 \x01(\x0e2\x16.spacescale.v1.CpuModeR\acpuMode\x12 \n" +
-	"\froot_disk_mb\x18\x04 \x01(\x04R\n" +
-	"rootDiskMb\x12\x1b\n" +
-	"\tvolume_mb\x18\x05 \x01(\x04R\bvolumeMb\"b\n" +
+	"\bcpu_mode\x18\x03 \x01(\x0e2\x16.spacescale.v1.CpuModeR\acpuMode\x12\x1b\n" +
+	"\tvolume_mb\x18\x04 \x01(\x04R\bvolumeMb\"b\n" +
 	"\x0eAuctionRequest\x12\x1d\n" +
 	"\n" +
 	"microvm_id\x18\x01 \x01(\tR\tmicrovmId\x121\n" +

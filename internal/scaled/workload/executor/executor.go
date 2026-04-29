@@ -1,14 +1,15 @@
-// Package placement implements the decentralized scheduling engine for the edge node.
-//
-// This file provides the Executor, which is responsible for listening to targeted
-// Control Plane launch commands over NATS. It verifies the intent, commits the
-// previously held capacity reservation, and acknowledges the successful placement.
-package placement
+//go:build linux
+
+package executor
 
 import (
+	"context"
 	"errors"
 	"log/slog"
+	"time"
 
+	"github.com/spacescale/core/internal/scaled/workload/microvm"
+	"github.com/spacescale/core/internal/scaled/workload/placement"
 	"github.com/spacescale/core/internal/shared/nats"
 	pb "github.com/spacescale/core/internal/shared/pb/v1"
 )
@@ -16,26 +17,26 @@ import (
 const (
 	microVMLaunchAcceptedStatus = "starting"
 	microVMLaunchFailedStatus   = "failed"
+
+	// microVMLaunchBootTimeout is a failure guard, not the expected boot time.
+	// The scoutd path should be fast; if Firecracker cannot start and send hello
+	// inside this window, the node should reject the launch and free capacity.
+	microVMLaunchBootTimeout = 10 * time.Second
 )
 
-// Executor acts as the final decision boundary for the edge node during a placement auction.
-// It listens to a targeted NATS inbox corresponding to the node's boot ID.
-//
-// When the control plane selects this node as the winner of an auction, it sends
-// a MicroVMLaunchRequest here. The Executor is responsible for permanently committing
-// the optimistically reserved capacity and initiating the workload boot sequence.
 type Executor struct {
 	logger   *slog.Logger
-	capacity *Capacity
+	capacity *placement.Capacity
 	bootID   string
+	launcher *microvm.Launcher
 }
 
-// NewExecutor creates a new Executor wired to the local Capacity ledger.
-func NewExecutor(logger *slog.Logger, c *Capacity, bootID string) *Executor {
+func New(logger *slog.Logger, capacity *placement.Capacity, bootID string, launcher *microvm.Launcher) *Executor {
 	return &Executor{
 		logger:   logger,
-		capacity: c,
+		capacity: capacity,
 		bootID:   bootID,
+		launcher: launcher,
 	}
 }
 
@@ -66,7 +67,7 @@ func (e *Executor) handle(client *nats.Client, msg *nats.Msg) error {
 		return errors.New("microvm launch request missing microvm id")
 	}
 
-	if _, err := specFromShape(req.Shape); err != nil {
+	if _, err := placement.SpecFromShape(req.Shape); err != nil {
 		return err
 	}
 
@@ -84,10 +85,28 @@ func (e *Executor) handle(client *nats.Client, msg *nats.Msg) error {
 		"microvm_id", req.MicrovmId,
 		"vcpu", committedSpec.VCPU,
 		"ram_mb", committedSpec.RAM,
-		"cpu_mode", cpuModeLogValue(req.GetShape()),
-		"root_disk_mb", req.GetShape().GetRootDiskMb(),
+		"cpu_mode", placement.CpuModeLogValue(req.GetShape()),
 		"volume_mb", req.GetShape().GetVolumeMb(),
 	)
+
+	launchCtx, cancel := context.WithTimeout(context.Background(), microVMLaunchBootTimeout)
+	defer cancel()
+
+	active, err := e.launcher.Launch(launchCtx, microvm.LaunchRequest{
+		MicroVMID: req.MicrovmId,
+		VCPU:      committedSpec.VCPU,
+		RAMMB:     committedSpec.RAM,
+	})
+	if err != nil {
+		e.capacity.Revert(committedSpec)
+		publishErr := client.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
+			MicrovmId:    req.MicrovmId,
+			Accepted:     false,
+			Status:       microVMLaunchFailedStatus,
+			ErrorMessage: err.Error(),
+		})
+		return errors.Join(err, publishErr)
+	}
 
 	reply := &pb.MicroVMLaunchResponse{
 		MicrovmId: req.MicrovmId,
@@ -96,6 +115,9 @@ func (e *Executor) handle(client *nats.Client, msg *nats.Msg) error {
 	}
 
 	if err := client.PublishProto(msg.Reply, reply); err != nil {
+		if active != nil {
+			err = errors.Join(err, e.launcher.Stop(context.Background(), active.MicroVMID))
+		}
 		e.capacity.Revert(committedSpec)
 		return err
 	}

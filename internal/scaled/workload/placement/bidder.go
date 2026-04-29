@@ -68,7 +68,7 @@ func (b *Bidder) handle(client *nats.Client, msg *nats.Msg) error {
 		return errors.New("auction request missing microvm id")
 	}
 
-	spec, err := specFromShape(req.Shape)
+	spec, err := SpecFromShape(req.Shape)
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func (b *Bidder) handle(client *nats.Client, msg *nats.Msg) error {
 		"microvm_id", req.MicrovmId,
 		"vcpu", req.GetShape().GetVcpu(),
 		"ram_mb", req.GetShape().GetRamMb(),
-		"cpu_mode", cpuModeLogValue(req.GetShape()),
+		"cpu_mode", CpuModeLogValue(req.GetShape()),
 		"free_ram_mb", freeRAM,
 	)
 

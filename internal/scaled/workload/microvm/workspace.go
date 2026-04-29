@@ -149,3 +149,27 @@ func (w Workspace) Cleanup() error {
 
 	return errors.Join(errs...)
 }
+
+// CleanupStaleState removes VM state left behind by a previous scaled process.
+//
+// scaled does not yet reattach to Firecracker processes after restart, so local
+// microVM state from an old process is invalid. This runs before launch
+// subscriptions are registered, keeping stale workspaces and jailer directories
+// from blocking the next launch attempt.
+func CleanupStaleState() error {
+	return cleanupStaleState(microVMStateDir, microVMJailerStateDir)
+}
+
+func cleanupStaleState(rootDir, jailerStateDir string) error {
+	if rootDir == "" {
+		return fmt.Errorf("microvm state dir is required")
+	}
+	if jailerStateDir == "" {
+		return fmt.Errorf("microvm jailer state dir is required")
+	}
+
+	var errs []error
+	errs = append(errs, os.RemoveAll(rootDir))
+	errs = append(errs, os.RemoveAll(jailerStateDir))
+	return errors.Join(errs...)
+}

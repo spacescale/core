@@ -12,7 +12,7 @@ import (
 	"github.com/spacescale/core/internal/shared/pb/v1"
 )
 
-const microVMLaunchTimeout = 2 * time.Second
+const microVMLaunchTimeout = 15 * time.Second
 
 var ErrLaunchRejected = errors.New("microvm launch rejected")
 

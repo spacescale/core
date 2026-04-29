@@ -13,7 +13,7 @@ var ErrInvalidMicroVMShape = errors.New("invalid microvm shape")
 // HardwareSpec is the capacity relevant slice of one resolved microvm shape.
 //
 // The edge capacity ledger only needs CPU mode, vcpu count, and RAM to answer
-// placement questions. Disk fields stay on the transport for later runtime work.
+// placement questions. Disk sizing is separate from the scoutd boot rootfs.
 type HardwareSpec struct {
 	VCPU uint32
 	RAM  uint64
@@ -21,8 +21,8 @@ type HardwareSpec struct {
 	IsPinned bool
 }
 
-func specFromShape(shape *pb.MicroVMShape) (HardwareSpec, error) {
-	if shape == nil || shape.Vcpu == 0 || shape.RamMb == 0 || shape.RootDiskMb == 0 {
+func SpecFromShape(shape *pb.MicroVMShape) (HardwareSpec, error) {
+	if shape == nil || shape.Vcpu == 0 || shape.RamMb == 0 {
 		return HardwareSpec{}, ErrInvalidMicroVMShape
 	}
 
@@ -36,7 +36,7 @@ func specFromShape(shape *pb.MicroVMShape) (HardwareSpec, error) {
 	}
 }
 
-func cpuModeLogValue(shape *pb.MicroVMShape) string {
+func CpuModeLogValue(shape *pb.MicroVMShape) string {
 	if shape == nil {
 		return "unspecified"
 	}

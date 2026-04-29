@@ -13,6 +13,7 @@ import (
 	"log/slog"
 
 	scaledruntime "github.com/spacescale/core/internal/scaled/runtime"
+	"github.com/spacescale/core/internal/scaled/workload/executor"
 	"github.com/spacescale/core/internal/scaled/workload/microvm"
 	"github.com/spacescale/core/internal/scaled/workload/placement"
 	"github.com/spacescale/core/internal/shared/nats"
@@ -26,7 +27,7 @@ type Manager struct {
 	logger   *slog.Logger
 	capacity *placement.Capacity
 	bidder   *placement.Bidder
-	executor *placement.Executor
+	executor *executor.Executor
 	launcher *microvm.Launcher
 }
 
@@ -39,16 +40,19 @@ func NewManager(
 	totalCores uint32,
 	nodeID, bootID, region string,
 ) (*Manager, error) {
-	cap := placement.NewCapacity(totalRAM, totalCores)
+	capacity := placement.NewCapacity(totalRAM, totalCores)
+	if err := microvm.CleanupStaleState(); err != nil {
+		return nil, fmt.Errorf("cleanup stale microvm state: %w", err)
+	}
 	launcher, err := microvm.NewLauncher(logger, assets)
 	if err != nil {
 		return nil, fmt.Errorf("create microvm launcher: %w", err)
 	}
 	return &Manager{
 		logger:   logger,
-		capacity: cap,
-		bidder:   placement.NewBidder(logger, cap, nodeID, bootID, region),
-		executor: placement.NewExecutor(logger, cap, bootID),
+		capacity: capacity,
+		bidder:   placement.NewBidder(logger, capacity, nodeID, bootID, region),
+		executor: executor.New(logger, capacity, bootID, launcher),
 		launcher: launcher,
 	}, nil
 }

@@ -39,7 +39,7 @@ type Winner struct {
 
 func shapeLogAttrs(shape *pb.MicroVMShape) []any {
 	if shape == nil {
-		return []any{"vcpu", uint32(0), "ram_mb", uint64(0), "cpu_mode", "unspecified", "root_disk_mb", uint64(0), "volume_mb", uint64(0)}
+		return []any{"vcpu", uint32(0), "ram_mb", uint64(0), "cpu_mode", "unspecified", "volume_mb", uint64(0)}
 	}
 
 	cpuMode := "unspecified"
@@ -54,7 +54,6 @@ func shapeLogAttrs(shape *pb.MicroVMShape) []any {
 		"vcpu", shape.Vcpu,
 		"ram_mb", shape.RamMb,
 		"cpu_mode", cpuMode,
-		"root_disk_mb", shape.RootDiskMb,
 		"volume_mb", shape.VolumeMb,
 	}
 }
