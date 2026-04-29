@@ -71,7 +71,18 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return fmt.Errorf("init heartbeat kv: %w", err)
 	}
 
-	manager := workload.NewManager(d.logger, snapshot.TotalRamMb, snapshot.TotalCores, identity.NodeID, snapshot.BootID, identity.Region)
+	manager, err := workload.NewManager(
+		d.logger,
+		assets,
+		snapshot.TotalRamMb,
+		snapshot.TotalCores,
+		identity.NodeID,
+		snapshot.BootID,
+		identity.Region,
+	)
+	if err != nil {
+		return fmt.Errorf("create workload manager: %w", err)
+	}
 	if err := manager.Start(d.nats); err != nil {
 		return fmt.Errorf("start workload manager: %w", err)
 	}

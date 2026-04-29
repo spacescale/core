@@ -1,46 +1,63 @@
-// Package workload provides the top-level orchestration for all microVM
-// operations on the edge node.
+//go:build linux
+
+// Package workload provides the top-level orchestration boundary for workload
+// operations on one scaled node.
 //
-// This package acts as a strict Facade. It hides the internal complexities
-// of capacity ledgers, NATS auction bidding, network bridge creation, and
-// Firecracker execution from the main scaled daemon.
+// The main daemon should not need to know how placement auctions, capacity
+// reservations, targeted launch commands, or local Firecracker execution are
+// wired together. Manager owns those subsystem bindings.
 package workload
 
 import (
+	"fmt"
 	"log/slog"
 
+	scaledruntime "github.com/spacescale/core/internal/scaled/runtime"
+	"github.com/spacescale/core/internal/scaled/workload/microvm"
 	"github.com/spacescale/core/internal/scaled/workload/placement"
 	"github.com/spacescale/core/internal/shared/nats"
 )
 
-// Manager is the root orchestrator for the edge node's workload lifecycle.
-// It initializes and binds together the placement engine, execution engine,
-// and local hardware state.
+// Manager is the root workload coordinator for one scaled process.
+//
+// It owns the local capacity model, the NATS placement handlers, and the
+// Firecracker launcher used to turn accepted placements into local microVMs.
 type Manager struct {
 	logger   *slog.Logger
 	capacity *placement.Capacity
 	bidder   *placement.Bidder
 	executor *placement.Executor
+	launcher *microvm.Launcher
 }
 
-// NewManager initializes the workload boundaries using real hardware metrics
-// discovered during node boot.
-func NewManager(logger *slog.Logger, totalRAM uint64, totalCores uint32, nodeID, bootID, region string) *Manager {
+// NewManager initializes the workload subsystem from the hardware capacity and
+// runtime asset paths discovered during scaled startup.
+func NewManager(
+	logger *slog.Logger,
+	assets scaledruntime.Paths,
+	totalRAM uint64,
+	totalCores uint32,
+	nodeID, bootID, region string,
+) (*Manager, error) {
 	cap := placement.NewCapacity(totalRAM, totalCores)
-
+	launcher, err := microvm.NewLauncher(logger, assets)
+	if err != nil {
+		return nil, fmt.Errorf("create microvm launcher: %w", err)
+	}
 	return &Manager{
 		logger:   logger,
 		capacity: cap,
 		bidder:   placement.NewBidder(logger, cap, nodeID, bootID, region),
 		executor: placement.NewExecutor(logger, cap, bootID),
-	}
+		launcher: launcher,
+	}, nil
 }
 
-// Start boots the workload subsystem. It registers all necessary NATS
-// subscriptions and begins accepting placement auctions from the Control Plane.
+// Start boots the workload subsystem. It registers the NATS subscriptions that
+// let this node bid in placement auctions and receive targeted launch commands.
 //
-// By centralizing this initialization, the main daemon remains completely
-// ignorant of the underlying NATS subjects and internal workload handlers.
+// Keeping those subscriptions behind Manager lets the daemon start one workload
+// component without knowing the internal NATS subjects or handler order.
 func (m *Manager) Start(nc *nats.Client) error {
 	m.logger.Info("starting workload manager")
 

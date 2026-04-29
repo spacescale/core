@@ -14,7 +14,6 @@ import (
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/firecracker-microvm/firecracker-go-sdk/client/models"
-
 	scaledruntime "github.com/spacescale/core/internal/scaled/runtime"
 	"github.com/spacescale/core/internal/scaled/system"
 )
