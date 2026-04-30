@@ -21,3 +21,7 @@ The SpaceScale API is documented and testable via **Yaak** workspaces. The colle
 
 1. Download [Yaak](https://yaak.app/).
 2. Import the YAML workspace files to view the complete API specification and request examples.
+
+## Runtime Docs
+
+- [Guest kernel profile](docs/runtime/kernel-profile.md): production Firecracker guest kernel flags, rationale, and exclusions for the `scoutd` app-guest model.

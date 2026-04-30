@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_H9pTn4bLq2
 createdAt: 2026-03-02T12:00:00
-updatedAt: 2026-04-30T01:09:46.651065
+updatedAt: 2026-04-30T18:17:30.095739
 workspaceId: wk_KJF6oyHis3
 folderId: fl_da6TvdABY7
 authentication: {}
@@ -10,7 +10,7 @@ authenticationType: null
 body:
   text: |-
     {
-      "name": "manual-e2e-6-1",
+      "name": "manual-e2e-6-d3331",
       "imageRef": "ghcr.io/acme/spacescale-api:latest",
       "planId": "web-starter",
       "primaryRegion": "${[ PRIMARY_REGION ]}",

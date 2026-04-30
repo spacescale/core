@@ -22,9 +22,10 @@ import (
 )
 
 // scoutdKernelArgs is the fixed first-boot command line for the minimal scoutd
-// guest. It keeps the Firecracker device model small, mounts the root disk, and
-// gives scoutd enough bootstrap network metadata to finish initialization.
-const scoutdKernelArgs = "console=ttyS0 reboot=k panic=-1 pci=off acpi=off nomodule rw root=/dev/vda scoutd.ipv4=172.16.0.2/30 scoutd.gateway=172.16.0.1 scoutd.mmds=169.254.169.254"
+// guest. It keeps the Firecracker device model small, leaves panic/error output
+// on the serial console, mounts the root disk, and gives scoutd enough bootstrap
+// network metadata to finish initialization.
+const scoutdKernelArgs = "console=ttyS0 quiet loglevel=3 reboot=k panic=-1 pci=off acpi=off nomodule rw root=/dev/vda scoutd.ipv4=172.16.0.2/30 scoutd.gateway=172.16.0.1 scoutd.mmds=169.254.169.254"
 
 // LaunchRequest is the local, transport-free scoutd boot request.
 //

@@ -30,6 +30,7 @@ SpaceScale should stay simple and direct. Prefer the smallest correct change tha
 - Prefer direct package calls when there is no real alternate implementation.
 - Remove stale guards and comments when ownership moves to another boundary.
 - When changing code, update nearby docs and comments in the same pass so implementation and explanation stay in sync.
+- After any code, config, runtime asset, or workflow change, check related docs for stale decisions, assumptions, examples, and commands; update docs in the same pass when the change makes them inaccurate.
 - Always verify the relevant package or workflow after edits; do not leave changes at "looks right" without running checks when checks are available.
 
 ## Logging
