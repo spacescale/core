@@ -1,5 +1,12 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 //go:build linux
 
+// Package scaled starts the Linux edge daemon and wires startup subsystems.
+//
+// The package validates config, runs host preflight, reconciles runtime assets,
+// joins node bootstrap, and starts workload handling. It should orchestrate only;
+// subsystem internals stay in system, runtime, node, and workload.
 package scaled
 
 import (
@@ -8,6 +15,7 @@ import (
 	"log/slog"
 
 	"github.com/spacescale/core/internal/scaled/node"
+	"github.com/spacescale/core/internal/scaled/runtime"
 	"github.com/spacescale/core/internal/scaled/system"
 	"github.com/spacescale/core/internal/scaled/workload"
 	"github.com/spacescale/core/internal/shared/config"
@@ -39,23 +47,46 @@ func New(cfg config.Config, logger *slog.Logger) (*Daemon, error) {
 }
 
 func (d *Daemon) Run(ctx context.Context) error {
-
-	if err := system.Preflight(d.logger); err != nil {
+	jailerIdentity, err := system.Preflight(d.logger)
+	if err != nil {
 		return err
+	}
+
+	// Reconcile runtime assets before the node is allowed to become ready.
+	//
+	// This is the startup boundary where scaled proves that the local host now
+	// has every file it will need for the first Firecracker launch path.
+	// If any required asset is missing or broken, startup stops here and the
+	// node never joins bootstrap readiness or workload handling.
+	resolver := runtime.NewResolver(d.logger)
+	assets, err := resolver.Reconcile(ctx)
+	if err != nil {
+		return fmt.Errorf("reconcile runtime assets: %w", err)
 	}
 
 	snapshot, identity, err := node.Bootstrap(ctx, d.nats)
 	if err != nil {
 		return err
 	}
-	d.logger.Info("scaled ready", "node_id", identity.NodeID, "region", identity.Region)
 
 	heartbeats, err := d.nats.EnsureNodeHeartbeatKV(ctx)
 	if err != nil {
 		return fmt.Errorf("init heartbeat kv: %w", err)
 	}
 
-	manager := workload.NewManager(d.logger, snapshot.TotalRamMb, snapshot.TotalCores, identity.NodeID, snapshot.BootID, identity.Region)
+	manager, err := workload.NewManager(
+		d.logger,
+		assets,
+		jailerIdentity,
+		snapshot.TotalRamMb,
+		snapshot.TotalCores,
+		identity.NodeID,
+		snapshot.BootID,
+		identity.Region,
+	)
+	if err != nil {
+		return fmt.Errorf("create workload manager: %w", err)
+	}
 	if err := manager.Start(d.nats); err != nil {
 		return fmt.Errorf("start workload manager: %w", err)
 	}

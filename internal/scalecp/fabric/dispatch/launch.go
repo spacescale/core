@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 package dispatch
 
 import (
@@ -12,25 +14,26 @@ import (
 	"github.com/spacescale/core/internal/shared/pb/v1"
 )
 
-const microVMLaunchTimeout = 2 * time.Second
+const microVMLaunchTimeout = 15 * time.Second
 
 var ErrLaunchRejected = errors.New("microvm launch rejected")
 
 func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
+	startedAt := time.Now()
 	winner, err := d.auction(req)
 	if err != nil {
 		return returnLaunchError(err, d.markFailed(ctx, req, err.Error()))
 	}
-	logArgs := []any{
+	launchArgs := []any{
 		"app_id", req.AppID,
 		"deployment_id", req.DeploymentID,
 		"microvm_id", req.MicroVMID,
 		"region", req.Region,
 		"node_id", winner.NodeID,
 		"boot_id", winner.BootID,
+		"free_ram_mb", winner.FreeRAMMB,
 	}
-	logArgs = append(logArgs, shapeLogAttrs(req.Shape)...)
-	d.logger.Info("dispatching microvm launch command", logArgs...)
+	launchArgs = append(launchArgs, shapeLogAttrs(req.Shape)...)
 	nodeID, err := uuid.Parse(winner.NodeID)
 	if err != nil {
 		return err
@@ -76,6 +79,9 @@ func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 		resp,
 		microVMLaunchTimeout,
 	); err != nil {
+		warnArgs := append([]any{}, launchArgs...)
+		warnArgs = append(warnArgs, "error", err)
+		d.logger.Warn("microvm launch command failed", warnArgs...)
 		return returnLaunchError(err, d.markFailed(ctx, req, err.Error()))
 	}
 
@@ -87,20 +93,18 @@ func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 		if err := d.markFailed(ctx, req, reason); err != nil {
 			return err
 		}
+		warnArgs := append([]any{}, launchArgs...)
+		warnArgs = append(warnArgs, "reason", reason)
+		d.logger.Warn("microvm launch rejected", warnArgs...)
 		return fmt.Errorf("%w: %s", ErrLaunchRejected, reason)
 	}
 
-	acceptedArgs := []any{
-		"app_id", req.AppID,
-		"deployment_id", req.DeploymentID,
-		"microvm_id", req.MicroVMID,
-		"region", req.Region,
-		"node_id", winner.NodeID,
-		"boot_id", winner.BootID,
+	acceptedArgs := append([]any{}, launchArgs...)
+	acceptedArgs = append(acceptedArgs,
 		"status", resp.Status,
-	}
-	acceptedArgs = append(acceptedArgs, shapeLogAttrs(req.Shape)...)
-	d.logger.Info("microvm launch command accepted", acceptedArgs...)
+		"duration_ms", time.Since(startedAt).Milliseconds(),
+	)
+	d.logger.Info("microvm launch accepted", acceptedArgs...)
 
 	if _, err := d.queries.MarkMicroVMStarting(ctx, req.MicroVMID); err != nil {
 		d.logger.Error("failed to mark microvm starting",

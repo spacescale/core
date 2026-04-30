@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // Package http_api
 // This file provides authenticated workspace CRUD HTTP handlers.
 package api

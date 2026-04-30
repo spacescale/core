@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file contains transport models and handlers for project CRUD endpoints.
 // It defines request and response JSON shapes and translates HTTP protocol
 // concerns into service-layer calls under workspace-scoped routes.

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file defines the authenticated bootstrap endpoint.
 // It provisions first-time default resources (workspace and project) through an
 // isolated BootstrapService workflow and remains idempotent for returning users.

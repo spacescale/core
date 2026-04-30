@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file centralizes JSON request and response behavior for HTTP handlers.
 // Shared helpers keep response formatting consistent so each endpoint does not
 // duplicate content-type headers, encoding, and error payload structure.

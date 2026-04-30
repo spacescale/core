@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // Package nats
 //
 // subject defines the unified messaging taxonomy for the SpaceScale platform.

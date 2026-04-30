@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file implements app-creation workflows for authenticated project owners.
 //
 // Responsibilities in this file:
@@ -33,6 +35,7 @@ const (
 	appPrimaryRegionMaxLen = 32
 	defaultAppRuntimePort  = 8080 // fallback when create input omits runtime port.
 	defaultTargetReplicas  = 1    // current create flow launches one microvm by default.
+	defaultRootDiskMB      = 5120 // persisted legacy metadata; not sent to scaled launch shape.
 	appNameMaxChars        = 63   // maximum app display-name length.
 	appImageRefMaxChars    = 1024 // maximum accepted image reference length.
 	appEnvVarKeyMaxChars   = 128  // maximum environment-variable key length.
@@ -214,7 +217,7 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 			Vcpu:         int32(plan.Shape.Vcpu),
 			RamMb:        int64(plan.Shape.RamMb),
 			CpuMode:      cpuModeString(plan.Shape.CpuMode),
-			RootDiskMb:   int64(plan.Shape.RootDiskMb),
+			RootDiskMb:   defaultRootDiskMB,
 			VolumeMb:     int64(plan.Shape.VolumeMb),
 		})
 		if err != nil {

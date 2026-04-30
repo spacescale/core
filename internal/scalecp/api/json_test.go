@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file provides white-box tests for shared JSON helper behavior.
 // The helpers in json.go are reused by multiple HTTP handlers, so regressions
 // here can break endpoint contracts even when route-level tests look fine.

@@ -1,56 +1,80 @@
-// Package workload provides the top-level orchestration for all microVM
-// operations on the edge node.
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
+//go:build linux
+
+// Package workload provides the top-level orchestration boundary for workload
+// operations on one scaled node.
 //
-// This package acts as a strict Facade. It hides the internal complexities
-// of capacity ledgers, NATS auction bidding, network bridge creation, and
-// Firecracker execution from the main scaled daemon.
+// The main daemon should not need to know how placement auctions, capacity
+// reservations, targeted launch commands, or local Firecracker execution are
+// wired together. Manager owns those subsystem bindings.
 package workload
 
 import (
+	"fmt"
 	"log/slog"
 
+	scaledruntime "github.com/spacescale/core/internal/scaled/runtime"
+	"github.com/spacescale/core/internal/scaled/system"
+	"github.com/spacescale/core/internal/scaled/workload/executor"
+	"github.com/spacescale/core/internal/scaled/workload/microvm"
 	"github.com/spacescale/core/internal/scaled/workload/placement"
 	"github.com/spacescale/core/internal/shared/nats"
 )
 
-// Manager is the root orchestrator for the edge node's workload lifecycle.
-// It initializes and binds together the placement engine, execution engine,
-// and local hardware state.
+// Manager is the root workload coordinator for one scaled process.
+//
+// It wires the local capacity model, NATS placement handlers, and Firecracker
+// launcher used to turn accepted placements into local microVMs.
 type Manager struct {
 	logger   *slog.Logger
-	capacity *placement.Capacity
 	bidder   *placement.Bidder
-	executor *placement.Executor
+	executor *executor.Executor
 }
 
-// NewManager initializes the workload boundaries using real hardware metrics
-// discovered during node boot.
-func NewManager(logger *slog.Logger, totalRAM uint64, totalCores uint32, nodeID, bootID, region string) *Manager {
-	cap := placement.NewCapacity(totalRAM, totalCores)
-
+// NewManager initializes the workload subsystem from values prepared during
+// scaled startup.
+func NewManager(
+	logger *slog.Logger,
+	assets scaledruntime.Paths,
+	jailerIdentity system.FirecrackerJailerIdentity,
+	totalRAM uint64,
+	totalCores uint32,
+	nodeID, bootID, region string,
+) (*Manager, error) {
+	logger = logger.With("component", "workload")
+	capacity := placement.NewCapacity(totalRAM, totalCores)
+	if err := microvm.CleanupStaleState(); err != nil {
+		return nil, fmt.Errorf("cleanup stale microvm state: %w", err)
+	}
+	launcher := microvm.NewLauncher(logger, assets, jailerIdentity)
 	return &Manager{
 		logger:   logger,
-		capacity: cap,
-		bidder:   placement.NewBidder(logger, cap, nodeID, bootID, region),
-		executor: placement.NewExecutor(logger, cap, bootID),
-	}
+		bidder:   placement.NewBidder(logger, capacity, nodeID, bootID, region),
+		executor: executor.New(logger, capacity, bootID, launcher),
+	}, nil
 }
 
-// Start boots the workload subsystem. It registers all necessary NATS
-// subscriptions and begins accepting placement auctions from the Control Plane.
+// Start boots the workload subsystem. It registers the NATS subscriptions that
+// let this node bid in placement auctions and receive targeted launch commands.
 //
-// By centralizing this initialization, the main daemon remains completely
-// ignorant of the underlying NATS subjects and internal workload handlers.
+// Keeping those subscriptions behind Manager lets the daemon start one workload
+// component without knowing the internal NATS subjects or handler order.
 func (m *Manager) Start(nc *nats.Client) error {
-	m.logger.Info("starting workload manager")
-
-	if err := m.bidder.Register(nc); err != nil {
+	auctionSubject, err := m.bidder.Register(nc)
+	if err != nil {
 		return err
 	}
 
-	if err := m.executor.Register(nc); err != nil {
+	launchSubject, err := m.executor.Register(nc)
+	if err != nil {
 		return err
 	}
+
+	m.logger.Info("workload listeners ready",
+		"auction_subject", auctionSubject,
+		"launch_subject", launchSubject,
+	)
 
 	return nil
 }

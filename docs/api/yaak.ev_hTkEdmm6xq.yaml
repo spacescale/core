@@ -16,35 +16,35 @@ variables:
     id: n9Au9fRs4f
   - enabled: true
     name: BFF_TOKEN
-    value: 'run make yaak-refresh'
+    value: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzcGFjZXNjYWxlLXdlYi1iZmYiLCJhdWQiOiJzcGFjZXNjYWxlLWFwaSIsInN1YiI6ImdpdGh1YjplbWFpbDphcHByZW50aWNlX3B5QGljbG91ZC5jb20iLCJpZGVudGl0eV9rZXkiOiJlbWFpbDphcHByZW50aWNlX3B5QGljbG91ZC5jb20iLCJleHAiOjE3Nzc1NzU4NzksImlhdCI6MTc3NzU3MjIxOSwiZW1haWwiOiJhcHByZW50aWNlX3B5QGljbG91ZC5jb20iLCJuYW1lIjoiRGV2IFVzZXIiLCJhdmF0YXJfdXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbS9hdmF0YXIucG5nIn0.kJ3XOWmP47asL33q4U-pr3C66EG88jZAbyIY_eeeH1Q'
     id: authToken
   - enabled: true
     name: INTERNAL_AUTH_SYNC_SECRET
-    value: 'run make yaak-refresh'
+    value: 'spacescale-dev-internal-secret'
     id: internalAuthSyncSecret
   - enabled: true
     name: IDENTITY_KEY
-    value: 'run make yaak-refresh'
+    value: 'email:apprentice_py@icloud.com'
     id: identityKey
   - enabled: true
     name: USER_EMAIL
-    value: 'run make yaak-refresh'
+    value: 'apprentice_py@icloud.com'
     id: userEmail
   - enabled: true
     name: USER_NAME
-    value: 'run make yaak-refresh'
+    value: 'Dev User'
     id: userName
   - enabled: true
     name: AVATAR_URL
-    value: 'run make yaak-refresh'
+    value: 'https://example.com/avatar.png'
     id: avatarUrl
   - enabled: true
     name: WORKSPACE_ID
-    value: 'run make yaak-refresh'
+    value: 'f3bd3545-bbef-4155-8f40-dd103313bd80'
     id: workspaceId
   - enabled: true
     name: PROJECT_ID
-    value: 'run make yaak-refresh'
+    value: 'f75f76aa-5734-4564-a651-f33d55f6f004'
     id: projectId
   - enabled: true
     name: PRIMARY_REGION

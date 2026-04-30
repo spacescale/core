@@ -27,21 +27,12 @@ apt-get update -y
 apt-get install -y wget ca-certificates curl
 
 
-# Download Hypervisor
-wget https://spacescale-runtime-assets.s3.eu-west-par.io.cloud.ovh.net/firecracker-v1.15.0-x86_64 -O /usr/local/bin/firecracker
-wget https://spacescale-runtime-assets.s3.eu-west-par.io.cloud.ovh.net/jailer-v1.15.0-x86_64 -O /usr/local/bin/jailer
 
-# Make them executable
-chmod +x /usr/local/bin/firecracker
-chmod +x /usr/local/bin/jailer
-
-# Create the directory for SpaceScale assets
+# Create the directory for SpaceScale state and cached runtime assets.
 mkdir -p /var/lib/spacescale
 
-# Download the vmlinux kernel
-wget https://spacescale-runtime-assets.s3.eu-west-par.io.cloud.ovh.net/vmlinux -O /var/lib/spacescale/vmlinux
-
-# Download and start edge daemon
+# scaled owns runtime asset resolution for firecracker, jailer, kernel, and scoutd.
+# The bootstrap script only installs the daemon and starts it.
 wget https://spacescale-runtime-assets.s3.eu-west-par.io.cloud.ovh.net/scaled -O /usr/local/bin/scaled
 chmod +x /usr/local/bin/scaled
 

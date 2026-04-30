@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file contains shared service-layer helpers reused across domain services.
 // Centralizing these utilities keeps cross-service behavior consistent and makes
 // common validation/normalization logic easier to evolve safely.

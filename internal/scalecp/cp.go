@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 package scalecp
 
 import (
@@ -62,7 +64,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*ControlP
 		Services: services,
 		DBPool:   dbPool,
 		Config:   cfg,
-		
+
 		Dispatcher: controlFabric.Dispatcher(),
 	})
 
