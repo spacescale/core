@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 //go:build linux
 
 // Package scaled starts the Linux edge daemon and wires startup subsystems.

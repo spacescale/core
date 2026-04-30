@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file implements app-creation workflows for authenticated project owners.
 //
 // Responsibilities in this file:

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file contains white-box tests for auth helper behavior.
 // It keeps token/config parsing validation close to middleware internals, while
 // endpoint-level HTTP contract tests live in separate integration suites.

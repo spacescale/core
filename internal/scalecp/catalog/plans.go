@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // Package catalog defines the product plans sold by the control plane.
 //
 // This package is the only place that knows product plan ids, display metadata,

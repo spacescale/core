@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file defines user-focused HTTP handlers.
 // It currently contains the trusted internal auth-sync endpoint used by the
 // web auth callback to persist user profile records.

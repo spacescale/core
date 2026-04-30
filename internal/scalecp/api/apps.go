@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file implements HTTP transport for app endpoints.
 //
 // Responsibilities in this file:

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file provides bearer-token authentication middleware for BFF-to-API calls.
 // It verifies signed JWT access tokens, validates required issuer/audience claims,
 // and stores the authenticated principal in request context for handlers to use.

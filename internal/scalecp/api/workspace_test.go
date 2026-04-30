@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file verifies end-to-end behavior of authenticated workspace endpoints.
 // Tests assert externally visible contracts for CRUD actions and ownership rules.
 

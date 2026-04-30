@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // Package placement validates microVM shape and capacity for one edge node.
 //
 // Placement owns shape-to-hardware-spec policy, local capacity accounting, and

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file verifies end-to-end behavior of the bootstrap defaults endpoint.
 // Tests assert first-time creation, idempotent no-op behavior, auth rules, and
 // malformed input handling for the authenticated bootstrap workflow.

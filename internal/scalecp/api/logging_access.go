@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file implements request-scoped access and panic logging middleware.
 // It emits one structured access event per request and one structured panic
 // event when recovery is needed. Shared request context allows downstream auth

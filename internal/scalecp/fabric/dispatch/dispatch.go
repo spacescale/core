@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // Package dispatch implements the Control Plane's outbound scheduling engine.
 // It acts as the "Brain" of the decentralized auction, broadcasting workload
 // requirements over the NATS fabric and executing targeted placement commands.

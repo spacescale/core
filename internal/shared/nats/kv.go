@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // Package nats
 // kv.go provides the shared transport and storage primitives for SpaceScale.
 //
