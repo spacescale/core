@@ -103,7 +103,7 @@ func TestOpenVSockListenersCreatesControlAndLogSockets(t *testing.T) {
 	}
 	require.NoError(t, os.MkdirAll(filepath.Dir(workspace.VSockHostPath()), 0o755))
 
-	listeners, err := openVSockListeners(workspace)
+	listeners, err := openVSockListeners(workspace, os.Getuid(), os.Getgid())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = listeners.Close()
@@ -130,7 +130,7 @@ func TestVSockListenersCloseRemovesSocketFiles(t *testing.T) {
 	}
 	require.NoError(t, os.MkdirAll(filepath.Dir(workspace.VSockHostPath()), 0o755))
 
-	listeners, err := openVSockListeners(workspace)
+	listeners, err := openVSockListeners(workspace, os.Getuid(), os.Getgid())
 	require.NoError(t, err)
 
 	require.NoError(t, listeners.Close())
@@ -189,7 +189,7 @@ func TestWaitForHelloAcceptsValidControlFrame(t *testing.T) {
 	}
 	require.NoError(t, os.MkdirAll(filepath.Dir(workspace.VSockHostPath()), 0o755))
 
-	listeners, err := openVSockListeners(workspace)
+	listeners, err := openVSockListeners(workspace, os.Getuid(), os.Getgid())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = listeners.Close()
@@ -221,7 +221,7 @@ func TestAcceptLogReturnsLogConnection(t *testing.T) {
 	}
 	require.NoError(t, os.MkdirAll(filepath.Dir(workspace.VSockHostPath()), 0o755))
 
-	listeners, err := openVSockListeners(workspace)
+	listeners, err := openVSockListeners(workspace, os.Getuid(), os.Getgid())
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = listeners.Close()

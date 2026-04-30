@@ -23,7 +23,7 @@ import (
 // scoutdKernelArgs is the fixed first-boot command line for the minimal scoutd
 // guest. It keeps the Firecracker device model small, mounts the root disk, and
 // gives scoutd enough bootstrap network metadata to finish initialization.
-const scoutdKernelArgs = "console=ttyS0 reboot=k panic=-1 pci=off nomodules rw root=/dev/vda scoutd.ipv4=172.16.0.2/30 scoutd.gateway=172.16.0.1 scoutd.mmds=169.254.169.254"
+const scoutdKernelArgs = "console=ttyS0 reboot=k panic=-1 pci=off acpi=off nomodule rw root=/dev/vda scoutd.ipv4=172.16.0.2/30 scoutd.gateway=172.16.0.1 scoutd.mmds=169.254.169.254"
 
 // LaunchRequest is the local, transport-free scoutd boot request.
 //
@@ -88,7 +88,7 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 	vm, vmCtx := l.newActiveVM(req)
 	defer func() {
 		if err != nil && vm != nil {
-			err = errors.Join(err, l.cleanupActive(vm, true))
+			err = errors.Join(err, l.cleanupActive(vm, true, false))
 		}
 	}()
 
@@ -131,7 +131,7 @@ func (l *Launcher) Stop(_ context.Context, microvmID string) error {
 	if vm == nil {
 		return nil
 	}
-	return l.cleanupActive(vm, true)
+	return l.cleanupActive(vm, true, true)
 }
 
 // newActiveVM creates the local lifecycle record before any host resources exist.
@@ -182,7 +182,7 @@ func (l *Launcher) prepareVM(vm *ActiveVM) error {
 	}
 	vm.GuestCID = cid
 
-	listeners, err := openVSockListeners(vm.Workspace)
+	listeners, err := openVSockListeners(vm.Workspace, l.jailerUID, l.jailerGID)
 	if err != nil {
 		return err
 	}
@@ -403,7 +403,7 @@ func (l *Launcher) watchVM(vm *ActiveVM, vmmExit <-chan error) {
 
 	l.removeActiveIfSame(vm)
 
-	if err := l.cleanupActive(vm, false); err != nil {
+	if err := l.cleanupActive(vm, false, true); err != nil {
 		l.logger.Warn("cleanup exited microvm",
 			"microvm_id", vm.MicroVMID,
 			"error", err,
@@ -411,9 +411,9 @@ func (l *Launcher) watchVM(vm *ActiveVM, vmmExit <-chan error) {
 	}
 }
 
-// cleanupActive unwinds all host-side resources owned by a VM. It is safe for
-// launch failure, explicit Stop, and watchVM to converge here.
-func (l *Launcher) cleanupActive(vm *ActiveVM, stopVMM bool) (err error) {
+// cleanupActive unwinds host-side resources owned by a VM. Failed launches keep
+// their workspace and jailer tree so the logged diagnostic paths remain useful.
+func (l *Launcher) cleanupActive(vm *ActiveVM, stopVMM bool, removeWorkspace bool) (err error) {
 	vm.cleanupOnce.Do(func() {
 		if stopVMM && vm.machine != nil {
 			err = errors.Join(err, vm.machine.StopVMM())
@@ -427,7 +427,9 @@ func (l *Launcher) cleanupActive(vm *ActiveVM, stopVMM bool) (err error) {
 		if vm.GuestCID != 0 {
 			l.cids.Release(vm.GuestCID)
 		}
-		err = errors.Join(err, vm.Workspace.Cleanup())
+		if removeWorkspace {
+			err = errors.Join(err, vm.Workspace.Cleanup())
+		}
 	})
 
 	return err

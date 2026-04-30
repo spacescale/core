@@ -20,7 +20,7 @@ func TestCurrentPaths(t *testing.T) {
 
 	assert.Equal(t, "/var/lib/spacescale/runtime/host/firecracker-v1.15.1-x86_64", paths.FirecrackerPath)
 	assert.Equal(t, "/var/lib/spacescale/runtime/host/jailer-v1.15.1-x86_64", paths.JailerPath)
-	assert.Equal(t, "/var/lib/spacescale/runtime/guest/vmlinux-v6.1.80-x86_64", paths.KernelPath)
+	assert.Equal(t, "/var/lib/spacescale/runtime/guest/vmlinux-v6.1.169-x86_64", paths.KernelPath)
 	assert.Equal(t, "/var/lib/spacescale/runtime/guest/scoutd-rootfs-v0.1.3-x86_64-ext4", paths.RootFSPath)
 }
 

@@ -123,7 +123,7 @@ func (a *cidAllocator) advanceLocked() {
 
 // openVSockListeners creates the control and log listeners before the VM boots.
 // Firecracker maps guest connections to host sockets named <base>_<port>.
-func openVSockListeners(workspace Workspace) (*VSockListeners, error) {
+func openVSockListeners(workspace Workspace, uid int, gid int) (*VSockListeners, error) {
 	controlPath := vsockPortPath(workspace.VSockHostPath(), controlPort)
 	logPath := vsockPortPath(workspace.VSockHostPath(), logPort)
 
@@ -139,6 +139,21 @@ func openVSockListeners(workspace Workspace) (*VSockListeners, error) {
 		return nil, fmt.Errorf("listen log vsock socket: %w", err)
 	}
 
+	if err := allowJailerSocketAccess(controlPath, uid, gid); err != nil {
+		_ = controlListener.Close()
+		_ = logListener.Close()
+		_ = os.Remove(controlPath)
+		_ = os.Remove(logPath)
+		return nil, err
+	}
+	if err := allowJailerSocketAccess(logPath, uid, gid); err != nil {
+		_ = controlListener.Close()
+		_ = logListener.Close()
+		_ = os.Remove(controlPath)
+		_ = os.Remove(logPath)
+		return nil, err
+	}
+
 	return &VSockListeners{
 		BasePath:    workspace.VSockHostPath(),
 		ControlPath: controlPath,
@@ -146,6 +161,16 @@ func openVSockListeners(workspace Workspace) (*VSockListeners, error) {
 		control:     controlListener,
 		log:         logListener,
 	}, nil
+}
+
+func allowJailerSocketAccess(path string, uid int, gid int) error {
+	if err := os.Chown(path, uid, gid); err != nil {
+		return fmt.Errorf("chown vsock socket for jailer user: %w", err)
+	}
+	if err := os.Chmod(path, 0o660); err != nil {
+		return fmt.Errorf("chmod vsock socket for jailer user: %w", err)
+	}
+	return nil
 }
 
 // WaitForHello proves the guest reached scoutd userspace on the control channel.

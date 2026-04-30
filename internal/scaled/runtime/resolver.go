@@ -26,7 +26,7 @@ const (
 
 	firecrackerObjectKey = "firecracker-v1.15.1-x86_64"
 	jailerObjectKey      = "jailer-v1.15.1-x86_64"
-	kernelObjectKey      = "vmlinux-v6.1.80-x86_64"
+	kernelObjectKey      = "vmlinux-v6.1.169-x86_64"
 	rootfsObjectKey      = "scoutd-rootfs-v0.1.3-x86_64-ext4"
 )
 
