@@ -15,15 +15,6 @@ var (
 )
 
 func (d *Dispatcher) auction(req Request) (Winner, error) {
-	logArgs := []any{
-		"app_id", req.AppID,
-		"deployment_id", req.DeploymentID,
-		"microvm_id", req.MicroVMID,
-		"region", req.Region,
-	}
-	logArgs = append(logArgs, shapeLogAttrs(req.Shape)...)
-	d.logger.Info("starting placement auction", logArgs...)
-
 	// Placement is intentionally first-response-wins for now. The NATS client arms
 	// the private inbox with AutoUnsubscribe(1) before publishing the auction, so the
 	// server drops slower bids instead of forwarding them to this control plane.
@@ -54,17 +45,5 @@ func (d *Dispatcher) auction(req Request) (Winner, error) {
 		return Winner{}, errors.New("auction reply missing node identity")
 	}
 
-	selectedArgs := []any{
-		"app_id", req.AppID,
-		"deployment_id", req.DeploymentID,
-		"microvm_id", req.MicroVMID,
-		"region", req.Region,
-		"node_id", reply.NodeId,
-		"boot_id", reply.BootId,
-		"free_ram_mb", reply.FreeRamMb,
-	}
-	selectedArgs = append(selectedArgs, shapeLogAttrs(req.Shape)...)
-	d.logger.Info("placement auction selected first responder", selectedArgs...)
-
-	return Winner{NodeID: reply.NodeId, BootID: reply.BootId}, nil
+	return Winner{NodeID: reply.NodeId, BootID: reply.BootId, FreeRAMMB: reply.FreeRamMb}, nil
 }

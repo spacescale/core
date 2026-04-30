@@ -38,15 +38,15 @@ func NewBidder(logger *slog.Logger, c *Capacity, nodeID, bootID, region string) 
 // Register connects the bidder to the NATS regional broadcast subject.
 // This allows the orchestrator to explicitly control when the node begins
 // accepting workloads.
-func (b *Bidder) Register(client *nats.Client) error {
+func (b *Bidder) Register(client *nats.Client) (string, error) {
 	subject := nats.NodeAuctionSubject(b.region)
 	_, err := client.Subscribe(subject, func(msg *nats.Msg) error {
 		return b.handle(client, msg)
 	})
-	if err == nil {
-		b.logger.Info("listening for placement auctions", "subject", subject)
+	if err != nil {
+		return "", err
 	}
-	return err
+	return subject, nil
 }
 
 func (b *Bidder) handle(client *nats.Client, msg *nats.Msg) error {

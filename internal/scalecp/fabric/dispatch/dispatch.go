@@ -35,8 +35,9 @@ type Request struct {
 }
 
 type Winner struct {
-	NodeID string
-	BootID string
+	NodeID    string
+	BootID    string
+	FreeRAMMB uint64
 }
 
 func shapeLogAttrs(shape *pb.MicroVMShape) []any {
@@ -67,6 +68,6 @@ func New(queries *sqlc.Queries, pool *pgxpool.Pool, client *nats.Client, logger 
 		queries: queries,
 		pool:    pool,
 		nats:    client,
-		logger:  logger,
+		logger:  logger.With("component", "dispatch"),
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/firecracker-microvm/firecracker-go-sdk/client/models"
@@ -66,7 +67,7 @@ type Launcher struct {
 // Startup preflight owns creating and resolving the fixed jailer account.
 func NewLauncher(logger *slog.Logger, runtimePaths scaledruntime.Paths, jailerIdentity system.FirecrackerJailerIdentity) *Launcher {
 	return &Launcher{
-		logger:       logger.With("subsystem", "microvm"),
+		logger:       logger.With("component", "microvm"),
 		runtimePaths: runtimePaths,
 		jailerUID:    jailerIdentity.UID,
 		jailerGID:    jailerIdentity.GID,
@@ -85,6 +86,7 @@ func NewLauncher(logger *slog.Logger, runtimePaths scaledruntime.Paths, jailerId
 // Launch assumes the caller has already committed placement capacity and passed
 // validated runtime paths and shape values.
 func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *ActiveVM, err error) {
+	startedAt := time.Now()
 	vm, vmCtx := l.newActiveVM(req)
 	defer func() {
 		if err != nil && vm != nil {
@@ -119,6 +121,7 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 	l.logger.Info("microvm booted scoutd",
 		"microvm_id", req.MicroVMID,
 		"guest_cid", vm.GuestCID,
+		"boot_ms", time.Since(startedAt).Milliseconds(),
 		"workspace", vm.Workspace.RootDir,
 	)
 
@@ -198,6 +201,7 @@ func (l *Launcher) startFirecracker(ctx context.Context, req LaunchRequest, vm *
 	if err != nil {
 		return fmt.Errorf("create firecracker machine: %w", err)
 	}
+	machine.Logger().Logger.SetOutput(io.Discard)
 	vm.machine = machine
 
 	if err := machine.Start(ctx); err != nil {

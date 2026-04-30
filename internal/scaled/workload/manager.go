@@ -42,6 +42,7 @@ func NewManager(
 	totalCores uint32,
 	nodeID, bootID, region string,
 ) (*Manager, error) {
+	logger = logger.With("component", "workload")
 	capacity := placement.NewCapacity(totalRAM, totalCores)
 	if err := microvm.CleanupStaleState(); err != nil {
 		return nil, fmt.Errorf("cleanup stale microvm state: %w", err)
@@ -60,15 +61,20 @@ func NewManager(
 // Keeping those subscriptions behind Manager lets the daemon start one workload
 // component without knowing the internal NATS subjects or handler order.
 func (m *Manager) Start(nc *nats.Client) error {
-	m.logger.Info("starting workload manager")
-
-	if err := m.bidder.Register(nc); err != nil {
+	auctionSubject, err := m.bidder.Register(nc)
+	if err != nil {
 		return err
 	}
 
-	if err := m.executor.Register(nc); err != nil {
+	launchSubject, err := m.executor.Register(nc)
+	if err != nil {
 		return err
 	}
+
+	m.logger.Info("workload listeners ready",
+		"auction_subject", auctionSubject,
+		"launch_subject", launchSubject,
+	)
 
 	return nil
 }

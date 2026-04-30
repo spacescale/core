@@ -41,38 +41,38 @@ type FirecrackerJailerIdentity struct {
 // Preflight prepares the host before scaled joins the workload fabric. It returns
 // the jailer identity that later Firecracker launches should use.
 func Preflight(logger *slog.Logger) (FirecrackerJailerIdentity, error) {
-	logger.Info("running system preflight")
+	logger = logger.With("component", "system")
+
 	if err := ensureKVM(); err != nil {
 		return FirecrackerJailerIdentity{}, err
 	}
-	logger.Info("system preflight verified kvm")
 
 	jailerIdentity, err := EnsureFirecrackerJailerAccount()
 	if err != nil {
 		return FirecrackerJailerIdentity{}, err
 	}
-	logger.Info("system preflight ensured firecracker jailer user",
-		"user", FirecrackerJailerAccountName,
-		"uid", jailerIdentity.UID,
-		"gid", jailerIdentity.GID,
-	)
 
 	if err := disableSwap(); err != nil {
 		return FirecrackerJailerIdentity{}, err
 	}
-	logger.Info("system preflight disabled swap")
 
 	if err := disableKSM(); err != nil {
 		return FirecrackerJailerIdentity{}, err
 	}
-	logger.Info("system preflight disabled ksm")
 
 	if err := disableSMT(); err != nil {
 		return FirecrackerJailerIdentity{}, err
 	}
-	logger.Info("system preflight disabled smt")
 
-	logger.Info("system preflight complete")
+	logger.Info("system preflight ready",
+		"kvm", kvmDevicePath,
+		"jailer_user", FirecrackerJailerAccountName,
+		"jailer_uid", jailerIdentity.UID,
+		"jailer_gid", jailerIdentity.GID,
+		"swap", "off",
+		"ksm", "off",
+		"smt", "off",
+	)
 	return jailerIdentity, nil
 }
 

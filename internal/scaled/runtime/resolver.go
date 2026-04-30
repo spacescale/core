@@ -30,6 +30,11 @@ const (
 	rootfsObjectKey      = "scoutd-rootfs-v0.1.3-x86_64-ext4"
 )
 
+const (
+	assetSourceCache    = "cache"
+	assetSourceDownload = "download"
+)
+
 // Paths holds the concrete local runtime files prepared during startup.
 type Paths struct {
 	RootDir         string
@@ -50,7 +55,7 @@ type Resolver struct {
 // scaled joins bootstrap readiness or workload handling.
 func NewResolver(logger *slog.Logger) *Resolver {
 	return &Resolver{
-		logger:  logger.With("subsystem", "runtime"),
+		logger:  logger.With("component", "runtime"),
 		client:  &http.Client{Timeout: 2 * time.Minute},
 		baseURL: runtimeBucketBaseURL,
 		rootDir: runtimeStateDir,
@@ -65,18 +70,30 @@ func (r *Resolver) Reconcile(ctx context.Context) (Paths, error) {
 		return Paths{}, fmt.Errorf("create runtime root dir: %w", err)
 	}
 
-	if err := r.ensureAsset(ctx, "firecracker", firecrackerObjectKey, paths.FirecrackerPath, true); err != nil {
+	firecrackerSource, err := r.ensureAsset(ctx, "firecracker", firecrackerObjectKey, paths.FirecrackerPath, true)
+	if err != nil {
 		return Paths{}, err
 	}
-	if err := r.ensureAsset(ctx, "jailer", jailerObjectKey, paths.JailerPath, true); err != nil {
+	jailerSource, err := r.ensureAsset(ctx, "jailer", jailerObjectKey, paths.JailerPath, true)
+	if err != nil {
 		return Paths{}, err
 	}
-	if err := r.ensureAsset(ctx, "kernel", kernelObjectKey, paths.KernelPath, false); err != nil {
+	kernelSource, err := r.ensureAsset(ctx, "kernel", kernelObjectKey, paths.KernelPath, false)
+	if err != nil {
 		return Paths{}, err
 	}
-	if err := r.ensureAsset(ctx, "rootfs", rootfsObjectKey, paths.RootFSPath, false); err != nil {
+	rootfsSource, err := r.ensureAsset(ctx, "rootfs", rootfsObjectKey, paths.RootFSPath, false)
+	if err != nil {
 		return Paths{}, err
 	}
+
+	r.logger.Info("runtime assets ready",
+		"root_dir", paths.RootDir,
+		"firecracker", firecrackerSource,
+		"jailer", jailerSource,
+		"kernel", kernelSource,
+		"rootfs", rootfsSource,
+	)
 
 	return paths, nil
 }
@@ -92,39 +109,28 @@ func currentPaths(root string) Paths {
 }
 
 // ensureAsset reuses a valid cached file or downloads a fresh copy.
-func (r *Resolver) ensureAsset(ctx context.Context, name, objectKey, localPath string, executable bool) error {
+func (r *Resolver) ensureAsset(ctx context.Context, name, objectKey, localPath string, executable bool) (string, error) {
 	ready, err := validateLocalAsset(localPath, executable)
 	switch {
 	case err != nil:
-		return fmt.Errorf("runtime asset %s cached state invalid: %w", name, err)
+		return "", fmt.Errorf("runtime asset %s cached state invalid: %w", name, err)
 	case ready:
-		r.logger.Info("runtime asset ready",
-			"asset", name,
-			"path", localPath,
-			"source", "cache",
-		)
-		return nil
+		return assetSourceCache, nil
 	}
 
 	if err := r.downloadAsset(ctx, objectKey, localPath, executable); err != nil {
-		return fmt.Errorf("download runtime asset %s: %w", name, err)
+		return "", fmt.Errorf("download runtime asset %s: %w", name, err)
 	}
 
 	ready, err = validateLocalAsset(localPath, executable)
 	if err != nil {
-		return fmt.Errorf("runtime asset %s download validation failed: %w", name, err)
+		return "", fmt.Errorf("runtime asset %s download validation failed: %w", name, err)
 	}
 	if !ready {
-		return fmt.Errorf("runtime asset %s missing after download", name)
+		return "", fmt.Errorf("runtime asset %s missing after download", name)
 	}
 
-	r.logger.Info("runtime asset ready",
-		"asset", name,
-		"path", localPath,
-		"source", "download",
-	)
-
-	return nil
+	return assetSourceDownload, nil
 }
 
 // downloadAsset stages one runtime file atomically in the local cache.

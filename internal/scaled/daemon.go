@@ -68,7 +68,6 @@ func (d *Daemon) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	d.logger.Info("scaled ready", "node_id", identity.NodeID, "region", identity.Region)
 
 	heartbeats, err := d.nats.EnsureNodeHeartbeatKV(ctx)
 	if err != nil {

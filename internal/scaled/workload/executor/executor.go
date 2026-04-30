@@ -51,15 +51,15 @@ func New(logger *slog.Logger, capacity *placement.Capacity, bootID string, launc
 // Register connects the executor to the node's specific targeted inbox.
 // This subject includes the boot ID to guarantee that stale launch commands
 // from previous boot lifecycles are naturally dropped.
-func (e *Executor) Register(client *nats.Client) error {
+func (e *Executor) Register(client *nats.Client) (string, error) {
 	subject := nats.NodeMicroVMLaunchSubject(e.bootID)
 	_, err := client.Subscribe(subject, func(msg *nats.Msg) error {
 		return e.handle(client, msg)
 	})
-	if err == nil {
-		e.logger.Info("listening for direct launch commands", "subject", subject)
+	if err != nil {
+		return "", err
 	}
-	return err
+	return subject, nil
 }
 
 func (e *Executor) handle(client *nats.Client, msg *nats.Msg) error {

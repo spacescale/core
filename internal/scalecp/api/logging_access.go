@@ -23,9 +23,10 @@ import (
 // logContext stores optional request metadata that may be discovered mid-request
 // and emitted by access/panic logging only when populated.
 type logContext struct {
-	UserID    string
-	ProjectID string
-	AppID     string
+	UserID            string
+	ProjectID         string
+	AppID             string
+	AuthFailureReason string
 }
 
 // logContextKey is an unexported key type for context value isolation.
@@ -61,6 +62,7 @@ func accessLogMiddleware() func(http.Handler) http.Handler {
 			}
 
 			attrs := []any{
+				"component", "api",
 				"event", "http_access",
 				"request_id", middleware.GetReqID(req.Context()),
 				"method", req.Method,
@@ -85,6 +87,9 @@ func accessLogMiddleware() func(http.Handler) http.Handler {
 			}
 			if lc.AppID != "" {
 				attrs = append(attrs, "app_id", lc.AppID)
+			}
+			if lc.AuthFailureReason != "" {
+				attrs = append(attrs, "auth_reason", lc.AuthFailureReason)
 			}
 
 			slog.Log(req.Context(), accessLogLevel(status), "http_access", attrs...)
@@ -114,6 +119,7 @@ func recovererMiddleware() func(http.Handler) http.Handler {
 					return
 				}
 				attrs := []any{
+					"component", "api",
 					"event", "panic",
 					"request_id", middleware.GetReqID(r.Context()),
 					"method", r.Method,
