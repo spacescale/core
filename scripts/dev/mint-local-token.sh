@@ -62,10 +62,10 @@ USER_EMAIL="${USER_EMAIL:-dev@example.com}"
 USER_NAME="${BFF_JWT_NAME:-Dev User}"
 AVATAR_URL="${BFF_JWT_AVATAR_URL:-https://example.com/avatar.png}"
 PRIMARY_REGION="${PRIMARY_REGION:-eu-central}"
-APP_TIER="${APP_TIER:-starter}"
+APP_PLAN_ID="${APP_PLAN_ID:-web-starter}"
 
 export BASE_URL BFF_JWT_ISSUER BFF_JWT_AUDIENCE BFF_JWT_TTL_SECONDS
-export USER_EMAIL USER_NAME AVATAR_URL PRIMARY_REGION APP_TIER
+export USER_EMAIL USER_NAME AVATAR_URL PRIMARY_REGION APP_PLAN_ID
 
 token="$({
   BFF_JWT_SECRET="$BFF_JWT_SECRET" \
@@ -197,7 +197,7 @@ AVATAR_URL="$AVATAR_URL" \
 WORKSPACE_ID="$workspace_id" \
 PROJECT_ID="$project_id" \
 PRIMARY_REGION="$PRIMARY_REGION" \
-APP_TIER="$APP_TIER" \
+APP_PLAN_ID="$APP_PLAN_ID" \
 YAAK_ENV_FILE="$yaak_env_file" \
 python3 - <<'PY'
 from pathlib import Path
@@ -221,7 +221,7 @@ replacements = {
     "WORKSPACE_ID": os.environ["WORKSPACE_ID"],
     "PROJECT_ID": os.environ["PROJECT_ID"],
     "PRIMARY_REGION": os.environ["PRIMARY_REGION"],
-    "APP_TIER": os.environ["APP_TIER"],
+    "APP_PLAN_ID": os.environ["APP_PLAN_ID"],
 }
 
 current_name = None
