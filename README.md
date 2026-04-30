@@ -2,12 +2,12 @@
 
 This repository is organized into two primary functional layers:
 
-### scalecp 
+## scalecp 
 
 The stateless control plane  that serves the public API, manages tenant metadata, and orchestrates workload
 distribution. It leverages PostgreSQL for durable state and NATS for its decentralized communication fabric.
 
-### scaled 
+## scaled 
 
 An autonomous edge daemon running on physical hardware. It manages local resource capacity, interacts directly with the
 KVM/Firecracker subsystem, and maintains workload continuity. It is designed to operate independently, ensuring
