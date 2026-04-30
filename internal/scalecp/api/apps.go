@@ -25,7 +25,10 @@ import (
 	"github.com/spacescale/core/internal/scalecp/service/tenant"
 )
 
-const createAppDispatchTimeout = 3 * time.Second
+// createAppDispatchTimeout is only a failure guard for the legacy synchronous
+// create-app path. It must exceed the CP and edge launch guards so Issue 14 can
+// prove scoutd hello without the HTTP handler canceling placement first.
+const createAppDispatchTimeout = 20 * time.Second
 
 type createAppEnvVarRequest struct {
 	Key      string `json:"key"`
