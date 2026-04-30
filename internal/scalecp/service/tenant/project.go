@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file implements project CRUD workflows in the service layer.
 // It coordinates validation, defaulting, slug generation, ownership checks,
 // and persistence mapping for API handlers.

@@ -1,5 +1,12 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 //go:build linux
 
+// Package scaled starts the Linux edge daemon and wires startup subsystems.
+//
+// The package validates config, runs host preflight, reconciles runtime assets,
+// joins node bootstrap, and starts workload handling. It should orchestrate only;
+// subsystem internals stay in system, runtime, node, and workload.
 package scaled
 
 import (
@@ -20,7 +27,6 @@ type Daemon struct {
 	cfg    config.Config
 	logger *slog.Logger
 	nats   *nats.Client
-	assets runtime.Paths
 }
 
 func New(cfg config.Config, logger *slog.Logger) (*Daemon, error) {
@@ -41,8 +47,8 @@ func New(cfg config.Config, logger *slog.Logger) (*Daemon, error) {
 }
 
 func (d *Daemon) Run(ctx context.Context) error {
-
-	if err := system.Preflight(d.logger); err != nil {
+	jailerIdentity, err := system.Preflight(d.logger)
+	if err != nil {
 		return err
 	}
 
@@ -58,26 +64,29 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return fmt.Errorf("reconcile runtime assets: %w", err)
 	}
 
-	d.assets = assets
-	d.logger.Info("runtime assets ready",
-		"firecracker_path", assets.FirecrackerPath,
-		"jailer_path", assets.JailerPath,
-		"kernel_path", assets.KernelPath,
-		"scoutd_path", assets.ScoutdPath,
-	)
-
 	snapshot, identity, err := node.Bootstrap(ctx, d.nats)
 	if err != nil {
 		return err
 	}
-	d.logger.Info("scaled ready", "node_id", identity.NodeID, "region", identity.Region)
 
 	heartbeats, err := d.nats.EnsureNodeHeartbeatKV(ctx)
 	if err != nil {
 		return fmt.Errorf("init heartbeat kv: %w", err)
 	}
 
-	manager := workload.NewManager(d.logger, snapshot.TotalRamMb, snapshot.TotalCores, identity.NodeID, snapshot.BootID, identity.Region)
+	manager, err := workload.NewManager(
+		d.logger,
+		assets,
+		jailerIdentity,
+		snapshot.TotalRamMb,
+		snapshot.TotalCores,
+		identity.NodeID,
+		snapshot.BootID,
+		identity.Region,
+	)
+	if err != nil {
+		return fmt.Errorf("create workload manager: %w", err)
+	}
 	if err := manager.Start(d.nats); err != nil {
 		return fmt.Errorf("start workload manager: %w", err)
 	}

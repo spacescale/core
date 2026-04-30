@@ -16,8 +16,7 @@ message MicroVMShape {
   uint32 vcpu = 1;
   uint64 ram_mb = 2;
   CpuMode cpu_mode = 3;
-  uint64 root_disk_mb = 4;
-  uint64 volume_mb = 5;
+  uint64 volume_mb = 4;
 }
 
 // Broadcast by the CP to all nodes in a region.

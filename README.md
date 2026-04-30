@@ -2,26 +2,18 @@
 
 This repository is organized into two primary functional layers:
 
-### scalecp (Control Plane)
+### scalecp 
 
-The stateless management layer that serves the public API, manages tenant metadata, and orchestrates workload
+The stateless control plane  that serves the public API, manages tenant metadata, and orchestrates workload
 distribution. It leverages PostgreSQL for durable state and NATS for its decentralized communication fabric.
 
-### scaled (Edge Daemon)
+### scaled 
 
-An autonomous agent running on physical hardware. It manages local resource capacity, interacts directly with the
+An autonomous edge daemon running on physical hardware. It manages local resource capacity, interacts directly with the
 KVM/Firecracker subsystem, and maintains workload continuity. It is designed to operate independently, ensuring
 resilience during network partitions.
 
 ---
-
-## Documentation
-
-For technical deep dives into specific platform subsystems:
-
-- **[Dynamic Node Provisioning](docs/dynamic-node-provisioning.md)**: Node lifecycle and onboarding.
-- **[Firecracker Best Practices](docs/firecracker-best-practices.md)**: Hardening and optimization.
-- **[Linux Kernel Guide](docs/kernel-build.md)**: Custom Linux Kernel Compilation Guide.
 
 ## API Reference
 
@@ -30,7 +22,6 @@ The SpaceScale API is documented and testable via **Yaak** workspaces. The colle
 1. Download [Yaak](https://yaak.app/).
 2. Import the YAML workspace files to view the complete API specification and request examples.
 
-## Development
+## Runtime Docs
 
-Instructions for environment setup, technical requirements, and local execution can be found in *
-*[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
+- [Guest kernel profile](docs/runtime/kernel-profile.md): production Firecracker guest kernel flags, rationale, and exclusions for the `scoutd` app-guest model.

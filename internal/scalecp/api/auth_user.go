@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file provides helpers that resolve the authenticated caller into a
 // persisted user record for /v1 handlers.
 

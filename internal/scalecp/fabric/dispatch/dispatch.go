@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // Package dispatch implements the Control Plane's outbound scheduling engine.
 // It acts as the "Brain" of the decentralized auction, broadcasting workload
 // requirements over the NATS fabric and executing targeted placement commands.
@@ -33,13 +35,14 @@ type Request struct {
 }
 
 type Winner struct {
-	NodeID string
-	BootID string
+	NodeID    string
+	BootID    string
+	FreeRAMMB uint64
 }
 
 func shapeLogAttrs(shape *pb.MicroVMShape) []any {
 	if shape == nil {
-		return []any{"vcpu", uint32(0), "ram_mb", uint64(0), "cpu_mode", "unspecified", "root_disk_mb", uint64(0), "volume_mb", uint64(0)}
+		return []any{"vcpu", uint32(0), "ram_mb", uint64(0), "cpu_mode", "unspecified", "volume_mb", uint64(0)}
 	}
 
 	cpuMode := "unspecified"
@@ -54,7 +57,6 @@ func shapeLogAttrs(shape *pb.MicroVMShape) []any {
 		"vcpu", shape.Vcpu,
 		"ram_mb", shape.RamMb,
 		"cpu_mode", cpuMode,
-		"root_disk_mb", shape.RootDiskMb,
 		"volume_mb", shape.VolumeMb,
 	}
 }
@@ -66,6 +68,6 @@ func New(queries *sqlc.Queries, pool *pgxpool.Pool, client *nats.Client, logger 
 		queries: queries,
 		pool:    pool,
 		nats:    client,
-		logger:  logger,
+		logger:  logger.With("component", "dispatch"),
 	}
 }

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file verifies auth-sync endpoint contract behavior.
 // It focuses on auth-sync payload validation and idempotent persistence results.
 

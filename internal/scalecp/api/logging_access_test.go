@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 package api
 
 import (
@@ -90,6 +92,7 @@ func TestAccessLogMiddlewareEmitsStructuredFields(t *testing.T) {
 			require.Equal(t, tc.status, rr.Code)
 
 			entry := decodeLastJSONLogEntry(t, buf)
+			require.Equal(t, "api", entry["component"])
 			require.Equal(t, "http_access", entry["event"])
 			require.Equal(t, "http_access", entry["msg"])
 			require.Equal(t, tc.wantLevel, entry["level"])
@@ -121,6 +124,33 @@ func TestAccessLogMiddlewareEmitsStructuredFields(t *testing.T) {
 	}
 }
 
+func TestAuthFailureEnrichesSingleAccessLog(t *testing.T) {
+	buf, restore := withCapturedAccessLogger(t)
+	defer restore()
+
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(accessLogMiddleware())
+	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
+		logAuthFailure(r, "invalid_token")
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+	})
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/projects/123", nil)
+	r.ServeHTTP(rr, req)
+	require.Equal(t, http.StatusUnauthorized, rr.Code)
+
+	entries := decodeJSONLogEntries(t, buf)
+	require.Len(t, entries, 1)
+	entry := entries[0]
+	require.Equal(t, "api", entry["component"])
+	require.Equal(t, "http_access", entry["event"])
+	require.Equal(t, "WARN", entry["level"])
+	require.Equal(t, float64(http.StatusUnauthorized), entry["status_code"])
+	require.Equal(t, "invalid_token", entry["auth_reason"])
+}
+
 func TestRecovererMiddlewareRecoversPanicAndWritesInternalError(t *testing.T) {
 	buf, restore := withCapturedAccessLogger(t)
 	defer restore()
@@ -148,6 +178,7 @@ func TestRecovererMiddlewareRecoversPanicAndWritesInternalError(t *testing.T) {
 
 	entries := decodeJSONLogEntries(t, buf)
 	panicEntry := findEntryByEvent(t, entries, "panic")
+	require.Equal(t, "api", panicEntry["component"])
 	require.Equal(t, "ERROR", panicEntry["level"])
 	require.Equal(t, "panic recovered", panicEntry["msg"])
 	require.Equal(t, float64(http.StatusInternalServerError), panicEntry["status_code"])
@@ -164,6 +195,7 @@ func TestRecovererMiddlewareRecoversPanicAndWritesInternalError(t *testing.T) {
 	require.NotEmpty(t, panicEntry["request_id"])
 
 	accessEntry := findEntryByEvent(t, entries, "http_access")
+	require.Equal(t, "api", accessEntry["component"])
 	require.Equal(t, "ERROR", accessEntry["level"])
 	require.Equal(t, float64(http.StatusInternalServerError), accessEntry["status_code"])
 	require.Equal(t, false, accessEntry["rate_limited"])

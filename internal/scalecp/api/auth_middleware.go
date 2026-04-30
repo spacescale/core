@@ -1,3 +1,5 @@
+// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
+
 // This file provides bearer-token authentication middleware for BFF-to-API calls.
 // It verifies signed JWT access tokens, validates required issuer/audience claims,
 // and stores the authenticated principal in request context for handlers to use.
@@ -12,12 +14,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/spacescale/core/internal/shared/config"
 )
@@ -140,32 +140,16 @@ func authFailureReason(err error) string {
 	}
 }
 
-// logAuthFailure emits a structured warning event for unauthorized request paths.
+// logAuthFailure records the auth reason for the request access log.
 //
 // Redaction/safety rules:
 // - Do not log Authorization header values.
 // - Do not log token text, cookies, or request bodies.
-// - Emit only stable reason codes and request metadata.
-// - Emit user-agent metadata as plain text with shared truncation.
+// - Emit only stable reason codes with the final access event.
 func logAuthFailure(r *http.Request, reason string) {
-	attrs := []any{
-		"event", "auth_failure",
-		"request_id", middleware.GetReqID(r.Context()),
-		"method", r.Method,
-		"route", routePatternFromContext(r.Context()),
-		"path", r.URL.Path,
-		"status_code", http.StatusUnauthorized,
-		"reason", reason,
-		"client_ip", clientIP(r.RemoteAddr),
+	if lc, ok := logContextFromContext(r.Context()); ok {
+		lc.AuthFailureReason = reason
 	}
-
-	// Apply shared user-agent truncation so auth failure logs stay aligned with
-	// access and panic log output.
-	if key, value, ok := userAgentLogAttr(r.UserAgent()); ok {
-		attrs = append(attrs, key, value)
-	}
-
-	slog.Warn("auth failure", attrs...)
 }
 
 // parseAndValidateClaims parses a JWT string into bffClaims and applies all
