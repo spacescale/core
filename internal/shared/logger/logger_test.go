@@ -70,25 +70,33 @@ func TestLevelFor(t *testing.T) {
 
 func TestInitDevelopmentUsesTextHandlerAndShortensIDs(t *testing.T) {
 	output := captureStdout(t, func() {
-		log := Init("development")
+		log := Init("development").With("component", "test")
 		log.Info("hello", "user_id", "1234567890abcdef")
 	})
 
-	assert.Contains(t, output, "level=INFO")
-	assert.Contains(t, output, "msg=hello")
+	assert.Contains(t, output, "level=INFO component=test msg=hello")
 	assert.Contains(t, output, "user_id=12345678...")
 	assert.NotContains(t, output, "1234567890abcdef")
 }
 
+func TestInitDevelopmentRecordComponentOverridesBaseComponent(t *testing.T) {
+	output := captureStdout(t, func() {
+		log := Init("development").With("component", "scaled")
+		log.Info("nats connected", "component", "nats", "client", "scaled")
+	})
+
+	assert.Contains(t, output, "level=INFO component=nats msg=\"nats connected\" client=scaled")
+	assert.NotContains(t, output, "component=scaled")
+}
+
 func TestInitProductionUsesJSONHandlerAndInfoLevel(t *testing.T) {
 	output := captureStdout(t, func() {
-		log := Init("production")
+		log := Init("production").With("component", "test")
 		log.Debug("hidden", "user_id", "1234567890abcdef")
 		log.Info("hello", "user_id", "1234567890abcdef")
 	})
 
-	assert.Contains(t, output, "\"level\":\"INFO\"")
-	assert.Contains(t, output, "\"msg\":\"hello\"")
+	assert.Contains(t, output, "\"level\":\"INFO\",\"component\":\"test\",\"msg\":\"hello\"")
 	assert.Contains(t, output, "\"user_id\":\"1234567890abcdef\"")
 	assert.NotContains(t, output, "hidden")
 	assert.NotContains(t, output, "12345678...")
