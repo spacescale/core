@@ -1,8 +1,22 @@
+// Package microvm owns the host-side Firecracker boot path for SpaceScale
+// workloads.
+//
+// The package prepares local host state, starts one jailed Firecracker VM, and
+// accepts launch only after scoutd proves guest userspace is alive with a hello
+// frame over virtio-vsock. Startup, placement, and executor code validate
+// runtime assets, shape values, reservations, and duplicate launches before this
+// package is called. microvm intentionally avoids duplicating those checks so the
+// local lifecycle path stays simple.
+//
+// File boundaries stay concrete: launcher.go owns Firecracker lifecycle,
+// workspace.go owns host paths and rootfs files, and vsock.go owns guest CIDs,
+// host-side vsock listeners, and scoutd hello parsing.
 package microvm
 
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -58,20 +72,7 @@ type Workspace struct {
 // The jailer path shape is fixed by the SDK:
 //
 //	<jailerStateDir>/<firecracker-binary-name>/<microvm-id>/root
-func newWorkspace(rootDir, jailerStateDir, microvmID, firecrackerBinPath string) (Workspace, error) {
-	if rootDir == "" {
-		return Workspace{}, fmt.Errorf("microvm state dir is required")
-	}
-	if jailerStateDir == "" {
-		return Workspace{}, fmt.Errorf("microvm jailer state dir is required")
-	}
-	if microvmID == "" {
-		return Workspace{}, fmt.Errorf("microvm id is required")
-	}
-	if firecrackerBinPath == "" {
-		return Workspace{}, fmt.Errorf("firecracker binary path is required")
-	}
-
+func newWorkspace(rootDir, jailerStateDir, microvmID, firecrackerBinPath string) Workspace {
 	vmRoot := filepath.Join(rootDir, microvmID)
 	firecrackerBinName := filepath.Base(firecrackerBinPath)
 
@@ -86,7 +87,7 @@ func newWorkspace(rootDir, jailerStateDir, microvmID, firecrackerBinPath string)
 		JailerDir:     jailerDir,
 		JailerRootDir: jailerRootDir,
 		RootFSPath:    filepath.Join(vmRoot, "rootfs.ext4"),
-	}, nil
+	}
 }
 
 // FirecrackerSocketHostPath is the host-visible API socket path inside the jail
@@ -126,14 +127,41 @@ func (w Workspace) FirecrackerLogPathInJail() string {
 
 // Prepare creates the directories that must exist before launch.
 //
-// We create both the outer workspace and the jail root. The outer workspace
-// holds our copied rootfs and any host-managed files. The jail root is where
-// Firecracker-visible runtime paths will live after the process is chrooted.
+// The outer workspace holds the copied rootfs and host-managed files. The jail
+// root holds Firecracker-visible runtime paths after chroot.
 func (w Workspace) Prepare() error {
 	if err := os.MkdirAll(w.RootDir, 0o755); err != nil {
 		return err
 	}
 	return os.MkdirAll(w.JailerRootDir, 0o755)
+}
+
+// prepareRootFS copies the platform-managed scoutd rootfs into the workspace.
+func prepareRootFS(templatePath, targetPath string) error {
+	if err := copyFile(templatePath, targetPath); err != nil {
+		return fmt.Errorf("copy rootfs template: %w", err)
+	}
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	source, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open source file: %w", err)
+	}
+	defer source.Close()
+	dest, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("open destination file: %w", err)
+	}
+	defer dest.Close()
+	if _, err := io.Copy(dest, source); err != nil {
+		return fmt.Errorf("copy bytes: %w", err)
+	}
+	if err := dest.Sync(); err != nil {
+		return fmt.Errorf("sync destination file: %w", err)
+	}
+	return nil
 }
 
 // Cleanup removes the full UUID workspace and this VM's jailer directory.
@@ -161,13 +189,6 @@ func CleanupStaleState() error {
 }
 
 func cleanupStaleState(rootDir, jailerStateDir string) error {
-	if rootDir == "" {
-		return fmt.Errorf("microvm state dir is required")
-	}
-	if jailerStateDir == "" {
-		return fmt.Errorf("microvm jailer state dir is required")
-	}
-
 	var errs []error
 	errs = append(errs, os.RemoveAll(rootDir))
 	errs = append(errs, os.RemoveAll(jailerStateDir))

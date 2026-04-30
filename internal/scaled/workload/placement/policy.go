@@ -1,16 +1,28 @@
-// Package placement implements the decentralized scheduling engine for the edge node.
+// Package placement validates microVM shape and capacity for one edge node.
 //
-// This file defines the static economic and hardware taxation policies for the
-// node. It calculates exactly how much physical RAM and how many
-// PHYSICAL cores are held back for the host operating system, ensuring customer
-// workloads cannot starve the host hypervisor or the scaled daemon itself.
-//
-// NOTE: SpaceScale operates strictly on a Physical Core Truth model.
-// SMT (Hyperthreading) is considered a security vulnerability and is disabled.
-// This file does not enforce runtime pinning, cgroups, or cpusets. It only
-// answers the capacity policy question of how much of the host may be sold to
-// customer workloads once the operating system tax is applied.
+// Placement owns shape-to-hardware-spec policy, local capacity accounting, and
+// auction bidding. Executor owns targeted launch command handling, and microvm
+// owns local Firecracker execution, so placement stays limited to shape and
+// capacity decisions.
 package placement
+
+import (
+	"errors"
+
+	pb "github.com/spacescale/core/internal/shared/pb/v1"
+)
+
+// ErrInvalidMicroVMShape is returned when the control plane sends a shape the
+// edge cannot execute.
+var ErrInvalidMicroVMShape = errors.New("invalid microvm shape")
+
+// HardwareSpec is the capacity-relevant slice of one resolved microVM shape.
+type HardwareSpec struct {
+	VCPU uint32
+	RAM  uint64
+
+	IsPinned bool
+}
 
 const (
 	// sharedVCPUOvercommitRatio defines how many shared guest vCPUs may be sold
@@ -43,6 +55,36 @@ const (
 	hostTaxOver64GBMB uint64 = 8601
 )
 
+func SpecFromShape(shape *pb.MicroVMShape) (HardwareSpec, error) {
+	if shape == nil || shape.Vcpu == 0 || shape.RamMb == 0 {
+		return HardwareSpec{}, ErrInvalidMicroVMShape
+	}
+
+	spec := HardwareSpec{VCPU: shape.Vcpu, RAM: shape.RamMb}
+	switch shape.CpuMode {
+	case pb.CpuMode_CPU_MODE_SHARED:
+		return spec, nil
+	case pb.CpuMode_CPU_MODE_PINNED:
+		spec.IsPinned = true
+		return spec, nil
+	default:
+		return HardwareSpec{}, ErrInvalidMicroVMShape
+	}
+}
+
+func CpuModeLogValue(shape *pb.MicroVMShape) string {
+	if shape == nil {
+		return "unspecified"
+	}
+	if shape.CpuMode == pb.CpuMode_CPU_MODE_PINNED {
+		return "pinned"
+	}
+	if shape.CpuMode == pb.CpuMode_CPU_MODE_SHARED {
+		return "shared"
+	}
+	return "unspecified"
+}
+
 // hostReservedCores returns how many physical cores must always remain with the
 // host operating system and control processes.
 //
@@ -68,8 +110,8 @@ func hostReservedCores(total uint32) uint32 {
 // sellableCores calculates the final pool of physical host cores available for
 // customer workloads after the host reserve is removed.
 //
-// Callers must pass the true physical core count discovered by host preflight.
-// This function must not be fed logical thread counts.
+// Callers pass the true physical core count discovered by host preflight, not
+// logical thread counts.
 func sellableCores(total uint32) uint32 {
 	reserved := hostReservedCores(total)
 	if total <= reserved {

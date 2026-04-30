@@ -23,13 +23,6 @@ import (
 // gives scoutd enough bootstrap network metadata to finish initialization.
 const scoutdKernelArgs = "console=ttyS0 reboot=k panic=-1 pci=off nomodules rw root=/dev/vda scoutd.ipv4=172.16.0.2/30 scoutd.gateway=172.16.0.1 scoutd.mmds=169.254.169.254"
 
-var (
-	errInvalidLauncherConfig = errors.New("invalid microvm launcher config")
-	errInvalidLaunchRequest  = errors.New("invalid microvm launch request")
-	errMicroVMAlreadyActive  = errors.New("microvm already active")
-	lookupJailerIdentity     = system.LookupFirecrackerJailerIdentity
-)
-
 // LaunchRequest is the local, transport-free scoutd boot request.
 //
 // Root disk size is intentionally absent. The scoutd rootfs is a
@@ -54,6 +47,8 @@ type ActiveVM struct {
 }
 
 // Launcher owns local Firecracker process lifecycle for this scaled process.
+// Placement, duplicate launch prevention, and request validation are handled by
+// the executor before it calls Launch.
 type Launcher struct {
 	logger       *slog.Logger
 	runtimePaths scaledruntime.Paths
@@ -61,41 +56,13 @@ type Launcher struct {
 	jailerGID    int
 	cids         *cidAllocator
 
-	mu        sync.Mutex
-	active    map[string]*ActiveVM
-	launching map[string]struct{}
+	mu     sync.Mutex
+	active map[string]*ActiveVM
 }
 
-// NewLauncher validates host-local runtime asset paths, resolves the dedicated
-// Firecracker jailer identity, and creates the in-memory lifecycle owner for
-// local Firecracker VMs.
-func NewLauncher(logger *slog.Logger, runtimePaths scaledruntime.Paths) (*Launcher, error) {
-	if logger == nil {
-		logger = slog.Default()
-	}
-	if runtimePaths.FirecrackerPath == "" {
-		return nil, fmt.Errorf("%w: firecracker path is required", errInvalidLauncherConfig)
-	}
-	if runtimePaths.JailerPath == "" {
-		return nil, fmt.Errorf("%w: jailer path is required", errInvalidLauncherConfig)
-	}
-	if runtimePaths.KernelPath == "" {
-		return nil, fmt.Errorf("%w: kernel path is required", errInvalidLauncherConfig)
-	}
-	if runtimePaths.RootFSPath == "" {
-		return nil, fmt.Errorf("%w: rootfs path is required", errInvalidLauncherConfig)
-	}
-	jailerIdentity, err := lookupJailerIdentity()
-	if err != nil {
-		return nil, fmt.Errorf("%w: resolve firecracker jailer identity: %w", errInvalidLauncherConfig, err)
-	}
-	if jailerIdentity.UID <= 0 {
-		return nil, fmt.Errorf("%w: firecracker jailer uid must be non-root", errInvalidLauncherConfig)
-	}
-	if jailerIdentity.GID <= 0 {
-		return nil, fmt.Errorf("%w: firecracker jailer gid must be non-root", errInvalidLauncherConfig)
-	}
-
+// NewLauncher creates the in-memory lifecycle owner for local Firecracker VMs.
+// Startup preflight owns creating and resolving the fixed jailer account.
+func NewLauncher(logger *slog.Logger, runtimePaths scaledruntime.Paths, jailerIdentity system.FirecrackerJailerIdentity) *Launcher {
 	return &Launcher{
 		logger:       logger.With("subsystem", "microvm"),
 		runtimePaths: runtimePaths,
@@ -103,21 +70,7 @@ func NewLauncher(logger *slog.Logger, runtimePaths scaledruntime.Paths) (*Launch
 		jailerGID:    jailerIdentity.GID,
 		cids:         newCIDAllocator(),
 		active:       make(map[string]*ActiveVM),
-		launching:    make(map[string]struct{}),
-	}, nil
-}
-
-func (r LaunchRequest) validate() error {
-	if r.MicroVMID == "" {
-		return fmt.Errorf("%w: microvm id is required", errInvalidLaunchRequest)
 	}
-	if r.VCPU == 0 {
-		return fmt.Errorf("%w: vcpu must be greater than zero", errInvalidLaunchRequest)
-	}
-	if r.RAMMB == 0 {
-		return fmt.Errorf("%w: ram mb must be greater than zero", errInvalidLaunchRequest)
-	}
-	return nil
 }
 
 // Launch boots one jailed Firecracker VM and returns only after scoutd sends its
@@ -126,145 +79,45 @@ func (r LaunchRequest) validate() error {
 // The input context bounds the boot attempt and hello wait. After hello is
 // received, the VM gets its own background lifecycle context so the caller's
 // request timeout does not kill an already accepted VM.
+//
+// Launch assumes the caller has already committed placement capacity and passed
+// validated runtime paths and shape values.
 func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *ActiveVM, err error) {
-	if err := req.validate(); err != nil {
-		return nil, err
-	}
-	if err := validateRuntimeAssets(l.runtimePaths); err != nil {
-		return nil, err
-	}
-	if err := l.reserveLaunch(req.MicroVMID); err != nil {
-		return nil, err
-	}
-
-	// reserveLaunch marks this microVM ID as in-flight so another goroutine cannot
-	// launch the same VM while this one is preparing files and waiting for scoutd.
-	// If launch fails, the reservation is released. If launch succeeds, activate
-	// moves the VM from launching to active.
-	launchCommitted := false
-	defer func() {
-		if !launchCommitted {
-			l.releaseLaunch(req.MicroVMID)
-		}
-	}()
-
-	// After vm is assigned, later launch steps may create resources that need
-	// teardown: workspace files, vsock listeners, a CID, or a Firecracker process.
-	// If Launch returns an error, clean up that partial VM. Launch uses a named
-	// return err so cleanup failures can be joined with the original launch error
-	// instead of replacing it.
-	var vm *ActiveVM
+	vm, vmCtx := l.newActiveVM(req)
 	defer func() {
 		if err != nil && vm != nil {
-			// Preserve the original launch failure while reporting any cleanup failure too.
 			err = errors.Join(err, l.cleanupActive(vm, true))
 		}
 	}()
 
-	workspace, err := newWorkspace(
-		microVMStateDir,
-		microVMJailerStateDir,
-		req.MicroVMID,
-		l.runtimePaths.FirecrackerPath,
-	)
-	if err != nil {
+	if err := l.prepareVM(vm); err != nil {
 		return nil, err
 	}
+	go l.drainScoutdLog(vmCtx, vm)
 
-	// The request ctx only bounds boot and the scoutd hello wait. Firecracker gets
-	// its own lifecycle ctx so a successfully accepted VM is not killed when the
-	// request ctx is canceled after Launch returns. If launch fails before hello,
-	// cleanup cancels this ctx; after hello, Stop or watchVM owns teardown.
-	vmCtx, cancel := context.WithCancel(context.Background())
-	vm = &ActiveVM{
-		MicroVMID: req.MicroVMID,
-		Workspace: workspace,
-		cancel:    cancel,
-	}
-
-	if err := workspace.Prepare(); err != nil {
-		return nil, fmt.Errorf("prepare workspace: %w", err)
-	}
-
-	if err := prepareRootFS(l.runtimePaths.RootFSPath, workspace.RootFSPath); err != nil {
-		return nil, err
-	}
-
-	// The copied rootfs is opened by the Firecracker process after the jailer drops
-	// privileges to the dedicated uid/gid. Give that account ownership and writable
-	// access while keeping the disk image private from other host users.
-	if err := os.Chown(workspace.RootFSPath, l.jailerUID, l.jailerGID); err != nil {
-		return nil, fmt.Errorf("chown rootfs for jailer user: %w", err)
-	}
-	if err := os.Chmod(workspace.RootFSPath, 0o640); err != nil {
-		return nil, fmt.Errorf("chmod rootfs for jailer user: %w", err)
-	}
-
-	// Allocate the guest vsock CID before building the Firecracker config. CID 2 is
-	// the host; every active guest needs its own CID so scoutd traffic is routed to
-	// the correct VM.
-	cid, err := l.cids.Acquire()
-	if err != nil {
-		return nil, err
-	}
-	vm.GuestCID = cid
-
-	// Firecracker exposes guest-initiated vsock connections as host Unix sockets
-	// named from this workspace path. scoutd connects very early during guest boot,
-	// so the host listeners must exist before machine.Start.
-	listeners, err := openVSockListeners(workspace)
-	if err != nil {
-		return nil, err
-	}
-	vm.listeners = listeners
-
-	// Keep jailer stdout/stderr in the VM workspace. The file stays open while the
-	// SDK starts the jailer so startup failures leave useful host-side logs behind.
-	jailerLog, err := openJailerLog(workspace.RootDir)
+	jailerLog, err := openJailerLog(vm.Workspace.RootDir)
 	if err != nil {
 		return nil, err
 	}
 	defer jailerLog.Close()
 
-	// Build the SDK config after all referenced host resources exist. The config
-	// intentionally mixes host paths for files the SDK links into the jail and
-	// jail-visible paths for files Firecracker opens after chroot.
-	fcCfg := l.buildFirecrackerConfig(req, workspace, cid, jailerLog)
-
-	// NewMachine wires SDK handlers and jailer metadata. It does not start the
-	// jailer or Firecracker process yet.
-	machine, err := firecracker.NewMachine(vmCtx, fcCfg)
-	if err != nil {
-		return nil, fmt.Errorf("create firecracker machine: %w", err)
-	}
-	vm.machine = machine
-
-	// Start launches the jailer, builds the chroot, drops to the dedicated uid/gid,
-	// and execs Firecracker. Any failure after this point must stop a partial VMM.
-	if err := machine.Start(vmCtx); err != nil {
-		return nil, fmt.Errorf("start firecracker machine: %w", err)
+	if err := l.startFirecracker(vmCtx, req, vm, jailerLog); err != nil {
+		return nil, err
 	}
 
-	// Accept the launch only after guest userspace proves it booted by sending the
-	// scoutd hello frame on the control vsock socket. The request ctx controls how
-	// long we wait for that proof.
-	if err := listeners.WaitForHello(ctx); err != nil {
-		return nil, fmt.Errorf("wait for scoutd hello: %w", err)
+	vmmExit := waitForMachine(vm.machine)
+	if err := l.waitForHelloOrExit(ctx, vm, vmmExit); err != nil {
+		return nil, err
 	}
 
-	// Hello succeeded: move the VM from launching to active ownership before
-	// returning it to the caller.
 	l.activate(vm)
-	launchCommitted = true
 
-	// From here the VM lifecycle is asynchronous. Stop handles explicit teardown;
-	// watchVM handles Firecracker exiting on its own.
-	go l.watchVM(vm)
+	go l.watchVM(vm, vmmExit)
 
 	l.logger.Info("microvm booted scoutd",
 		"microvm_id", req.MicroVMID,
-		"guest_cid", cid,
-		"workspace", workspace.RootDir,
+		"guest_cid", vm.GuestCID,
+		"workspace", vm.Workspace.RootDir,
 	)
 
 	return vm, nil
@@ -279,9 +132,80 @@ func (l *Launcher) Stop(_ context.Context, microvmID string) error {
 	return l.cleanupActive(vm, true)
 }
 
-// buildFirecrackerConfig assembles the SDK config. Host paths are used for
-// files the SDK/jailer must link into the jail; jail-visible paths are used for
-// paths Firecracker opens after chroot.
+// newActiveVM creates the local lifecycle record before any host resources exist.
+// The returned context belongs to the VM lifecycle; the caller's ctx only gates
+// the boot attempt and scoutd hello wait.
+func (l *Launcher) newActiveVM(req LaunchRequest) (*ActiveVM, context.Context) {
+	workspace := newWorkspace(
+		microVMStateDir,
+		microVMJailerStateDir,
+		req.MicroVMID,
+		l.runtimePaths.FirecrackerPath,
+	)
+
+	vmCtx, cancel := context.WithCancel(context.Background())
+	vm := &ActiveVM{
+		MicroVMID: req.MicroVMID,
+		Workspace: workspace,
+		cancel:    cancel,
+	}
+
+	return vm, vmCtx
+}
+
+// prepareVM creates every host-side resource that must exist before Firecracker
+// starts: workspace directories, rootfs copy, jailer ownership, CID, and vsock
+// listeners.
+func (l *Launcher) prepareVM(vm *ActiveVM) error {
+	if err := vm.Workspace.Prepare(); err != nil {
+		return fmt.Errorf("prepare workspace: %w", err)
+	}
+
+	if err := prepareRootFS(l.runtimePaths.RootFSPath, vm.Workspace.RootFSPath); err != nil {
+		return err
+	}
+
+	// The copied rootfs is opened by Firecracker after the jailer drops privileges.
+	// Give the fixed jailer account ownership while keeping the image private.
+	if err := os.Chown(vm.Workspace.RootFSPath, l.jailerUID, l.jailerGID); err != nil {
+		return fmt.Errorf("chown rootfs for jailer user: %w", err)
+	}
+	if err := os.Chmod(vm.Workspace.RootFSPath, 0o640); err != nil {
+		return fmt.Errorf("chmod rootfs for jailer user: %w", err)
+	}
+
+	cid, err := l.cids.Acquire()
+	if err != nil {
+		return err
+	}
+	vm.GuestCID = cid
+
+	listeners, err := openVSockListeners(vm.Workspace)
+	if err != nil {
+		return err
+	}
+	vm.listeners = listeners
+
+	return nil
+}
+
+// startFirecracker builds the jailer-aware SDK config and starts the jailed VMM.
+func (l *Launcher) startFirecracker(ctx context.Context, req LaunchRequest, vm *ActiveVM, jailerOutput io.Writer) error {
+	fcCfg := l.buildFirecrackerConfig(req, vm.Workspace, vm.GuestCID, jailerOutput)
+	machine, err := firecracker.NewMachine(ctx, fcCfg)
+	if err != nil {
+		return fmt.Errorf("create firecracker machine: %w", err)
+	}
+	vm.machine = machine
+
+	if err := machine.Start(ctx); err != nil {
+		return fmt.Errorf("start firecracker machine: %w", err)
+	}
+	return nil
+}
+
+// Firecracker config stays explicit here because this is the boundary where host
+// paths become jail-visible paths for the SDK and jailer.
 func (l *Launcher) buildFirecrackerConfig(req LaunchRequest, workspace Workspace, cid uint32, jailerOutput io.Writer) firecracker.Config {
 	uid := l.jailerUID
 	gid := l.jailerGID
@@ -319,86 +243,132 @@ func (l *Launcher) buildFirecrackerConfig(req LaunchRequest, workspace Workspace
 	}
 }
 
-// validateRuntimeAssets performs a last local sanity check before launch. The
-// startup resolver should already have reconciled these files, but launcher keeps
-// this boundary defensive because bad paths here would fail deep inside the SDK.
-func validateRuntimeAssets(paths scaledruntime.Paths) error {
-	checks := []struct {
-		name       string
-		path       string
-		executable bool
-	}{
-		{name: "firecracker", path: paths.FirecrackerPath, executable: true},
-		{name: "jailer", path: paths.JailerPath, executable: true},
-		{name: "kernel", path: paths.KernelPath},
-		{name: "rootfs", path: paths.RootFSPath},
-	}
-
-	for _, check := range checks {
-		if check.path == "" {
-			return fmt.Errorf("runtime asset %s path is required", check.name)
-		}
-		info, err := os.Stat(check.path)
-		if err != nil {
-			return fmt.Errorf("stat runtime asset %s: %w", check.name, err)
-		}
-		if info.IsDir() {
-			return fmt.Errorf("runtime asset %s is a directory: %s", check.name, check.path)
-		}
-		if info.Size() == 0 {
-			return fmt.Errorf("runtime asset %s is empty: %s", check.name, check.path)
-		}
-		if check.executable && info.Mode()&0o111 == 0 {
-			return fmt.Errorf("runtime asset %s is not executable: %s", check.name, check.path)
-		}
-	}
-
-	return nil
-}
-
+// openJailerLog captures jailer stdout/stderr during Firecracker startup.
 func openJailerLog(rootDir string) (*os.File, error) {
-	path := filepath.Join(rootDir, "jailer.log")
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	file, err := os.OpenFile(jailerLogHostPath(rootDir), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("open jailer log: %w", err)
 	}
 	return file, nil
 }
 
-// reserveLaunch prevents concurrent duplicate launches for the same microVM ID.
-// The reservation is local to this scaled process and is released when launch
-// fails or promoted to active after scoutd hello succeeds.
-func (l *Launcher) reserveLaunch(microvmID string) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if _, ok := l.active[microvmID]; ok {
-		return errMicroVMAlreadyActive
+// openScoutdLog captures the guest log stream after scoutd connects over vsock.
+func openScoutdLog(rootDir string) (*os.File, error) {
+	file, err := os.OpenFile(scoutdLogHostPath(rootDir), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("open scoutd log: %w", err)
 	}
-
-	if _, ok := l.launching[microvmID]; ok {
-		return errMicroVMAlreadyActive
-	}
-
-	l.launching[microvmID] = struct{}{}
-	return nil
+	return file, nil
 }
 
-func (l *Launcher) releaseLaunch(microvmID string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	delete(l.launching, microvmID)
+func jailerLogHostPath(rootDir string) string {
+	return filepath.Join(rootDir, "jailer.log")
 }
 
+func scoutdLogHostPath(rootDir string) string {
+	return filepath.Join(rootDir, "scoutd.log")
+}
+
+func (l *Launcher) drainScoutdLog(ctx context.Context, vm *ActiveVM) {
+	conn, err := vm.listeners.AcceptLog(ctx)
+	if err != nil {
+		if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		l.logger.Warn("accept scoutd log channel",
+			"microvm_id", vm.MicroVMID,
+			"error", err,
+		)
+		return
+	}
+	defer conn.Close()
+
+	logFile, err := openScoutdLog(vm.Workspace.RootDir)
+	if err != nil {
+		l.logger.Warn("open scoutd log",
+			"microvm_id", vm.MicroVMID,
+			"error", err,
+		)
+		return
+	}
+	defer logFile.Close()
+
+	if _, err := io.Copy(logFile, conn); err != nil {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			l.logger.Warn("drain scoutd log",
+				"microvm_id", vm.MicroVMID,
+				"error", err,
+			)
+		}
+	}
+}
+
+// waitForMachine starts exactly one Firecracker wait goroutine. Launch and
+// watchVM share the same result so we do not call Machine.Wait twice.
+func waitForMachine(machine *firecracker.Machine) <-chan error {
+	exited := make(chan error, 1)
+	go func() {
+		exited <- machine.Wait(context.Background())
+	}()
+	return exited
+}
+
+// waitForHelloOrExit accepts the launch only if scoutd sends hello before the
+// VMM exits. This avoids waiting for the full hello timeout after an early guest
+// panic or clean shutdown.
+func (l *Launcher) waitForHelloOrExit(ctx context.Context, vm *ActiveVM, vmmExit <-chan error) error {
+	hello := make(chan error, 1)
+	go func() {
+		hello <- vm.listeners.WaitForHello(ctx)
+	}()
+
+	select {
+	case err := <-hello:
+		if err != nil {
+			err = fmt.Errorf("wait for scoutd hello: %w", err)
+			l.logBootFailure(vm, "scoutd hello failed", err)
+			return err
+		}
+		return nil
+	case err := <-vmmExit:
+		l.logBootFailure(vm, "microvm exited before scoutd hello", err)
+		if err != nil {
+			return fmt.Errorf("microvm exited before scoutd hello: %w", err)
+		}
+		return errors.New("microvm exited before scoutd hello")
+	}
+}
+
+// logBootFailure records paths to diagnostic files without dumping noisy jailer,
+// Firecracker, or guest output into scaled logs.
+func (l *Launcher) logBootFailure(vm *ActiveVM, reason string, cause error) {
+	args := []any{
+		"microvm_id", vm.MicroVMID,
+		"workspace", vm.Workspace.RootDir,
+		"jailer_dir", vm.Workspace.JailerDir,
+		"jailer_root", vm.Workspace.JailerRootDir,
+		"jailer_log", jailerLogHostPath(vm.Workspace.RootDir),
+		"firecracker_log", vm.Workspace.FirecrackerLogHostPath(),
+		"scoutd_log", scoutdLogHostPath(vm.Workspace.RootDir),
+	}
+	if cause != nil {
+		args = append(args, "error", cause)
+	}
+	l.logger.Warn(reason, args...)
+}
+
+// activate records a booted VM for later Stop or Firecracker exit cleanup.
 func (l *Launcher) activate(vm *ActiveVM) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	delete(l.launching, vm.MicroVMID)
 	l.active[vm.MicroVMID] = vm
 }
 
+// removeActive transfers active VM ownership to Stop.
 func (l *Launcher) removeActive(microvmID string) *ActiveVM {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -408,6 +378,8 @@ func (l *Launcher) removeActive(microvmID string) *ActiveVM {
 	return vm
 }
 
+// removeActiveIfSame lets watchVM unregister the VM only if Stop has not already
+// removed it.
 func (l *Launcher) removeActiveIfSame(vm *ActiveVM) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -417,11 +389,9 @@ func (l *Launcher) removeActiveIfSame(vm *ActiveVM) {
 	}
 }
 
-// watchVM waits for Firecracker process exit after a successful launch and then
-// performs local cleanup. It is separate from Launch so Launch can return once
-// scoutd hello proves the VM booted.
-func (l *Launcher) watchVM(vm *ActiveVM) {
-	err := vm.machine.Wait(context.Background())
+// watchVM handles Firecracker exiting after a successful hello.
+func (l *Launcher) watchVM(vm *ActiveVM, vmmExit <-chan error) {
+	err := <-vmmExit
 	if err != nil {
 		l.logger.Warn("firecracker exited",
 			"microvm_id", vm.MicroVMID,
@@ -439,10 +409,8 @@ func (l *Launcher) watchVM(vm *ActiveVM) {
 	}
 }
 
-// cleanupActive unwinds every host-side resource owned by an ActiveVM.
-//
-// It is safe to call from multiple paths: launch failure, explicit Stop, and the
-// process watcher. cleanupOnce makes those paths converge on one teardown.
+// cleanupActive unwinds all host-side resources owned by a VM. It is safe for
+// launch failure, explicit Stop, and watchVM to converge here.
 func (l *Launcher) cleanupActive(vm *ActiveVM, stopVMM bool) (err error) {
 	vm.cleanupOnce.Do(func() {
 		if stopVMM && vm.machine != nil {

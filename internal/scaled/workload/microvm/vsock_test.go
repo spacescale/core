@@ -1,6 +1,7 @@
 package microvm
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -16,6 +17,66 @@ import (
 func TestVSockPortPathUsesFirecrackerConvention(t *testing.T) {
 	path := vsockPortPath("/tmp/v.sock", 10000)
 	require.Equal(t, "/tmp/v.sock_10000", path)
+}
+
+func TestCIDAllocatorStartsAtThree(t *testing.T) {
+	a := newCIDAllocator()
+	cid, err := a.Acquire()
+	require.NoError(t, err)
+	require.Equal(t, uint32(3), cid)
+}
+
+func TestCIDAllocatorReusesReleasedCID(t *testing.T) {
+	a := newCIDAllocator()
+	first, err := a.Acquire()
+	require.NoError(t, err)
+	second, err := a.Acquire()
+	require.NoError(t, err)
+	require.Equal(t, uint32(3), first)
+	require.Equal(t, uint32(4), second)
+	a.Release(first)
+	reused, err := a.Acquire()
+	require.NoError(t, err)
+	require.Equal(t, uint32(3), reused)
+}
+
+func TestCIDAllocatorIgnoresReservedReleaseValues(t *testing.T) {
+	a := newCIDAllocator()
+	a.Release(0)
+	a.Release(1)
+	a.Release(2)
+	cid, err := a.Acquire()
+	require.NoError(t, err)
+	require.Equal(t, uint32(3), cid)
+}
+
+func TestExpectHelloFrame(t *testing.T) {
+	err := expectHelloFrame(bytes.NewReader(validHelloFrame()))
+	require.NoError(t, err)
+}
+
+func TestExpectHelloFrameRejectsWrongMagic(t *testing.T) {
+	raw := validHelloFrame()
+	copy(raw[0:4], []byte("NOPE"))
+
+	err := expectHelloFrame(bytes.NewReader(raw))
+	require.Error(t, err)
+}
+
+func TestExpectHelloFrameRejectsWrongKind(t *testing.T) {
+	raw := validHelloFrame()
+	raw[5] = 99
+
+	err := expectHelloFrame(bytes.NewReader(raw))
+	require.Error(t, err)
+}
+
+func TestExpectHelloFrameRejectsPayload(t *testing.T) {
+	raw := validHelloFrame()
+	binary.BigEndian.PutUint32(raw[6:10], 4)
+
+	err := expectHelloFrame(bytes.NewReader(raw))
+	require.Error(t, err)
 }
 
 func TestListenUnixRemovesStalePathBeforeListening(t *testing.T) {

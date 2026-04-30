@@ -1,5 +1,11 @@
 //go:build linux
 
+// Package executor handles targeted microVM launch commands after placement
+// wins.
+//
+// The package validates launch messages, commits reserved capacity, invokes the
+// local microvm launcher, and publishes accepted only after scoutd hello. On boot
+// or reply failure it reverts capacity and tears down any started VM.
 package executor
 
 import (

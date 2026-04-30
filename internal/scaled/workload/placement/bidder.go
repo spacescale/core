@@ -1,9 +1,3 @@
-// Package placement implements the decentralized scheduling engine for the edge node.
-//
-// This file provides the Bidder, which is responsible for listening to regional
-// control plane placement auctions over NATS. It validates the resolved microvm
-// shape, consults the local Capacity ledger, and replies with a bid if the node
-// can accommodate the workload.
 package placement
 
 import (
@@ -19,9 +13,7 @@ import (
 // in reserve while waiting for a Launch command before assuming it lost the auction.
 const reservationTTL = 500 * time.Millisecond
 
-// Bidder handles incoming placement auctions from the Control Plane.
-// It acts as a strict network adapter, parsing NATS messages and invoking
-// pure domain logic within the Capacity ledger.
+// Bidder handles incoming placement auctions from the control plane.
 type Bidder struct {
 	logger   *slog.Logger
 	capacity *Capacity

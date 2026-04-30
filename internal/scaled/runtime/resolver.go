@@ -1,3 +1,9 @@
+// Package runtime reconciles fixed host and guest files before scaled accepts
+// work.
+//
+// The package owns the runtime asset cache for Firecracker, jailer, guest kernel,
+// and scoutd rootfs. Startup calls it once, receives concrete paths, and passes
+// those paths downstream instead of letting launch code fetch or validate assets.
 package runtime
 
 import (
@@ -12,6 +18,25 @@ import (
 	"time"
 )
 
+const (
+	runtimeBucketBaseURL = "https://spacescale-runtime-assets.s3.eu-west-par.io.cloud.ovh.net"
+	runtimeStateDir      = "/var/lib/spacescale/runtime"
+
+	firecrackerObjectKey = "firecracker-v1.15.1-x86_64"
+	jailerObjectKey      = "jailer-v1.15.1-x86_64"
+	kernelObjectKey      = "vmlinux-v6.1.80-x86_64"
+	rootfsObjectKey      = "scoutd-rootfs-v0.1.3-x86_64-ext4"
+)
+
+// Paths holds the concrete local runtime files prepared during startup.
+type Paths struct {
+	RootDir         string
+	FirecrackerPath string
+	JailerPath      string
+	KernelPath      string
+	RootFSPath      string
+}
+
 type Resolver struct {
 	logger  *slog.Logger
 	client  *http.Client
@@ -19,20 +44,9 @@ type Resolver struct {
 	rootDir string
 }
 
-// NewResolver creates the startup helper that makes sure runtime assets exist
-// on disk before scaled moves forward into bootstrap readiness and workload
-// handling
-//
-// # The resolver is intentionally simple
-//
-// It knows one bucket base URL
-// It knows one local runtime directory
-// It knows the fixed set of assets the daemon expects right now
+// NewResolver creates the startup helper that prepares runtime assets before
+// scaled joins bootstrap readiness or workload handling.
 func NewResolver(logger *slog.Logger) *Resolver {
-	if logger == nil {
-		logger = slog.Default()
-	}
-
 	return &Resolver{
 		logger:  logger.With("subsystem", "runtime"),
 		client:  &http.Client{Timeout: 2 * time.Minute},
@@ -41,18 +55,7 @@ func NewResolver(logger *slog.Logger) *Resolver {
 	}
 }
 
-// Reconcile makes sure every required runtime file is present locally before
-// scaled is allowed to continue startup
-//
-// # The flow stays intentionally mechanical
-//
-// Build the fixed local paths
-// Ensure the runtime root exists
-// Reuse or download firecracker
-// Reuse or download jailer
-// Reuse or download the kernel
-// Reuse or download the scoutd rootfs
-// Return the final local paths
+// Reconcile makes sure every required runtime file is present locally.
 func (r *Resolver) Reconcile(ctx context.Context) (Paths, error) {
 	paths := currentPaths(r.rootDir)
 
@@ -76,12 +79,17 @@ func (r *Resolver) Reconcile(ctx context.Context) (Paths, error) {
 	return paths, nil
 }
 
-// ensureAsset is the cache boundary for one runtime file
-//
-// If the local file already exists and passes the current local checks we reuse
-// it
-// Otherwise we download it and validate the local result one more time before
-// returning success
+func currentPaths(root string) Paths {
+	return Paths{
+		RootDir:         root,
+		FirecrackerPath: filepath.Join(root, "host", firecrackerObjectKey),
+		JailerPath:      filepath.Join(root, "host", jailerObjectKey),
+		KernelPath:      filepath.Join(root, "guest", kernelObjectKey),
+		RootFSPath:      filepath.Join(root, "guest", rootfsObjectKey),
+	}
+}
+
+// ensureAsset reuses a valid cached file or downloads a fresh copy.
 func (r *Resolver) ensureAsset(ctx context.Context, name, objectKey, localPath string, executable bool) error {
 	ready, err := validateLocalAsset(localPath, executable)
 	switch {
@@ -117,14 +125,7 @@ func (r *Resolver) ensureAsset(ctx context.Context, name, objectKey, localPath s
 	return nil
 }
 
-// downloadAsset fetches one immutable runtime file and stages it atomically in
-// the local cache
-//
-// We always write into a temporary file first and only rename into place after
-// the transfer finishes cleanly
-//
-// That keeps partial downloads from being mistaken for good cached assets on a
-// later daemon boot
+// downloadAsset stages one runtime file atomically in the local cache.
 func (r *Resolver) downloadAsset(ctx context.Context, objectKey, localPath string, executable bool) error {
 	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 		return fmt.Errorf("create runtime asset dir: %w", err)
@@ -186,16 +187,7 @@ func (r *Resolver) assetURL(objectKey string) string {
 	return r.baseURL + "/" + objectKey
 }
 
-// validateLocalAsset answers whether a cached file is ready for reuse
-//
-// # The checks stay intentionally small in this issue
-//
-// The file must exist
-// The path must be a file not a directory
-// The file must not be empty
-// Executable assets must have executable bits locally
-//
-// We are not doing deep checksum or metadata verification in this slice
+// validateLocalAsset answers whether a cached runtime file is ready for reuse.
 func validateLocalAsset(path string, executable bool) (bool, error) {
 	info, err := os.Stat(path)
 	if err != nil {

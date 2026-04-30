@@ -9,13 +9,12 @@ import (
 )
 
 func TestNewWorkspaceBuildsExpectedPaths(t *testing.T) {
-	w, err := newWorkspace(
+	w := newWorkspace(
 		"/var/lib/spacescale/microvms",
 		"/var/lib/spacescale/j",
 		"vm-123",
 		"/var/lib/spacescale/runtime/host/firecracker-v1.15.1-x86_64",
 	)
-	require.NoError(t, err)
 
 	require.Equal(t, "vm-123", w.MicroVMID)
 	require.Equal(t, "/var/lib/spacescale/microvms/vm-123", w.RootDir)
@@ -54,13 +53,12 @@ func TestNewWorkspaceBuildsExpectedPaths(t *testing.T) {
 func TestNewWorkspaceUsesOneMicroVMIdentity(t *testing.T) {
 	const microvmID = "9f1d9a3e-8d4a-44fd-80df-2e5c41d82c73"
 
-	w, err := newWorkspace(
+	w := newWorkspace(
 		microVMStateDir,
 		microVMJailerStateDir,
 		microvmID,
 		"/var/lib/spacescale/runtime/host/firecracker-v1.15.1-x86_64",
 	)
-	require.NoError(t, err)
 
 	require.Equal(t, microvmID, w.MicroVMID)
 	require.Equal(t, filepath.Join(microVMStateDir, microvmID), w.RootDir)
@@ -74,68 +72,26 @@ func TestNewWorkspaceUsesOneMicroVMIdentity(t *testing.T) {
 func TestNewWorkspaceKeepsSocketPathsShortForUUID(t *testing.T) {
 	const linuxUnixSocketPathMaxLen = 107
 
-	w, err := newWorkspace(
+	w := newWorkspace(
 		microVMStateDir,
 		microVMJailerStateDir,
 		"9f1d9a3e-8d4a-44fd-80df-2e5c41d82c73",
 		"/var/lib/spacescale/runtime/host/firecracker-v1.15.1-x86_64",
 	)
-	require.NoError(t, err)
 
 	require.LessOrEqual(t, len(w.FirecrackerSocketHostPath()), linuxUnixSocketPathMaxLen)
 	require.LessOrEqual(t, len(vsockPortPath(w.VSockHostPath(), controlPort)), linuxUnixSocketPathMaxLen)
 	require.LessOrEqual(t, len(vsockPortPath(w.VSockHostPath(), logPort)), linuxUnixSocketPathMaxLen)
 }
 
-func TestNewWorkspaceRejectsEmptyRootDir(t *testing.T) {
-	_, err := newWorkspace(
-		"",
-		"/var/lib/spacescale/j",
-		"vm-123",
-		"/var/lib/spacescale/runtime/host/firecracker-v1.15.1-x86_64",
-	)
-	require.Error(t, err)
-}
-
-func TestNewWorkspaceRejectsEmptyJailerStateDir(t *testing.T) {
-	_, err := newWorkspace(
-		"/var/lib/spacescale/microvms",
-		"",
-		"vm-123",
-		"/var/lib/spacescale/runtime/host/firecracker-v1.15.1-x86_64",
-	)
-	require.Error(t, err)
-}
-
-func TestNewWorkspaceRejectsEmptyID(t *testing.T) {
-	_, err := newWorkspace(
-		"/var/lib/spacescale/microvms",
-		"/var/lib/spacescale/j",
-		"",
-		"/var/lib/spacescale/runtime/host/firecracker-v1.15.1-x86_64",
-	)
-	require.Error(t, err)
-}
-
-func TestNewWorkspaceRejectsEmptyFirecrackerPath(t *testing.T) {
-	_, err := newWorkspace(
-		"/var/lib/spacescale/microvms",
-		"/var/lib/spacescale/j",
-		"vm-123",
-		"",
-	)
-	require.Error(t, err)
-}
-
 func TestWorkspacePrepareAndCleanup(t *testing.T) {
 	root := t.TempDir()
-	w, err := newWorkspace(
+	w := newWorkspace(
 		filepath.Join(root, "microvms"),
 		filepath.Join(root, "j"),
 		"vm-123",
 		"/runtime/firecracker-v1.15.1-x86_64",
 	)
-	require.NoError(t, err)
 
 	require.NoError(t, w.Prepare())
 
@@ -162,6 +118,53 @@ func TestWorkspacePrepareAndCleanup(t *testing.T) {
 	require.True(t, os.IsNotExist(err))
 }
 
+func TestPrepareRootFSCopiesTemplateAsIs(t *testing.T) {
+	tmp := t.TempDir()
+	templatePath := filepath.Join(tmp, "template.ext4")
+	targetPath := filepath.Join(tmp, "rootfs.ext4")
+	templateBytes := []byte("scoutd-rootfs-template")
+	require.NoError(t, os.WriteFile(templatePath, templateBytes, 0o644))
+
+	require.NoError(t, prepareRootFS(templatePath, targetPath))
+
+	targetBytes, err := os.ReadFile(targetPath)
+	require.NoError(t, err)
+	require.Equal(t, templateBytes, targetBytes)
+
+	targetInfo, err := os.Stat(targetPath)
+	require.NoError(t, err)
+	require.Equal(t, int64(len(templateBytes)), targetInfo.Size())
+
+	templateInfo, err := os.Stat(templatePath)
+	require.NoError(t, err)
+	require.Equal(t, int64(len(templateBytes)), templateInfo.Size())
+}
+
+func TestPrepareRootFSReturnsCopyErrorWhenTemplateMissing(t *testing.T) {
+	tmp := t.TempDir()
+	templatePath := filepath.Join(tmp, "missing-template.ext4")
+	targetPath := filepath.Join(tmp, "rootfs.ext4")
+
+	err := prepareRootFS(templatePath, targetPath)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "copy rootfs template")
+	require.Contains(t, err.Error(), "open source file")
+}
+
+func TestCopyFileOverwritesExistingTarget(t *testing.T) {
+	tmp := t.TempDir()
+	sourcePath := filepath.Join(tmp, "source")
+	targetPath := filepath.Join(tmp, "target")
+	require.NoError(t, os.WriteFile(sourcePath, []byte("new-rootfs"), 0o644))
+	require.NoError(t, os.WriteFile(targetPath, []byte("old-rootfs-data"), 0o644))
+
+	require.NoError(t, copyFile(sourcePath, targetPath))
+
+	targetBytes, err := os.ReadFile(targetPath)
+	require.NoError(t, err)
+	require.Equal(t, []byte("new-rootfs"), targetBytes)
+}
+
 func TestCleanupStaleStateRemovesMicroVMAndJailerState(t *testing.T) {
 	root := t.TempDir()
 	microVMRoot := filepath.Join(root, "microvms")
@@ -185,11 +188,4 @@ func TestCleanupStaleStateRemovesMicroVMAndJailerState(t *testing.T) {
 
 	_, err = os.Stat(jailerRoot)
 	require.True(t, os.IsNotExist(err))
-}
-
-func TestCleanupStaleStateRejectsInvalidPaths(t *testing.T) {
-	root := t.TempDir()
-
-	require.Error(t, cleanupStaleState("", filepath.Join(root, "j")))
-	require.Error(t, cleanupStaleState(filepath.Join(root, "microvms"), ""))
 }

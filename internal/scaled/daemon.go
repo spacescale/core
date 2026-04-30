@@ -1,5 +1,10 @@
 //go:build linux
 
+// Package scaled starts the Linux edge daemon and wires startup subsystems.
+//
+// The package validates config, runs host preflight, reconciles runtime assets,
+// joins node bootstrap, and starts workload handling. It should orchestrate only;
+// subsystem internals stay in system, runtime, node, and workload.
 package scaled
 
 import (
@@ -20,7 +25,6 @@ type Daemon struct {
 	cfg    config.Config
 	logger *slog.Logger
 	nats   *nats.Client
-	assets runtime.Paths
 }
 
 func New(cfg config.Config, logger *slog.Logger) (*Daemon, error) {
@@ -41,8 +45,8 @@ func New(cfg config.Config, logger *slog.Logger) (*Daemon, error) {
 }
 
 func (d *Daemon) Run(ctx context.Context) error {
-
-	if err := system.Preflight(d.logger); err != nil {
+	jailerIdentity, err := system.Preflight(d.logger)
+	if err != nil {
 		return err
 	}
 
@@ -58,8 +62,6 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return fmt.Errorf("reconcile runtime assets: %w", err)
 	}
 
-	d.assets = assets
-
 	snapshot, identity, err := node.Bootstrap(ctx, d.nats)
 	if err != nil {
 		return err
@@ -74,6 +76,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	manager, err := workload.NewManager(
 		d.logger,
 		assets,
+		jailerIdentity,
 		snapshot.TotalRamMb,
 		snapshot.TotalCores,
 		identity.NodeID,

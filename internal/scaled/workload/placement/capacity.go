@@ -1,13 +1,3 @@
-// Package placement provides the local execution and placement engine for microVM's.
-//
-// This file implements the Capacity ledger which tracks the real time physical
-// resources of the node. It uses optimistic concurrency control
-// via temporary reservations to prevent scheduling race conditions such as OOM
-// during decentralized NATS auctions.
-//
-// The Capacity struct is strictly isolated from network transports. It relies on
-// fast atomic memory mutations and lazy garbage collection to handle thousands of
-// concurrent allocation requests without deadlocking.
 package placement
 
 import (
@@ -56,9 +46,7 @@ func NewCapacity(totalRAMMB uint64, totalCores uint32) *Capacity {
 	}
 }
 
-// Reserve optimistically holds resources for a pending auction bid.
-// It is mathematically atomic. It checks capacity and deducts it under the
-// same lock to prevent Time Of Check to Time Of Use race conditions.
+// Reserve holds resources for a pending auction bid.
 //
 // It returns the remaining free RAM which acts as the auction tiebreaker
 // and true if successful. If a reservation for the microvm id already exists
@@ -68,16 +56,12 @@ func (c *Capacity) Reserve(microvmID string, spec HardwareSpec, ttl time.Duratio
 	defer c.mu.Unlock()
 
 	now := time.Now()
-	// Lazy Garbage Collection. Clear out old reservations before making capacity decisions
-	// This prevents the need for a separate background ticker goroutine.
 	c.releaseExpiredLocked(now)
 
-	// Idempotency check. If we already reserved this microvm we cannot reserve it again.
 	if _, exists := c.reservations[microvmID]; exists {
 		return 0, false
 	}
 
-	// Fail Fast. Ensure we have enough physical room before mutating anything.
 	if !c.canFitLocked(spec) {
 		return 0, false
 	}
@@ -195,7 +179,7 @@ func (c *Capacity) canFitLocked(spec HardwareSpec) bool {
 func (c *Capacity) freeRAMMBLocked() uint64 {
 	allocated := c.usedRAMMB + c.reservedRAMMB
 	if allocated > c.sellableRAMMB {
-		return 0 // Defensive return preventing catastrophic uint64 underflow
+		return 0
 	}
 	return c.sellableRAMMB - allocated
 }
@@ -203,7 +187,7 @@ func (c *Capacity) freeRAMMBLocked() uint64 {
 func (c *Capacity) freePinnedCoresLocked() uint32 {
 	allocated := c.usedPinnedCores + c.reservedPinnedCores
 	if allocated > c.sellableCores {
-		return 0 // Defensive return preventing catastrophic uint32 underflow
+		return 0
 	}
 	return c.sellableCores - allocated
 }
@@ -215,7 +199,7 @@ func (c *Capacity) freePinnedCoresLocked() uint32 {
 func (c *Capacity) freeSharedVCPULocked() uint32 {
 	dedicatedCores := c.usedPinnedCores + c.reservedPinnedCores
 	if dedicatedCores > c.sellableCores {
-		return 0 // Defensive guard
+		return 0
 	}
 	sharedCores := c.sellableCores - dedicatedCores
 
@@ -223,7 +207,7 @@ func (c *Capacity) freeSharedVCPULocked() uint32 {
 
 	allocatedShared := c.usedSharedVCPU + c.reservedSharedVCPU
 	if allocatedShared > sharedCapacity {
-		return 0 // Defensive return preventing catastrophic uint32 underflow
+		return 0
 	}
 
 	return sharedCapacity - allocatedShared
