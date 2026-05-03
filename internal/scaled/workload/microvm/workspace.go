@@ -11,8 +11,9 @@
 // local lifecycle path stays simple.
 //
 // File boundaries stay concrete: launcher.go owns Firecracker lifecycle,
-// workspace.go owns host paths and rootfs files, and vsock.go owns guest CIDs,
-// host-side vsock listeners, and scoutd hello parsing.
+// workspace.go owns host paths and rootfs files, network files own TAP/MMDS host
+// network state, and vsock.go owns guest CIDs, host-side vsock listeners, and
+// scoutd hello parsing.
 package microvm
 
 import (

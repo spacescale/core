@@ -5,6 +5,7 @@
 package microvm
 
 import (
+	"net"
 	"testing"
 
 	firecracker "github.com/firecracker-microvm/firecracker-go-sdk"
@@ -38,8 +39,15 @@ func TestBuildFirecrackerConfigUsesJailVisiblePaths(t *testing.T) {
 		VCPU:      2,
 		RAMMB:     512,
 	}
+	network := &Network{
+		TapName:   tapNameForMicroVM(req.MicroVMID),
+		GuestMAC:  guestMACForMicroVM(req.MicroVMID),
+		HostCIDR:  hostIPv4CIDR,
+		GuestCIDR: guestIPv4CIDR,
+		MMDSIP:    net.ParseIP(mmdsIPv4).To4(),
+	}
 
-	cfg := launcher.buildFirecrackerConfig(req, workspace, 3, nil)
+	cfg := launcher.buildFirecrackerConfig(req, workspace, 3, network, nil)
 
 	require.Equal(t, workspace.FirecrackerSocketPathInJail(), cfg.SocketPath)
 	require.Equal(t, workspace.FirecrackerLogPathInJail(), cfg.LogPath)
@@ -50,6 +58,15 @@ func TestBuildFirecrackerConfigUsesJailVisiblePaths(t *testing.T) {
 	require.Equal(t, "scoutd", cfg.VsockDevices[0].ID)
 	require.Equal(t, workspace.VSockPathInJail(), cfg.VsockDevices[0].Path)
 	require.Equal(t, uint32(3), cfg.VsockDevices[0].CID)
+
+	require.Len(t, cfg.NetworkInterfaces, 1)
+	require.True(t, cfg.NetworkInterfaces[0].AllowMMDS)
+	require.NotNil(t, cfg.NetworkInterfaces[0].StaticConfiguration)
+	require.Equal(t, network.TapName, cfg.NetworkInterfaces[0].StaticConfiguration.HostDevName)
+	require.Equal(t, network.GuestMAC, cfg.NetworkInterfaces[0].StaticConfiguration.MacAddress)
+	require.Nil(t, cfg.NetworkInterfaces[0].StaticConfiguration.IPConfiguration)
+	require.Equal(t, network.MMDSIP, cfg.MmdsAddress)
+	require.Equal(t, firecracker.MMDSv2, cfg.MmdsVersion)
 
 	require.Len(t, cfg.Drives, 1)
 	require.Equal(t, workspace.RootFSPath, firecracker.StringValue(cfg.Drives[0].PathOnHost))
