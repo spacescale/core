@@ -13,6 +13,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/sync v0.20.0
 	google.golang.org/protobuf v1.36.11
+	github.com/vishvananda/netlink v1.3.1
 )
 
 require (
@@ -57,7 +58,6 @@ require (
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
-	github.com/vishvananda/netlink v1.3.1 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

@@ -43,6 +43,7 @@ type ActiveVM struct {
 	MicroVMID string
 	GuestCID  uint32
 	Workspace Workspace
+	Network   *Network
 
 	machine     *firecracker.Machine
 	listeners   *VSockListeners
@@ -124,6 +125,9 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 		"guest_cid", vm.GuestCID,
 		"boot_ms", time.Since(startedAt).Milliseconds(),
 		"workspace", vm.Workspace.RootDir,
+		"tap", vm.Network.TapName,
+		"guest_mac", vm.Network.GuestMAC,
+		"mmds", vm.Network.MMDSIP.String(),
 	)
 
 	return vm, nil
@@ -160,8 +164,8 @@ func (l *Launcher) newActiveVM(req LaunchRequest) (*ActiveVM, context.Context) {
 }
 
 // prepareVM creates every host-side resource that must exist before Firecracker
-// starts: workspace directories, rootfs copy, jailer ownership, CID, and vsock
-// listeners.
+// starts: workspace directories, rootfs copy, jailer ownership, CID, vsock
+// listeners, and TAP networking.
 func (l *Launcher) prepareVM(vm *ActiveVM) error {
 	if err := vm.Workspace.Prepare(); err != nil {
 		return fmt.Errorf("prepare workspace: %w", err)
@@ -192,17 +196,43 @@ func (l *Launcher) prepareVM(vm *ActiveVM) error {
 	}
 	vm.listeners = listeners
 
+	network, err := prepareNetwork(vm.MicroVMID, l.jailerUID, l.jailerGID)
+	if err != nil {
+		return fmt.Errorf("prepare network: %w", err)
+	}
+	vm.Network = network
+
 	return nil
 }
 
 // startFirecracker builds the jailer-aware SDK config and starts the jailed VMM.
 func (l *Launcher) startFirecracker(ctx context.Context, req LaunchRequest, vm *ActiveVM, jailerOutput io.Writer) error {
-	fcCfg := l.buildFirecrackerConfig(req, vm.Workspace, vm.GuestCID, jailerOutput)
+	// Build the full Firecracker SDK config before creating the Machine. This
+	// is where host paths, jail-visible paths, vsock, and network settings are
+	// frozen for this boot attempt.
+	fcCfg := l.buildFirecrackerConfig(req, vm.Workspace, vm.GuestCID, vm.Network, jailerOutput)
 	machine, err := firecracker.NewMachine(ctx, fcCfg)
 	if err != nil {
 		return fmt.Errorf("create firecracker machine: %w", err)
 	}
+
+	// Keep normal SDK request/response chatter out of scaled stdout. Firecracker,
+	// jailer, and scoutd still write their diagnostic files in the VM workspace.
 	machine.Logger().Logger.SetOutput(io.Discard)
+
+	// Firecracker's FcInit handler chain configures the VM before InstanceStart.
+	// Append metadata after the SDK has configured MMDS so scoutd can read stable
+	// boot metadata from inside the guest.
+	machine.Handlers.FcInit = machine.Handlers.FcInit.AppendAfter(
+		firecracker.ConfigMmdsHandlerName,
+		firecracker.NewSetMetadataHandler(map[string]any{
+			"version":    1,
+			"microvm_id": req.MicroVMID,
+		}),
+	)
+
+	// Store the Machine before Start so cleanup can stop the VMM if startup
+	// fails after the process is created.
 	vm.machine = machine
 
 	if err := machine.Start(ctx); err != nil {
@@ -213,7 +243,7 @@ func (l *Launcher) startFirecracker(ctx context.Context, req LaunchRequest, vm *
 
 // Firecracker config stays explicit here because this is the boundary where host
 // paths become jail-visible paths for the SDK and jailer.
-func (l *Launcher) buildFirecrackerConfig(req LaunchRequest, workspace Workspace, cid uint32, jailerOutput io.Writer) firecracker.Config {
+func (l *Launcher) buildFirecrackerConfig(req LaunchRequest, workspace Workspace, cid uint32, network *Network, jailerOutput io.Writer) firecracker.Config {
 	uid := l.jailerUID
 	gid := l.jailerGID
 
@@ -222,8 +252,15 @@ func (l *Launcher) buildFirecrackerConfig(req LaunchRequest, workspace Workspace
 		KernelImagePath: l.runtimePaths.KernelPath,
 		KernelArgs:      scoutdKernelArgs,
 		Drives:          firecracker.NewDrivesBuilder(workspace.RootFSPath).Build(),
-		LogPath:         workspace.FirecrackerLogPathInJail(),
-		LogLevel:        "Info",
+		NetworkInterfaces: firecracker.NetworkInterfaces{{
+			StaticConfiguration: &firecracker.StaticNetworkConfiguration{
+				HostDevName: network.TapName,
+				MacAddress:  network.GuestMAC,
+			},
+			AllowMMDS: true,
+		}},
+		LogPath:  workspace.FirecrackerLogPathInJail(),
+		LogLevel: "Info",
 		MachineCfg: models.MachineConfiguration{
 			VcpuCount:  firecracker.Int64(int64(req.VCPU)),
 			MemSizeMib: firecracker.Int64(int64(req.RAMMB)),
@@ -234,6 +271,9 @@ func (l *Launcher) buildFirecrackerConfig(req LaunchRequest, workspace Workspace
 			Path: workspace.VSockPathInJail(),
 			CID:  cid,
 		}},
+
+		MmdsAddress: network.MMDSIP,
+		MmdsVersion: firecracker.MMDSv2,
 		JailerCfg: &firecracker.JailerConfig{
 			UID:            &uid,
 			GID:            &gid,
@@ -361,6 +401,13 @@ func (l *Launcher) logBootFailure(vm *ActiveVM, reason string, cause error) {
 		"firecracker_log", vm.Workspace.FirecrackerLogHostPath(),
 		"scoutd_log", scoutdLogHostPath(vm.Workspace.RootDir),
 	}
+	if vm.Network != nil {
+		args = append(args,
+			"tap", vm.Network.TapName,
+			"guest_mac", vm.Network.GuestMAC,
+			"mmds", vm.Network.MMDSIP.String(),
+		)
+	}
 	if cause != nil {
 		args = append(args, "error", cause)
 	}
@@ -432,6 +479,11 @@ func (l *Launcher) cleanupActive(vm *ActiveVM, stopVMM bool, removeWorkspace boo
 		if vm.GuestCID != 0 {
 			l.cids.Release(vm.GuestCID)
 		}
+
+		if vm.Network != nil {
+			err = errors.Join(err, vm.Network.Cleanup())
+		}
+
 		if removeWorkspace {
 			err = errors.Join(err, vm.Workspace.Cleanup())
 		}
