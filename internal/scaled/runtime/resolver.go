@@ -4,7 +4,7 @@
 // work.
 //
 // The package owns the runtime asset cache for Firecracker, jailer, guest kernel,
-// and scoutd rootfs. Startup calls it once, receives concrete paths, and passes
+// and guestd rootfs. Startup calls it once, receives concrete paths, and passes
 // those paths downstream instead of letting launch code fetch or validate assets.
 package runtime
 
@@ -27,7 +27,7 @@ const (
 	firecrackerObjectKey = "firecracker-v1.15.1-x86_64"
 	jailerObjectKey      = "jailer-v1.15.1-x86_64"
 	kernelObjectKey      = "vmlinux-v6.1.169-spacescale4-x86_64"
-	rootfsObjectKey      = "scoutd-rootfs-v0.1.3-x86_64-ext4"
+	rootfsObjectKey      = "guestd-rootfs-v0.1.3-x86_64-ext4"
 )
 
 const (

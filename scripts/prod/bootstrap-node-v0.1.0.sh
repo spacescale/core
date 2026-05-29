@@ -31,7 +31,7 @@ apt-get install -y wget ca-certificates curl
 # Create the directory for SpaceScale state and cached runtime assets.
 mkdir -p /var/lib/spacescale
 
-# scaled owns runtime asset resolution for firecracker, jailer, kernel, and scoutd.
+# scaled owns runtime asset resolution for firecracker, jailer, kernel, and guestd.
 # The bootstrap script only installs the daemon and starts it.
 wget https://spacescale-runtime-assets.s3.eu-west-par.io.cloud.ovh.net/scaled -O /usr/local/bin/scaled
 chmod +x /usr/local/bin/scaled

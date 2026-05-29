@@ -124,7 +124,7 @@ func TestPrepareRootFSCopiesTemplateAsIs(t *testing.T) {
 	tmp := t.TempDir()
 	templatePath := filepath.Join(tmp, "template.ext4")
 	targetPath := filepath.Join(tmp, "rootfs.ext4")
-	templateBytes := []byte("scoutd-rootfs-template")
+	templateBytes := []byte("guestd-rootfs-template")
 	require.NoError(t, os.WriteFile(templatePath, templateBytes, 0o644))
 
 	require.NoError(t, prepareRootFS(templatePath, targetPath))

@@ -39,7 +39,7 @@ SpaceScale should stay simple and direct. Prefer the smallest correct change tha
 - Success logs should be concise lifecycle checkpoints, not step-by-step narration. Prefer one summary line per startup phase or subsystem boundary.
 - Put the owning subsystem in `component`; avoid `component=scaled subsystem=...` when a more specific component exists.
 - Keep detailed paths and noisy runtime output in diagnostic files. Log those paths on failure instead of dumping large file contents or SDK chatter.
-- Keep normal Firecracker SDK request/response logs out of stdout. Preserve jailer, Firecracker, and scoutd file logs for debugging.
+- Keep normal Firecracker SDK request/response logs out of stdout. Preserve jailer, Firecracker, and guestd file logs for debugging.
 - Failure logs should include the actionable error and diagnostic paths needed to continue investigation.
 
 ## File Organization

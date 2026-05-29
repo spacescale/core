@@ -18,7 +18,7 @@ func TestBuildFirecrackerConfigUsesJailVisiblePaths(t *testing.T) {
 		FirecrackerPath: "/var/lib/spacescale/runtime/host/firecracker-v1.15.1-x86_64",
 		JailerPath:      "/var/lib/spacescale/runtime/host/jailer-v1.15.1-x86_64",
 		KernelPath:      "/var/lib/spacescale/runtime/guest/vmlinux-v6.1.80-x86_64",
-		RootFSPath:      "/var/lib/spacescale/runtime/guest/scoutd-rootfs-v0.1.3-x86_64-ext4",
+		RootFSPath:      "/var/lib/spacescale/runtime/guest/guestd-rootfs-v0.1.3-x86_64-ext4",
 	}
 
 	launcher := &Launcher{
@@ -51,11 +51,11 @@ func TestBuildFirecrackerConfigUsesJailVisiblePaths(t *testing.T) {
 
 	require.Equal(t, workspace.FirecrackerSocketPathInJail(), cfg.SocketPath)
 	require.Equal(t, workspace.FirecrackerLogPathInJail(), cfg.LogPath)
-	require.Equal(t, scoutdKernelArgs, cfg.KernelArgs)
+	require.Equal(t, guestdKernelArgs, cfg.KernelArgs)
 	require.Equal(t, paths.KernelPath, cfg.KernelImagePath)
 
 	require.Len(t, cfg.VsockDevices, 1)
-	require.Equal(t, "scoutd", cfg.VsockDevices[0].ID)
+	require.Equal(t, "guestd", cfg.VsockDevices[0].ID)
 	require.Equal(t, workspace.VSockPathInJail(), cfg.VsockDevices[0].Path)
 	require.Equal(t, uint32(3), cfg.VsockDevices[0].CID)
 

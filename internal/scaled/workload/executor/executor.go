@@ -6,7 +6,7 @@
 // wins.
 //
 // The package validates launch messages, commits reserved capacity, invokes the
-// local microvm launcher, and publishes accepted only after scoutd hello. On boot
+// local microvm launcher, and publishes accepted only after guestd hello. On boot
 // or reply failure it reverts capacity and tears down any started VM.
 package executor
 
@@ -27,7 +27,7 @@ const (
 	microVMLaunchFailedStatus   = "failed"
 
 	// microVMLaunchBootTimeout is a failure guard, not the expected boot time.
-	// The scoutd path should be fast; if Firecracker cannot start and send hello
+	// The guestd path should be fast; if Firecracker cannot start and send hello
 	// inside this window, the node should reject the launch and free capacity.
 	microVMLaunchBootTimeout = 10 * time.Second
 )

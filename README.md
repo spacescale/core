@@ -24,4 +24,4 @@ The SpaceScale API is documented and testable via **Yaak** workspaces. The colle
 
 ## Runtime Docs
 
-- [Guest kernel profile](docs/runtime/kernel-profile.md): production Firecracker guest kernel flags, rationale, and exclusions for the `scoutd` app-guest model.
+- [Guest kernel profile](docs/runtime/kernel-profile.md): production Firecracker guest kernel flags, rationale, and exclusions for the `guestd` app-guest model.

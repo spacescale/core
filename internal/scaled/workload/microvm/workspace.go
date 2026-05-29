@@ -4,7 +4,7 @@
 // workloads.
 //
 // The package prepares local host state, starts one jailed Firecracker VM, and
-// accepts launch only after scoutd proves guest userspace is alive with a hello
+// accepts launch only after guestd proves guest userspace is alive with a hello
 // frame over virtio-vsock. Startup, placement, and executor code validate
 // runtime assets, shape values, reservations, and duplicate launches before this
 // package is called. microvm intentionally avoids duplicating those checks so the
@@ -13,7 +13,7 @@
 // File boundaries stay concrete: launcher.go owns Firecracker lifecycle,
 // workspace.go owns host paths and rootfs files, network files own TAP/MMDS host
 // network state, and vsock.go owns guest CIDs, host-side vsock listeners, and
-// scoutd hello parsing.
+// guestd hello parsing.
 package microvm
 
 import (
@@ -139,7 +139,7 @@ func (w Workspace) Prepare() error {
 	return os.MkdirAll(w.JailerRootDir, 0o755)
 }
 
-// prepareRootFS copies the platform-managed scoutd rootfs into the workspace.
+// prepareRootFS copies the platform-managed guestd rootfs into the workspace.
 func prepareRootFS(templatePath, targetPath string) error {
 	if err := copyFile(templatePath, targetPath); err != nil {
 		return fmt.Errorf("copy rootfs template: %w", err)

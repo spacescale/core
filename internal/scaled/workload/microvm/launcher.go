@@ -21,15 +21,15 @@ import (
 	"github.com/spacescale/core/internal/scaled/system"
 )
 
-// scoutdKernelArgs is the fixed first-boot command line for the minimal scoutd
+// guestdKernelArgs is the fixed first-boot command line for the minimal guestd
 // guest. It keeps the Firecracker device model small, leaves panic/error output
-// on the serial console, mounts the root disk, and gives scoutd enough bootstrap
+// on the serial console, mounts the root disk, and gives guestd enough bootstrap
 // network metadata to finish initialization.
-const scoutdKernelArgs = "console=ttyS0 quiet loglevel=3 reboot=k panic=-1 pci=off acpi=off nomodule rw root=/dev/vda scoutd.ipv4=172.16.0.2/30 scoutd.gateway=172.16.0.1 scoutd.mmds=169.254.169.254"
+const guestdKernelArgs = "console=ttyS0 quiet loglevel=3 reboot=k panic=-1 pci=off acpi=off nomodule rw root=/dev/vda guestd.ipv4=172.16.0.2/30 guestd.gateway=172.16.0.1 guestd.mmds=169.254.169.254"
 
-// LaunchRequest is the local, transport-free scoutd boot request.
+// LaunchRequest is the local, transport-free guestd boot request.
 //
-// Root disk size is intentionally absent. The scoutd rootfs is a
+// Root disk size is intentionally absent. The guestd rootfs is a
 // platform-managed boot image copied as-is; later OCI workload scratch space or
 // durable data should be modeled separately from this boot request.
 type LaunchRequest struct {
@@ -78,7 +78,7 @@ func NewLauncher(logger *slog.Logger, runtimePaths scaledruntime.Paths, jailerId
 	}
 }
 
-// Launch boots one jailed Firecracker VM and returns only after scoutd sends its
+// Launch boots one jailed Firecracker VM and returns only after guestd sends its
 // hello frame over the control vsock channel.
 //
 // The input context bounds the boot attempt and hello wait. After hello is
@@ -99,7 +99,7 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 	if err := l.prepareVM(vm); err != nil {
 		return nil, err
 	}
-	go l.drainScoutdLog(vmCtx, vm)
+	go l.drainGuestdLog(vmCtx, vm)
 
 	jailerLog, err := openJailerLog(vm.Workspace.RootDir)
 	if err != nil {
@@ -120,7 +120,7 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 
 	go l.watchVM(vm, vmmExit)
 
-	l.logger.Info("microvm booted scoutd",
+	l.logger.Info("microvm booted guestd",
 		"microvm_id", req.MicroVMID,
 		"guest_cid", vm.GuestCID,
 		"boot_ms", time.Since(startedAt).Milliseconds(),
@@ -144,7 +144,7 @@ func (l *Launcher) Stop(_ context.Context, microvmID string) error {
 
 // newActiveVM creates the local lifecycle record before any host resources exist.
 // The returned context belongs to the VM lifecycle; the caller's ctx only gates
-// the boot attempt and scoutd hello wait.
+// the boot attempt and guestd hello wait.
 func (l *Launcher) newActiveVM(req LaunchRequest) (*ActiveVM, context.Context) {
 	workspace := newWorkspace(
 		microVMStateDir,
@@ -217,11 +217,11 @@ func (l *Launcher) startFirecracker(ctx context.Context, req LaunchRequest, vm *
 	}
 
 	// Keep normal SDK request/response chatter out of scaled stdout. Firecracker,
-	// jailer, and scoutd still write their diagnostic files in the VM workspace.
+	// jailer, and guestd still write their diagnostic files in the VM workspace.
 	machine.Logger().Logger.SetOutput(io.Discard)
 
 	// Firecracker's FcInit handler chain configures the VM before InstanceStart.
-	// Append metadata after the SDK has configured MMDS so scoutd can read stable
+	// Append metadata after the SDK has configured MMDS so guestd can read stable
 	// boot metadata from inside the guest.
 	machine.Handlers.FcInit = machine.Handlers.FcInit.AppendAfter(
 		firecracker.ConfigMmdsHandlerName,
@@ -250,7 +250,7 @@ func (l *Launcher) buildFirecrackerConfig(req LaunchRequest, workspace Workspace
 	return firecracker.Config{
 		SocketPath:      workspace.FirecrackerSocketPathInJail(),
 		KernelImagePath: l.runtimePaths.KernelPath,
-		KernelArgs:      scoutdKernelArgs,
+		KernelArgs:      guestdKernelArgs,
 		Drives:          firecracker.NewDrivesBuilder(workspace.RootFSPath).Build(),
 		NetworkInterfaces: firecracker.NetworkInterfaces{{
 			StaticConfiguration: &firecracker.StaticNetworkConfiguration{
@@ -267,7 +267,7 @@ func (l *Launcher) buildFirecrackerConfig(req LaunchRequest, workspace Workspace
 			Smt:        firecracker.Bool(false),
 		},
 		VsockDevices: []firecracker.VsockDevice{{
-			ID:   "scoutd",
+			ID:   "guestd",
 			Path: workspace.VSockPathInJail(),
 			CID:  cid,
 		}},
@@ -299,11 +299,11 @@ func openJailerLog(rootDir string) (*os.File, error) {
 	return file, nil
 }
 
-// openScoutdLog captures the guest log stream after scoutd connects over vsock.
-func openScoutdLog(rootDir string) (*os.File, error) {
-	file, err := os.OpenFile(scoutdLogHostPath(rootDir), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+// openGuestdLog captures the guest log stream after guestd connects over vsock.
+func openGuestdLog(rootDir string) (*os.File, error) {
+	file, err := os.OpenFile(guestdLogHostPath(rootDir), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
-		return nil, fmt.Errorf("open scoutd log: %w", err)
+		return nil, fmt.Errorf("open guestd log: %w", err)
 	}
 	return file, nil
 }
@@ -312,17 +312,17 @@ func jailerLogHostPath(rootDir string) string {
 	return filepath.Join(rootDir, "jailer.log")
 }
 
-func scoutdLogHostPath(rootDir string) string {
-	return filepath.Join(rootDir, "scoutd.log")
+func guestdLogHostPath(rootDir string) string {
+	return filepath.Join(rootDir, "guestd.log")
 }
 
-func (l *Launcher) drainScoutdLog(ctx context.Context, vm *ActiveVM) {
+func (l *Launcher) drainGuestdLog(ctx context.Context, vm *ActiveVM) {
 	conn, err := vm.listeners.AcceptLog(ctx)
 	if err != nil {
 		if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
-		l.logger.Warn("accept scoutd log channel",
+		l.logger.Warn("accept guestd log channel",
 			"microvm_id", vm.MicroVMID,
 			"error", err,
 		)
@@ -330,9 +330,9 @@ func (l *Launcher) drainScoutdLog(ctx context.Context, vm *ActiveVM) {
 	}
 	defer conn.Close()
 
-	logFile, err := openScoutdLog(vm.Workspace.RootDir)
+	logFile, err := openGuestdLog(vm.Workspace.RootDir)
 	if err != nil {
-		l.logger.Warn("open scoutd log",
+		l.logger.Warn("open guestd log",
 			"microvm_id", vm.MicroVMID,
 			"error", err,
 		)
@@ -345,7 +345,7 @@ func (l *Launcher) drainScoutdLog(ctx context.Context, vm *ActiveVM) {
 		case <-ctx.Done():
 			return
 		default:
-			l.logger.Warn("drain scoutd log",
+			l.logger.Warn("drain guestd log",
 				"microvm_id", vm.MicroVMID,
 				"error", err,
 			)
@@ -363,7 +363,7 @@ func waitForMachine(machine *firecracker.Machine) <-chan error {
 	return exited
 }
 
-// waitForHelloOrExit accepts the launch only if scoutd sends hello before the
+// waitForHelloOrExit accepts the launch only if guestd sends hello before the
 // VMM exits. This avoids waiting for the full hello timeout after an early guest
 // panic or clean shutdown.
 func (l *Launcher) waitForHelloOrExit(ctx context.Context, vm *ActiveVM, vmmExit <-chan error) error {
@@ -375,17 +375,17 @@ func (l *Launcher) waitForHelloOrExit(ctx context.Context, vm *ActiveVM, vmmExit
 	select {
 	case err := <-hello:
 		if err != nil {
-			err = fmt.Errorf("wait for scoutd hello: %w", err)
-			l.logBootFailure(vm, "scoutd hello failed", err)
+			err = fmt.Errorf("wait for guestd hello: %w", err)
+			l.logBootFailure(vm, "guestd hello failed", err)
 			return err
 		}
 		return nil
 	case err := <-vmmExit:
-		l.logBootFailure(vm, "microvm exited before scoutd hello", err)
+		l.logBootFailure(vm, "microvm exited before guestd hello", err)
 		if err != nil {
-			return fmt.Errorf("microvm exited before scoutd hello: %w", err)
+			return fmt.Errorf("microvm exited before guestd hello: %w", err)
 		}
-		return errors.New("microvm exited before scoutd hello")
+		return errors.New("microvm exited before guestd hello")
 	}
 }
 
@@ -399,7 +399,7 @@ func (l *Launcher) logBootFailure(vm *ActiveVM, reason string, cause error) {
 		"jailer_root", vm.Workspace.JailerRootDir,
 		"jailer_log", jailerLogHostPath(vm.Workspace.RootDir),
 		"firecracker_log", vm.Workspace.FirecrackerLogHostPath(),
-		"scoutd_log", scoutdLogHostPath(vm.Workspace.RootDir),
+		"guestd_log", guestdLogHostPath(vm.Workspace.RootDir),
 	}
 	if vm.Network != nil {
 		args = append(args,

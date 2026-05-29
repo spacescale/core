@@ -1,14 +1,14 @@
 # SpaceScale Guest Kernel Profile
 
-SpaceScale guests are Firecracker microVMs that boot into `scoutd` as PID 1. The current production model is one customer app supervised by one `scoutd` inside one VM. We do not run Docker, containerd, or a full container host inside the guest.
+SpaceScale guests are Firecracker microVMs that boot into `guestd` as PID 1. The current production model is one customer app supervised by one `guestd` inside one VM. We do not run Docker, containerd, or a full container host inside the guest.
 
-This kernel profile is for a production PaaS app guest. It should boot quickly, support normal Linux application runtimes, databases, brokers, message queues, CPU inference workloads, and basic `scoutd` workload control without adding container-host, guest eBPF, tracing, debug, or GPU stacks before we need them.
+This kernel profile is for a production PaaS app guest. It should boot quickly, support normal Linux application runtimes, databases, brokers, message queues, CPU inference workloads, and basic `guestd` workload control without adding container-host, guest eBPF, tracing, debug, or GPU stacks before we need them.
 
 ## Rules
 
 - Build required features into the kernel as `=y`; do not rely on loadable modules.
 - Keep `CONFIG_MODULES` disabled while the guest cmdline includes `nomodule` and the rootfs does not ship `/lib/modules`.
-- Keep the guest model narrow: Firecracker device model, `scoutd`, and app processes.
+- Keep the guest model narrow: Firecracker device model, `guestd`, and app processes.
 - Do not enable features just because a general-purpose Linux distribution enables them.
 - Add kernel surface only when the guest actually owns that responsibility.
 - Keep the default guest lean. Put platform eBPF, deep network observability, and routing acceleration on the host where `scaled` owns the machine.
@@ -85,11 +85,11 @@ FS_POSIX_ACL
 
 Why:
 
-- `PROC_FS` and `SYSFS` provide the normal Linux runtime view expected by `scoutd`, language runtimes, databases, and diagnostics.
-- `TMPFS` backs `/dev/shm`, `/run`, and `/tmp`; this is required before `scoutd` can treat the guest as ready.
+- `PROC_FS` and `SYSFS` provide the normal Linux runtime view expected by `guestd`, language runtimes, databases, and diagnostics.
+- `TMPFS` backs `/dev/shm`, `/run`, and `/tmp`; this is required before `guestd` can treat the guest as ready.
 - `UNIX98_PTYS` builds the Linux 6.1 `devpts` filesystem (`fs/devpts`) and supports pseudo-terminals for process supervision, shells, debuggers, and runtimes that expect ptys.
 - `DEVTMPFS` and `DEVTMPFS_MOUNT` provide `/dev` without requiring userspace device management.
-- `EXT4_FS` mounts the scoutd rootfs and later app root filesystems.
+- `EXT4_FS` mounts the guestd rootfs and later app root filesystems.
 - ACL and security xattr support preserve normal Linux filesystem metadata for app runtimes and future policy enforcement.
 
 ## Firecracker Devices
@@ -116,7 +116,7 @@ Why:
 - `VIRTIO_MMIO` is the Firecracker device transport used by the current `pci=off` boot path.
 - `VIRTIO_BLK` exposes `/dev/vda` for the root disk.
 - `VIRTIO_NET` supports the guest network device used by app traffic.
-- `VSOCKETS` and `VIRTIO_VSOCKETS` provide host/guest control and log channels for `scoutd`.
+- `VSOCKETS` and `VIRTIO_VSOCKETS` provide host/guest control and log channels for `guestd`.
 - `SERIAL_8250_CONSOLE` keeps panic and error diagnostics available through `console=ttyS0`; `quiet loglevel=3` keeps normal boot enumeration out of `jailer.log`.
 - `HW_RANDOM_VIRTIO` improves entropy availability for TLS, session tokens, brokers, databases, and language runtimes.
 
@@ -142,7 +142,7 @@ Why:
 
 - `NET`, `UNIX`, `INET`, and `PACKET` are the baseline for app networking and local IPC.
 - `IPV6` stays enabled because modern libraries often probe IPv6 even when the platform does not route it yet.
-- `*_DIAG` options support `ss`-style socket inspection and future `scoutd` diagnostics.
+- `*_DIAG` options support `ss`-style socket inspection and future `guestd` diagnostics.
 - `TCP_CONG_CUBIC` is the normal baseline congestion control.
 - `TCP_CONG_BBR` gives us a future tuning option for latency and throughput without making guest routing or firewalling part of the model.
 
@@ -188,7 +188,7 @@ PSI
 
 Why:
 
-- `PSI` gives `scoutd` and future control loops visibility into CPU, memory, and I/O pressure inside the guest.
+- `PSI` gives `guestd` and future control loops visibility into CPU, memory, and I/O pressure inside the guest.
 - Huge pages and transparent huge pages are not required for the default guest. Add them only when a measured database, JVM, or CPU inference workload needs them.
 
 ## Workload Control
@@ -207,11 +207,11 @@ NET_NS
 
 Why:
 
-- `CGROUPS`, `MEMCG`, and `CGROUP_PIDS` give `scoutd` enough baseline primitives to track memory and process count for one supervised app.
+- `CGROUPS`, `MEMCG`, and `CGROUP_PIDS` give `guestd` enough baseline primitives to track memory and process count for one supervised app.
 - `PID_NS`, `UTS_NS`, `IPC_NS`, and `NET_NS` are useful isolation primitives even when we are not running a container runtime inside the guest.
-- `USER_NS` is intentionally excluded for now. SpaceScale runs one app under `scoutd` as normal guest users, not rootless containers. User namespaces add attack surface and should be enabled only when a real rootless-container or sandbox requirement appears.
+- `USER_NS` is intentionally excluded for now. SpaceScale runs one app under `guestd` as normal guest users, not rootless containers. User namespaces add attack surface and should be enabled only when a real rootless-container or sandbox requirement appears.
 
-Enable these later only when `scoutd` actively uses them for in-guest workload limits:
+Enable these later only when `guestd` actively uses them for in-guest workload limits:
 
 ```text
 CGROUP_SCHED
@@ -264,10 +264,10 @@ SECURITYFS
 
 Why:
 
-- `SECCOMP` and `SECCOMP_FILTER` support syscall filtering for `scoutd` and app sandboxes.
+- `SECCOMP` and `SECCOMP_FILTER` support syscall filtering for `guestd` and app sandboxes.
 - `KEYS` preserves normal Linux keyring compatibility.
 - `SECURITY` and `SECURITYFS` keep the basic Linux security framework available without enabling a full policy stack.
-- `SECURITY_LANDLOCK` stays off until `scoutd` has a concrete Landlock sandbox design.
+- `SECURITY_LANDLOCK` stays off until `guestd` has a concrete Landlock sandbox design.
 
 ## Keep Disabled For Now
 
@@ -429,16 +429,16 @@ CGROUP_DEBUG
 
 Why:
 
-- `USER_NS` is for rootless containers and some sandboxes. We do not need it for one app under `scoutd`, and it increases kernel attack surface.
+- `USER_NS` is for rootless containers and some sandboxes. We do not need it for one app under `guestd`, and it increases kernel attack surface.
 - Overlay, FUSE, squashfs, loop devices, bridges, veth, tun, VLANs, and netfilter are container-host, router, VPN, image-mounting, or guest-firewall features. SpaceScale should prepare OCI/rootfs and network policy outside the guest until product requirements say otherwise.
 - eBPF syscall/JIT, tracing, kprobe/uprobe, and BTF features stay off in the default guest. Use host-side eBPF on TAP/tc/XDP for platform traffic monitoring, policy, and routing. Add guest eBPF only for a future explicit privileged tier.
 - Linux 6.1 on x86 selects `CONFIG_BPF=y` and `CONFIG_PERF_EVENTS=y` from architecture defaults. That is acceptable only while `BPF_SYSCALL`, `BPF_JIT`, `CGROUP_BPF`, kprobes, uprobes, ftrace, tracefs, and BTF remain disabled.
 - Linux 6.1 selects core `XFRM`, `XFRM_AH`, and `XFRM_ESP` when `IPV6=y`. That is acceptable for the default guest while `XFRM_USER`, `NETFILTER`, nftables, iptables, tc classifiers, and guest routing features remain disabled.
-- Huge pages, transparent huge pages, expanded cgroup controllers, Landlock, and embedded kernel config stay off until `scoutd` or a measured workload requirement needs them.
+- Huge pages, transparent huge pages, expanded cgroup controllers, Landlock, and embedded kernel config stay off until `guestd` or a measured workload requirement needs them.
 - GPU support is not just a kernel-flag problem for this Firecracker model. Current guests boot with `pci=off`, and Firecracker does not expose normal GPU passthrough as a simple default app-guest feature. Future GPU support should be a separate architecture decision, not hidden in this kernel profile.
-- SELinux, AppArmor, and audit add policy/runtime complexity that the first `scoutd` app guest does not need.
+- SELinux, AppArmor, and audit add policy/runtime complexity that the first `guestd` app guest does not need.
 - `BINFMT_MISC` is for in-guest binary handler registration, commonly QEMU user-mode or custom extension/magic dispatch. Normal ELF binaries and shebang scripts already work without it.
-- `VIRTIO_CONSOLE` is unnecessary while the guest uses serial only for early panic/error output and vsock for `scoutd` control/log channels.
+- `VIRTIO_CONSOLE` is unnecessary while the guest uses serial only for early panic/error output and vsock for `guestd` control/log channels.
 - `PPS`, `PTP_1588_CLOCK`, `RTC_CLASS`, and `RTC_DRV_CMOS` are not needed for the default app guest. KVM clock is enough for current guests; low-level x86 CMOS accesses may still appear in Firecracker diagnostics even when the guest-facing RTC class is disabled.
 - Kexec, hibernation, suspend, PCMCIA/PCCARD, and NVRAM are host or physical-machine features outside the Firecracker app guest model.
 - Keep `SERIAL_8250` and `SERIAL_8250_CONSOLE`, but keep only one runtime UART and leave 8250 extended probing off. That preserves the `ttyS0` early panic/error path without probing extra legacy serial ports.

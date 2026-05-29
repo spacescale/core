@@ -173,7 +173,7 @@ func allowJailerSocketAccess(path string, uid int, gid int) error {
 	return nil
 }
 
-// WaitForHello proves the guest reached scoutd userspace on the control channel.
+// WaitForHello proves the guest reached guestd userspace on the control channel.
 func (v *VSockListeners) WaitForHello(ctx context.Context) error {
 	if v == nil || v.control == nil {
 		return fmt.Errorf("control listener is not initialized")
