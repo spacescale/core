@@ -22,17 +22,77 @@ SpaceScale should stay simple and direct. Prefer the smallest correct change tha
 - `microvm` owns only local Firecracker lifecycle, workspace files, vsock listeners, CID allocation, and cleanup.
 - `daemon.go` orchestrates startup only; it should not know subsystem internals.
 
+## Product Direction
+
+- Core design must keep SpaceScale Machines in view even while Ignite is the current product surface.
+- Treat Ignite and Machines as two surfaces over the same compute foundation, not two unrelated architectures.
+- Ignite should hide VM/microVM lifecycle behind a workload contract; Machines may later expose persistent machine lifecycle directly.
+- Do not bake Ignite-only assumptions into placement, executor, microVM, networking, auth, logs, or lifecycle code when the same primitive should support Machines later.
+- Do not assume every runtime instance is disposable, stateless, HTTP-only, container-only, or unable to receive shell/exec access.
+- Do not design networking only around routed workloads; keep public exposure, private/internal paths, and future machine port exposure in view.
+- Do not design identity only around workload API tokens; core should remain compatible with one SpaceScale login authorizing CLI, API, shell, exec, files, and logs.
+- Keep machine-facing primitives internally clean: create, shell/exec access, upload, expose, stop/start/destroy, logs, identity, persistence, and lifecycle.
+- Keep persistent machine identity separate from Ignite workload identity, but let both rely on shared placement, runtime, networking, and observability primitives.
+- Any new compute lifecycle decision must be explicit about whether it is Ignite-only or shared foundation behavior.
+- Agent, browser, sandbox, and dev-environment capabilities should be modeled as future Machine capabilities, not separate core product primitives.
+- Do not expose Machines publicly from core until product work explicitly asks for it.
+- Use the private product strategy as context for the future Machines surface: https://github.com/spacescale/ideas/blob/main/iaas-posture.md
+
 ## Style
 
 - Hand-written Go files should begin with `// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.`. Exclude generated Go files.
 - Keep code readable over clever.
+- Write Go like a systems language: measured, explicit, allocation-aware, and close to runtime behavior.
+- Do not write framework-heavy Go. Keep control flow visible, direct, and boring.
 - Keep comments rare and useful; explain lifecycle or boundary decisions, not obvious assignments.
 - Prefer direct package calls when there is no real alternate implementation.
 - Prefer `errors.AsType[T](err)` for concrete error type checks instead of `errors.As(err, &target)`.
+- Do not use reflection in runtime-critical code. Prefer typed structs, small interfaces, and generated code where useful.
 - Remove stale guards and comments when ownership moves to another boundary.
 - When changing code, update nearby docs and comments in the same pass so implementation and explanation stay in sync.
 - After any code, config, runtime asset, or workflow change, check related docs for stale decisions, assumptions, examples, and commands; update docs in the same pass when the change makes them inaccurate.
 - Always verify the relevant package or workflow after edits; do not leave changes at "looks right" without running checks when checks are available.
+
+## Performance
+
+- Do not optimize blindly. Measure first with benchmarks, `pprof`, traces, and allocation profiles.
+- Do not guess where the bottleneck is. Profile CPU, memory, allocations, goroutines, locks, syscalls, and network latency.
+- Do not allocate casually in hot paths. Preallocate slices, maps, buffers, and structs when the shape is known.
+- Do not create garbage in tight loops. Reuse buffers and objects carefully when ownership is clear.
+- Do not use `fmt.Sprintf` in performance-sensitive paths. Prefer `strconv`, `strings.Builder`, byte buffers, or direct append patterns.
+- Do not use `sync.Pool` by default. Use it only for measured high-churn allocations like buffers, protobuf scratch objects, request envelopes, or temporary objects.
+- - **No:** Do not treat `core` like a low-level dataplane repo.
+- **Instead:** Treat `core` as the orchestration brain of SpaceScale: Go-first, explicit, observable, allocation-aware, and operationally boring.
+
+## Control Plane
+
+- Keep NATS, protobuf, scheduling, routing, auth, and API hot paths allocation-conscious.
+- Do not copy large payloads unnecessarily. Pass references, stream data, or reuse buffers where safe.
+
+## Concurrency
+
+- Do not create unbounded goroutines. Use bounded workers, contexts, timeouts, and backpressure.
+- Do not create unbounded channels. Size queues intentionally and define overflow behavior.
+- Do not ignore context cancellation. Thread `context.Context` through request, NATS, DB, runtime, and shutdown paths.
+- Do not hold locks while doing I/O. Lock only around shared memory mutation.
+- Do not use one giant mutex for unrelated state. Split locks by ownership boundary and keep critical sections small.
+- Do not make shared state implicit. Own state inside clear structs with clear lifecycle rules.
+
+## Lifecycle Correctness
+
+- Do not leave lifecycle states informal. Model states explicitly: created, reserved, launching, active, draining, stopped, failed.
+- Do not allow capacity accounting to drift. Make reserve, commit, release, revert, and expiry explicit and tested.
+- Do not make cleanup a best-effort afterthought. Treat cleanup, rollback, release, and shutdown as first-class correctness paths.
+- Do not hide errors or collapse them into vague messages. Wrap errors with operational context.
+- Do not make production behavior depend on local assumptions. Validate config, runtime assets, host capabilities, permissions, and network state at startup.
+
+## Observability and Testing
+
+- Do not use logs as the only observability layer. Add metrics, counters, timings, health signals, and structured events where they support operations.
+- Do not trust happy-path behavior. Test failure paths, retries, duplicate messages, stale boot IDs, timeouts, and partial cleanup.
+- Do not optimize for beautiful code over debuggable code. Write code that can be understood during an outage.
+
+> "Let all things be done decently and in order." — 1 Corinthians 14:40
 
 ## Logging
 
