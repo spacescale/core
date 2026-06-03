@@ -53,6 +53,28 @@ SpaceScale should stay simple and direct. Prefer the smallest correct change tha
 - After any code, config, runtime asset, or workflow change, check related docs for stale decisions, assumptions, examples, and commands; update docs in the same pass when the change makes them inaccurate.
 - Always verify the relevant package or workflow after edits; do not leave changes at "looks right" without running checks when checks are available.
 
+## Error and Protocol Shape
+
+- Use sentinel errors only for generic conditions where the caller needs no extra data to recover. Check them with `errors.Is`.
+- Use typed errors when callers need structured fields to retry, route, account, or react programmatically. Include fields such as tenant ID, resource ID, operation, retryability, or capacity details when those values affect behavior.
+- Do not make callers parse error strings. Error text is for humans; error shape is for code.
+- Keep protocol contracts small, explicit, and versioned when data crosses package, process, network, guest, or persistence boundaries.
+- Prefer one clear owner for protocol evolution. Do not let unrelated packages invent parallel meanings for the same state, ID, or lifecycle field.
+
+## Go Generics
+
+- Use Go generics only when the exact same logic is repeated for several concrete types and a generic helper makes the code clearer.
+- Do not use generics to hide control flow, avoid naming concrete types, or create framework-like abstractions.
+- If the benefit is not obvious at the call site, write boring Go.
+
+## Systems Go
+
+- Keep owned data and borrowed views mentally separate. Make ownership, mutation, and lifetime obvious from the code shape.
+- Prefer explicit state transitions over inferred behavior from booleans, nil values, or side effects.
+- Keep shared mutation narrow, named, and owned by one type or package.
+- Treat cleanup paths as part of the main design, not as deferred cleanup after the happy path is written.
+- For SpaceScale, the best Go is explicit, boring, operational, and robust under failure.
+
 ## Performance
 
 - Do not optimize blindly. Measure first with benchmarks, `pprof`, traces, and allocation profiles.
