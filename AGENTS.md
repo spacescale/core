@@ -40,7 +40,6 @@ SpaceScale should stay simple and direct. Prefer the smallest correct change tha
 
 ## Style
 
-- Hand-written Go files should begin with `// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.`. Exclude generated Go files.
 - Keep code readable over clever.
 - Write Go like a systems language: measured, explicit, allocation-aware, and close to runtime behavior.
 - Do not write framework-heavy Go. Keep control flow visible, direct, and boring.
