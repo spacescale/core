@@ -39,7 +39,6 @@ description: |-
         "slug": "manual-e2e",
         "subdomain": "manual-e2e",
         "imageRef": "ghcr.io/acme/spacescale-api:latest",
-        "planId": "web-starter",
         "targetReplicas": 1,
         "primaryRegion": "eu-central",
         "runtimePort": 8080,

@@ -32,7 +32,6 @@ type createAppResponse struct {
 	Slug           string `json:"slug"`
 	Subdomain      string `json:"subdomain"`
 	ImageRef       string `json:"imageRef"`
-	PlanID         string `json:"planId"`
 	TargetReplicas int32  `json:"targetReplicas"`
 	PrimaryRegion  string `json:"primaryRegion"`
 	RuntimePort    int32  `json:"runtimePort"`
@@ -58,7 +57,7 @@ func TestCreateAppCreatesQueuedDeployment(t *testing.T) {
 	workspaceID := createWorkspaceForIdentity(t, ts, identityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 	project := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("project-%d", time.Now().UnixNano()))
 
-	body := []byte(`{"name":"api","imageRef":"ghcr.io/acme/spacescale-api:latest","planId":"web-growth","primaryRegion":"ca-east","runtimePort":9090,"isPublic":true,"envVars":[{"key":"database_url","value":"postgres://local","isSecret":true}]}`)
+	body := []byte(`{"name":"api","imageRef":"ghcr.io/acme/spacescale-api:latest","compute":{"vcpu":4,"memoryMb":4096,"dedicated":false},"primaryRegion":"ca-east","runtimePort":9090,"isPublic":true,"envVars":[{"key":"database_url","value":"postgres://local","isSecret":true}]}`)
 	resp, data := doRequest(
 		t,
 		ts,
@@ -78,7 +77,6 @@ func TestCreateAppCreatesQueuedDeployment(t *testing.T) {
 	require.NotEmpty(t, out.ID)
 	require.Equal(t, project.ID, out.ProjectID)
 	require.Equal(t, "api", out.Name)
-	require.Equal(t, "web-growth", out.PlanID)
 	require.EqualValues(t, 1, out.TargetReplicas)
 	require.Equal(t, "ca-east", out.PrimaryRegion)
 	require.Equal(t, "queued", out.Status)
@@ -168,7 +166,7 @@ func TestCreateAppDefaultsQueuedRuntimePort(t *testing.T) {
 	workspaceID := createWorkspaceForIdentity(t, ts, identityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 	project := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("project-%d", time.Now().UnixNano()))
 
-	body := []byte(`{"name":"worker","imageRef":"ghcr.io/acme/spacescale-worker:latest","planId":"web-starter","primaryRegion":"us-east"}`)
+	body := []byte(`{"name":"worker","imageRef":"ghcr.io/acme/spacescale-worker:latest","compute":{"vcpu":2,"memoryMb":2048,"dedicated":false},"primaryRegion":"us-east"}`)
 	resp, data := doRequest(
 		t,
 		ts,
@@ -185,7 +183,6 @@ func TestCreateAppDefaultsQueuedRuntimePort(t *testing.T) {
 
 	var out createAppResponse
 	require.NoError(t, json.Unmarshal(data, &out))
-	require.Equal(t, "web-starter", out.PlanID)
 	require.EqualValues(t, 1, out.TargetReplicas)
 	require.Equal(t, "us-east", out.PrimaryRegion)
 	require.Equal(t, "queued", out.Status)
@@ -216,7 +213,7 @@ func TestCreateAppRejectsTooManyEnvVars(t *testing.T) {
 	payload := map[string]any{
 		"name":          "too-many-envs",
 		"imageRef":      "ghcr.io/acme/spacescale-api:latest",
-		"planId":        "web-pro",
+		"compute":       map[string]any{"vcpu": 4, "memoryMb": 8192, "dedicated": true},
 		"primaryRegion": "eu-west",
 		"envVars":       envVars,
 	}
@@ -241,7 +238,7 @@ func TestCreateAppRejectsTooManyEnvVars(t *testing.T) {
 	require.Equal(t, "invalid input", out.Error)
 }
 
-func TestCreateAppRequiresPlanIDAndPrimaryRegion(t *testing.T) {
+func TestCreateAppRequiresComputeAndPrimaryRegion(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
@@ -281,9 +278,9 @@ func TestListApps(t *testing.T) {
 	projectA := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("project-a-%d", time.Now().UnixNano()))
 	projectB := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("project-b-%d", time.Now().UnixNano()))
 
-	appOne := createAppViaAPI(t, ts, identityKey, workspaceID, projectA.ID, `{"name":"api","imageRef":"ghcr.io/acme/api:latest","planId":"web-starter","primaryRegion":"eu-central"}`)
-	appTwo := createAppViaAPI(t, ts, identityKey, workspaceID, projectA.ID, `{"name":"worker","imageRef":"ghcr.io/acme/worker:latest","planId":"web-growth","primaryRegion":"eu-central"}`)
-	_ = createAppViaAPI(t, ts, identityKey, workspaceID, projectB.ID, `{"name":"cron","imageRef":"ghcr.io/acme/cron:latest","planId":"web-pro","primaryRegion":"eu-central"}`)
+	appOne := createAppViaAPI(t, ts, identityKey, workspaceID, projectA.ID, `{"name":"api","imageRef":"ghcr.io/acme/api:latest","compute":{"vcpu":2,"memoryMb":2048,"dedicated":false},"primaryRegion":"eu-central"}`)
+	appTwo := createAppViaAPI(t, ts, identityKey, workspaceID, projectA.ID, `{"name":"worker","imageRef":"ghcr.io/acme/worker:latest","compute":{"vcpu":4,"memoryMb":4096,"dedicated":false},"primaryRegion":"eu-central"}`)
+	_ = createAppViaAPI(t, ts, identityKey, workspaceID, projectB.ID, `{"name":"cron","imageRef":"ghcr.io/acme/cron:latest","compute":{"vcpu":4,"memoryMb":8192,"dedicated":true},"primaryRegion":"eu-central"}`)
 
 	resp, data := doRequest(
 		t,
@@ -304,13 +301,11 @@ func TestListApps(t *testing.T) {
 	require.Equal(t, appOne.ID, out.Apps[0].ID)
 	require.Equal(t, projectA.ID, out.Apps[0].ProjectID)
 	require.Equal(t, "api", out.Apps[0].Name)
-	require.Equal(t, "web-starter", out.Apps[0].PlanID)
 	require.Equal(t, "eu-central", out.Apps[0].PrimaryRegion)
 	require.Equal(t, "queued", out.Apps[0].Status)
 	require.Equal(t, appTwo.ID, out.Apps[1].ID)
 	require.Equal(t, projectA.ID, out.Apps[1].ProjectID)
 	require.Equal(t, "worker", out.Apps[1].Name)
-	require.Equal(t, "web-growth", out.Apps[1].PlanID)
 	require.Equal(t, "eu-central", out.Apps[1].PrimaryRegion)
 	require.Equal(t, "queued", out.Apps[1].Status)
 }
@@ -326,7 +321,7 @@ func TestListAppsRequiresOwnership(t *testing.T) {
 
 	workspaceID := createWorkspaceForIdentity(t, ts, ownerIdentityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 	project := createProjectViaAPI(t, ts, ownerIdentityKey, workspaceID, fmt.Sprintf("project-%d", time.Now().UnixNano()))
-	_ = createAppViaAPI(t, ts, ownerIdentityKey, workspaceID, project.ID, `{"name":"api","imageRef":"ghcr.io/acme/api:latest","planId":"web-starter","primaryRegion":"eu-central"}`)
+	_ = createAppViaAPI(t, ts, ownerIdentityKey, workspaceID, project.ID, `{"name":"api","imageRef":"ghcr.io/acme/api:latest","compute":{"vcpu":2,"memoryMb":2048,"dedicated":false},"primaryRegion":"eu-central"}`)
 
 	resp, data := doRequest(
 		t,

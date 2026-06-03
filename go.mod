@@ -1,19 +1,19 @@
 module github.com/spacescale/core
 
-go 1.26.2
+go 1.26.3
 
 require (
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.1-0.20251224190957-6fb280e993d4
-	github.com/go-chi/chi/v5 v5.2.5
+	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-chi/httprate v0.15.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.9.2
-	github.com/nats-io/nats.go v1.51.0
+	github.com/jackc/pgx/v5 v5.10.0
+	github.com/nats-io/nats.go v1.52.0
 	github.com/stretchr/testify v1.11.1
+	github.com/vishvananda/netlink v1.3.1
 	golang.org/x/sync v0.20.0
 	google.golang.org/protobuf v1.36.11
-	github.com/vishvananda/netlink v1.3.1
 )
 
 require (

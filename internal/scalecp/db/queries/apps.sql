@@ -1,6 +1,6 @@
 -- name: CreateApp :one
-INSERT INTO apps (project_id, name, slug, subdomain, image_ref, plan_id, primary_region, runtime_port, status, is_public, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued', $9, now(), now())
+INSERT INTO apps (project_id, name, slug, subdomain, image_ref, primary_region, runtime_port, status, is_public, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued', $8, now(), now())
 RETURNING *;
 
 -- name: ListAppsByProjectID :many

@@ -38,10 +38,16 @@ type createAppEnvVarRequest struct {
 	IsSecret bool   `json:"isSecret"`
 }
 
+type createAppComputeRequest struct {
+	VCPU      uint32 `json:"vcpu"`
+	MemoryMB  uint64 `json:"memoryMb"`
+	Dedicated bool   `json:"dedicated"`
+}
+
 type createAppRequest struct {
 	Name                 string                   `json:"name"`
 	ImageRef             string                   `json:"imageRef"`
-	PlanID               string                   `json:"planId"`
+	Compute              createAppComputeRequest  `json:"compute"`
 	PrimaryRegion        string                   `json:"primaryRegion"`
 	RuntimePort          *int                     `json:"runtimePort"`
 	IsPublic             *bool                    `json:"isPublic"`
@@ -56,7 +62,6 @@ type appResponse struct {
 	Slug           string `json:"slug"`
 	Subdomain      string `json:"subdomain"`
 	ImageRef       string `json:"imageRef"`
-	PlanID         string `json:"planId"`
 	TargetReplicas int32  `json:"targetReplicas"`
 	PrimaryRegion  string `json:"primaryRegion"`
 	RuntimePort    int32  `json:"runtimePort"`
@@ -78,7 +83,6 @@ func appResponseFromModel(app tenant.App) appResponse {
 		Slug:           app.Slug,
 		Subdomain:      app.Subdomain,
 		ImageRef:       app.ImageRef,
-		PlanID:         app.PlanID,
 		TargetReplicas: app.TargetReplicas,
 		PrimaryRegion:  app.PrimaryRegion,
 		RuntimePort:    app.RuntimePort,
@@ -173,9 +177,13 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 
 	// Persist the app intent first so the resource exists before placement runs.
 	result, err := s.apps.CreateApp(r.Context(), user.ID, workspaceID, projectID, tenant.CreateAppParams{
-		Name:                 req.Name,
-		ImageRef:             req.ImageRef,
-		PlanID:               req.PlanID,
+		Name:     req.Name,
+		ImageRef: req.ImageRef,
+		Compute: tenant.AppComputeInput{
+			VCPU:      req.Compute.VCPU,
+			MemoryMB:  req.Compute.MemoryMB,
+			Dedicated: req.Compute.Dedicated,
+		},
 		PrimaryRegion:        req.PrimaryRegion,
 		RuntimePort:          req.RuntimePort,
 		IsPublic:             req.IsPublic,

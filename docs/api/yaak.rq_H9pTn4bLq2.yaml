@@ -12,7 +12,11 @@ body:
     {
       "name": "manual-e2e-6-d3331-8887890787867",
       "imageRef": "ghcr.io/acme/spacescale-api:latestjh",
-      "planId": "web-starter",
+      "compute": {
+        "vcpu": 2,
+        "memoryMb": 2048,
+        "dedicated": false
+      },
       "primaryRegion": "${[ PRIMARY_REGION ]}",
       "runtimePort": 8080,
       "isPublic": false,
@@ -46,7 +50,7 @@ description: |-
 
   ### Body Contract
   - `imageRef` (required): OCI image reference
-  - `planId` (required): product plan id such as `web-starter` or `db-prod`
+  - `compute` (required): requested microVM shape with `vcpu`, `memoryMb`, and `dedicated`
   - `primaryRegion` (required): placement region and must match an active node region for end-to-end dispatch
   - `name` (optional): display name; when omitted service derives from image ref
   - `runtimePort` (optional): defaults to `8080`
@@ -74,7 +78,6 @@ description: |-
     - `slug`
     - `subdomain`
     - `imageRef`
-    - `planId`
     - `targetReplicas`
     - `primaryRegion`
     - `runtimePort`

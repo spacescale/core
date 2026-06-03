@@ -59,7 +59,6 @@ CREATE TABLE apps
     slug         TEXT        NOT NULL,
     subdomain    TEXT        NOT NULL,
     image_ref    TEXT        NOT NULL,
-    plan_id      TEXT        NOT NULL CHECK (plan_id = BTRIM(plan_id) AND CHAR_LENGTH(plan_id) BETWEEN 1 AND 120),
     target_replicas INT      NOT NULL DEFAULT 1 CHECK (target_replicas > 0),
     primary_region TEXT      NOT NULL DEFAULT 'us-east',
     runtime_port INT         NOT NULL DEFAULT 8080,

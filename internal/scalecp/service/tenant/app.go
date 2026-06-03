@@ -26,7 +26,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/spacescale/core/internal/scalecp/catalog"
 	"github.com/spacescale/core/internal/scalecp/db/sqlc"
 	pb "github.com/spacescale/core/internal/shared/pb/v1"
 )
@@ -41,6 +40,8 @@ const (
 	appEnvVarKeyMaxChars   = 128  // maximum environment-variable key length.
 	appEnvVarValueMaxRunes = 8192 // maximum environment-variable value length in runes.
 	appEnvVarsMaxCount     = 50   // maximum environment variables accepted per create request.
+	maxPostgresInt4        = uint32(1<<31 - 1)
+	maxPostgresInt8        = uint64(1<<63 - 1)
 )
 
 const microvmResourceTypeDeployment = "deployment"
@@ -53,7 +54,6 @@ type App struct {
 	Slug           string    // URL-safe app identifier.
 	Subdomain      string    // DNS label used for routing.
 	ImageRef       string    // OCI image reference used for deployment.
-	PlanID         string    // requested product plan id.
 	TargetReplicas int32     // desired replica count for the active rollout.
 	PrimaryRegion  string    // requested home region.
 	RuntimePort    int32     // container port exposed by the app.
@@ -75,6 +75,13 @@ type CreateAppResult struct {
 	RuntimePort  uint32
 }
 
+// AppComputeInput is the explicit compute shape requested by the caller.
+type AppComputeInput struct {
+	VCPU      uint32
+	MemoryMB  uint64
+	Dedicated bool
+}
+
 // AppEnvVarInput defines one env var in create requests.
 type AppEnvVarInput struct {
 	Key      string // variable name, normalized to uppercase.
@@ -86,7 +93,7 @@ type AppEnvVarInput struct {
 type CreateAppParams struct {
 	Name                 string           // optional; derived from ImageRef when empty.
 	ImageRef             string           // required OCI image reference.
-	PlanID               string           // required product plan id.
+	Compute              AppComputeInput  // required resolved compute request.
 	PrimaryRegion        string           // required placement region.
 	RuntimePort          *int             // optional; nil uses defaultAppRuntimePort.
 	IsPublic             *bool            // optional; nil defaults to false.
@@ -124,7 +131,7 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 	if !ok {
 		return CreateAppResult{}, ErrInvalidInput
 	}
-	planID, plan, ok := normalizePlanID(p.PlanID)
+	shape, ok := normalizeAppCompute(p.Compute)
 	if !ok {
 		return CreateAppResult{}, ErrInvalidInput
 	}
@@ -184,7 +191,6 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 			Slug:          slug,
 			Subdomain:     slug,
 			ImageRef:      imageRef,
-			PlanID:        planID,
 			PrimaryRegion: primaryRegion,
 			RuntimePort:   runtimePort,
 			IsPublic:      isPublic,
@@ -214,11 +220,11 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 			ResourceType: microvmResourceTypeDeployment,
 			ResourceID:   &deployment.ID,
 			Region:       row.PrimaryRegion,
-			Vcpu:         int32(plan.Shape.Vcpu),
-			RamMb:        int64(plan.Shape.RamMb),
-			CpuMode:      cpuModeString(plan.Shape.CpuMode),
+			Vcpu:         int32(shape.Vcpu),
+			RamMb:        int64(shape.RamMb),
+			CpuMode:      cpuModeString(shape.CpuMode),
 			RootDiskMb:   defaultRootDiskMB,
-			VolumeMb:     int64(plan.Shape.VolumeMb),
+			VolumeMb:     int64(shape.VolumeMb),
 		})
 		if err != nil {
 			_ = tx.Rollback(ctx)
@@ -273,7 +279,7 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 			DeploymentID: deployment.ID,
 			MicroVMID:    microvm.ID,
 			Region:       row.PrimaryRegion,
-			Shape:        cloneMicroVMShape(plan.Shape),
+			Shape:        cloneMicroVMShape(shape),
 			ImageRef:     imageRef,
 			Env:          envMap,
 			RuntimePort:  uint32(runtimePort),
@@ -396,13 +402,24 @@ func normalizeImageRef(raw string) (string, bool) {
 	return ref, true
 }
 
-func normalizePlanID(raw string) (string, catalog.Plan, bool) {
-	planID := strings.ToLower(strings.TrimSpace(raw))
-	plan, ok := catalog.LookupPlan(planID)
-	if !ok {
-		return "", catalog.Plan{}, false
+func normalizeAppCompute(raw AppComputeInput) (pb.MicroVMShape, bool) {
+	if raw.VCPU == 0 || raw.VCPU > maxPostgresInt4 {
+		return pb.MicroVMShape{}, false
 	}
-	return planID, plan, true
+	if raw.MemoryMB == 0 || raw.MemoryMB > maxPostgresInt8 {
+		return pb.MicroVMShape{}, false
+	}
+
+	cpuMode := pb.CpuMode_CPU_MODE_SHARED
+	if raw.Dedicated {
+		cpuMode = pb.CpuMode_CPU_MODE_PINNED
+	}
+
+	return pb.MicroVMShape{
+		Vcpu:    raw.VCPU,
+		RamMb:   raw.MemoryMB,
+		CpuMode: cpuMode,
+	}, true
 }
 
 func normalizeAppPrimaryRegion(raw string) (string, bool) {
@@ -555,7 +572,6 @@ func appFromRow(r sqlc.App) App {
 		Slug:           r.Slug,
 		Subdomain:      r.Subdomain,
 		ImageRef:       r.ImageRef,
-		PlanID:         r.PlanID,
 		TargetReplicas: r.TargetReplicas,
 		PrimaryRegion:  r.PrimaryRegion,
 		RuntimePort:    r.RuntimePort,
