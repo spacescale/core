@@ -1,6 +1,6 @@
 module github.com/spacescale/core
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.1-0.20251224190957-6fb280e993d4
