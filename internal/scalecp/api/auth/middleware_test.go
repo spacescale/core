@@ -1,39 +1,29 @@
-// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
-
-// This file contains white-box tests for auth helper behavior.
-// It keeps token/config parsing validation close to middleware internals, while
-// endpoint-level HTTP contract tests live in separate integration suites.
-
-package api
+package auth
 
 import (
+	"context"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/spacescale/core/internal/shared/config"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 const (
-	testJWTSecret   = "test-bff-secret"    // shared test signing secret.
-	testJWTIssuer   = "spacescale-web-bff" // expected issuer in auth middleware tests.
-	testJWTAudience = "spacescale-api"     // expected audience in auth middleware tests.
-	testIdentityKey = "t0gun"              // canonical identity key used in test claims.
+	testJWTSecret   = "test-bff-secret"
+	testJWTIssuer   = "spacescale-web-bff"
+	testJWTAudience = "spacescale-api"
+	testIdentityKey = "t0gun"
 )
 
-// testJWTClaims models claims expected by middleware tests.
-// Subject is the identity source of truth and follows github:<identity-key>
-// format,
-// while embedded RegisteredClaims carry standard JWT fields.
 type testJWTClaims struct {
 	IdentityKeyClaim string `json:"identity_key,omitempty"`
 	jwt.RegisteredClaims
 }
 
-// defaultAuthCfg returns a valid baseline verification config used in tests.
-// Individual test cases can copy/override fields to verify issuer/audience/
-// signature mismatch behavior without rebuilding full structs each time.
 func defaultAuthCfg() config.AuthConfig {
 	return config.AuthConfig{
 		JWTSecret: testJWTSecret,
@@ -42,12 +32,6 @@ func defaultAuthCfg() config.AuthConfig {
 	}
 }
 
-// validClaims builds a known-good claim payload for happy-path token tests.
-// It includes all fields required by parseAndValidateClaims:
-// - sub
-// - iss
-// - aud
-// - exp (required by WithExpirationRequired)
 func validClaims(now time.Time) testJWTClaims {
 	return testJWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -60,9 +44,6 @@ func validClaims(now time.Time) testJWTClaims {
 	}
 }
 
-// mintToken signs test claims with HS256 and returns a raw JWT string.
-// This helper keeps token creation one-line in table setup while ensuring all
-// signing errors fail the current test immediately.
 func mintToken(t *testing.T, secret string, claims testJWTClaims) string {
 	t.Helper()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -71,9 +52,6 @@ func mintToken(t *testing.T, secret string, claims testJWTClaims) string {
 	return raw
 }
 
-// mintTokenWithMethod signs claims with an explicit algorithm.
-// It is used for negative-path tests that verify method restrictions, e.g.
-// tokens signed with HS384 should be rejected when middleware only allows HS256.
 func mintTokenWithMethod(t *testing.T, method jwt.SigningMethod, secret string, claims testJWTClaims) string {
 	t.Helper()
 	token := jwt.NewWithClaims(method, claims)
@@ -82,9 +60,6 @@ func mintTokenWithMethod(t *testing.T, method jwt.SigningMethod, secret string, 
 	return raw
 }
 
-// TestAuthConfigValidate verifies required startup auth configuration checks.
-// These are pure function cases and ensure misconfiguration is caught before
-// middleware starts handling live requests.
 func TestAuthConfigValidate(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -111,9 +86,6 @@ func TestAuthConfigValidate(t *testing.T) {
 	}
 }
 
-// TestParseBearerToken verifies helper-level Authorization header parsing.
-// The cases cover valid bearer inputs and malformed edge conditions so callers
-// can rely on consistent token extraction and error classification.
 func TestParseBearerToken(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -135,7 +107,6 @@ func TestParseBearerToken(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			gotToken, err := parseBearerToken(tc.header)
-
 			if tc.wantErr == nil {
 				require.NoError(t, err)
 				require.Equal(t, tc.wantToken, gotToken)
@@ -149,10 +120,6 @@ func TestParseBearerToken(t *testing.T) {
 	}
 }
 
-// TestParseAndValidateClaims verifies JWT parsing and claim-validation rules.
-// It covers the happy path plus negative cases (signature mismatch, issuer/
-// audience mismatch, expired/missing required claims, wrong algorithm, and
-// malformed token) so helper behavior stays stable under refactors.
 func TestParseAndValidateClaims(t *testing.T) {
 	now := time.Now()
 	baseCfg := defaultAuthCfg()
@@ -222,4 +189,36 @@ func TestParseAndValidateClaims(t *testing.T) {
 			require.Equal(t, tc.wantSubject, claims.Subject)
 		})
 	}
+}
+
+func TestKeyByIdentityKey(t *testing.T) {
+	t.Run("falls back when principal missing", func(t *testing.T) {
+		req, err := http.NewRequest(http.MethodGet, "/", nil)
+		require.NoError(t, err)
+
+		key, err := KeyByIdentityKey(req)
+
+		require.NoError(t, err)
+		assert.Equal(t, "identity:unknown", key)
+	})
+
+	t.Run("falls back when identity key empty", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(withPrincipal(context.Background(), Principal{}), http.MethodGet, "/", nil)
+		require.NoError(t, err)
+
+		key, err := KeyByIdentityKey(req)
+
+		require.NoError(t, err)
+		assert.Equal(t, "identity:unknown", key)
+	})
+
+	t.Run("uses principal identity key", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(withPrincipal(context.Background(), Principal{IdentityKey: "user-123"}), http.MethodGet, "/", nil)
+		require.NoError(t, err)
+
+		key, err := KeyByIdentityKey(req)
+
+		require.NoError(t, err)
+		assert.Equal(t, "identity:user-123", key)
+	})
 }

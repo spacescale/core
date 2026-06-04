@@ -1,5 +1,3 @@
-// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
-
 //go:build linux
 
 // Package node owns scaled node bootstrap identity and heartbeat publication.

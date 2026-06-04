@@ -1,6 +1,4 @@
-// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
-
-package api
+package requestlog
 
 import (
 	"bytes"
@@ -13,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/spacescale/core/internal/scalecp/api/respond"
 	"github.com/stretchr/testify/require"
 )
 
@@ -69,10 +68,10 @@ func TestAccessLogMiddlewareEmitsStructuredFields(t *testing.T) {
 
 			r := chi.NewRouter()
 			r.Use(middleware.RequestID)
-			r.Use(accessLogMiddleware())
+			r.Use(Middleware())
 			r.Get("/v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 				if tc.enrichIDs {
-					if lc, ok := logContextFromContext(r.Context()); ok {
+					if lc, ok := MetadataFromContext(r.Context()); ok {
 						lc.UserID = "github:t0gun"
 						lc.ProjectID = "proj_123"
 						lc.AppID = "app_456"
@@ -130,10 +129,10 @@ func TestAuthFailureEnrichesSingleAccessLog(t *testing.T) {
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(accessLogMiddleware())
+	r.Use(Middleware())
 	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
-		logAuthFailure(r, "invalid_token")
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		SetAuthFailure(r, "invalid_token")
+		respond.Error(w, http.StatusUnauthorized, "unauthorized")
 	})
 
 	rr := httptest.NewRecorder()
@@ -157,10 +156,10 @@ func TestRecovererMiddlewareRecoversPanicAndWritesInternalError(t *testing.T) {
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(accessLogMiddleware())
-	r.Use(recovererMiddleware())
+	r.Use(Middleware())
+	r.Use(Recoverer())
 	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if lc, ok := logContextFromContext(r.Context()); ok {
+		if lc, ok := MetadataFromContext(r.Context()); ok {
 			lc.UserID = "github:t0gun"
 			lc.ProjectID = "proj_123"
 		}
@@ -207,8 +206,8 @@ func TestRecovererMiddlewareDoesNotRewriteStartedResponse(t *testing.T) {
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(accessLogMiddleware())
-	r.Use(recovererMiddleware())
+	r.Use(Middleware())
+	r.Use(Recoverer())
 	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		panic("after write")
@@ -237,8 +236,8 @@ func TestRecovererMiddlewareTruncatesLongPanicValue(t *testing.T) {
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(accessLogMiddleware())
-	r.Use(recovererMiddleware())
+	r.Use(Middleware())
+	r.Use(Recoverer())
 	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 		panic(strings.Repeat("a", 300))
 	})

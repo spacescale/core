@@ -1,5 +1,3 @@
-// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
-
 // This file defines service-level sentinel errors returned by business workflows.
 // Handlers and other callers use these stable values to map failures to user-
 // facing behavior without coupling to storage-specific error details.

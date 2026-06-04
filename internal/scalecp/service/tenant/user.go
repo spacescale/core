@@ -1,5 +1,3 @@
-// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
-
 // This file defines user-domain service models and workflows.
 // It centralizes user lookup and auth-sync persistence behavior so user lifecycle
 // responsibilities remain separate from project creation logic.

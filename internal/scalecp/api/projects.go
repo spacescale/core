@@ -1,5 +1,3 @@
-// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
-
 // This file contains transport models and handlers for project CRUD endpoints.
 // It defines request and response JSON shapes and translates HTTP protocol
 // concerns into service-layer calls under workspace-scoped routes.
@@ -26,6 +24,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/spacescale/core/internal/scalecp/api/auth"
+	"github.com/spacescale/core/internal/scalecp/api/requestlog"
+	"github.com/spacescale/core/internal/scalecp/api/respond"
 	"github.com/spacescale/core/internal/scalecp/service/tenant"
 )
 
@@ -63,7 +64,7 @@ type listProjectsResponse struct {
 // handleCreateProject creates a new project for the currently authenticated user.
 //
 // Request lifecycle in this handler:
-// - Read AuthPrincipal from request context (set by auth middleware).
+// - Resolve authenticated caller from request context (set by auth middleware).
 // - Decode optional JSON body into the transport request model.
 // - Delegate project creation business logic to ProjectService.
 // - Map service errors to stable API status codes/messages.
@@ -84,7 +85,7 @@ type listProjectsResponse struct {
 // - service.ErrConflict => 409 "conflict"
 // - any other error => 500 "internal error"
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireCallerUser(w, r)
+	user, ok := auth.RequireCallerUser(w, r, s.users)
 	if !ok {
 		return
 	}
@@ -92,21 +93,21 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	// Decode optional request payload.
 	// An empty body is valid and means "create with service defaults".
 	var req createProjectRequest
-	if err := readJSON(r, &req); err != nil {
+	if err := respond.ReadJSON(r, &req); err != nil {
 		switch {
 		case errors.Is(err, io.EOF):
 			// Empty body is allowed and treated as "use defaults".
-		case errors.Is(err, errRequestBodyTooLarge):
-			writeErr(w, http.StatusRequestEntityTooLarge, "request body too large")
+		case errors.Is(err, respond.ErrRequestBodyTooLarge):
+			respond.Error(w, http.StatusRequestEntityTooLarge, "request body too large")
 			return
 		default:
-			writeErr(w, http.StatusBadRequest, "invalid json")
+			respond.Error(w, http.StatusBadRequest, "invalid json")
 			return
 		}
 	}
 	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
 	if workspaceID == "" {
-		writeErr(w, http.StatusBadRequest, "invalid input")
+		respond.Error(w, http.StatusBadRequest, "invalid input")
 		return
 	}
 
@@ -119,16 +120,16 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, tenant.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
+			respond.Error(w, http.StatusBadRequest, "invalid input")
 			return
 		case errors.Is(err, tenant.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			respond.Error(w, http.StatusUnauthorized, "unauthorized")
 			return
 		case errors.Is(err, tenant.ErrConflict):
-			writeErr(w, http.StatusConflict, "conflict")
+			respond.Error(w, http.StatusConflict, "conflict")
 			return
 		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
+			respond.Error(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 	}
@@ -136,7 +137,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	// Enrich request-scoped access logging metadata with the created project id.
 	// Access logs are emitted by outer middleware after this handler returns, so
 	// writing project id here allows the completion log to include project_id.
-	if lc, ok := logContextFromContext(r.Context()); ok {
+	if lc, ok := requestlog.MetadataFromContext(r.Context()); ok {
 		lc.ProjectID = project.ID
 	}
 
@@ -145,7 +146,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		"Location",
 		"/v1/workspaces/"+url.PathEscape(project.WorkspaceID)+"/projects/"+url.PathEscape(project.ID),
 	)
-	writeJSON(w, http.StatusCreated, createProjectResponse{
+	respond.JSON(w, http.StatusCreated, createProjectResponse{
 		ID:          project.ID,
 		WorkspaceID: project.WorkspaceID,
 		Name:        project.Name,
@@ -157,14 +158,14 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 
 // handleListProjects returns projects for one owned workspace.
 func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireCallerUser(w, r)
+	user, ok := auth.RequireCallerUser(w, r, s.users)
 	if !ok {
 		return
 	}
 
 	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
 	if workspaceID == "" {
-		writeErr(w, http.StatusBadRequest, "invalid input")
+		respond.Error(w, http.StatusBadRequest, "invalid input")
 		return
 	}
 
@@ -172,13 +173,13 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, tenant.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
+			respond.Error(w, http.StatusBadRequest, "invalid input")
 			return
 		case errors.Is(err, tenant.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			respond.Error(w, http.StatusUnauthorized, "unauthorized")
 			return
 		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
+			respond.Error(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 	}
@@ -195,12 +196,12 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writeJSON(w, http.StatusOK, listProjectsResponse{Projects: items})
+	respond.JSON(w, http.StatusOK, listProjectsResponse{Projects: items})
 }
 
 // handleGetProject returns one project in an owned workspace.
 func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireCallerUser(w, r)
+	user, ok := auth.RequireCallerUser(w, r, s.users)
 	if !ok {
 		return
 	}
@@ -208,7 +209,7 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
 	projectID := strings.TrimSpace(chi.URLParam(r, "projectId"))
 	if workspaceID == "" || projectID == "" {
-		writeErr(w, http.StatusBadRequest, "invalid input")
+		respond.Error(w, http.StatusBadRequest, "invalid input")
 		return
 	}
 
@@ -216,22 +217,22 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, tenant.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
+			respond.Error(w, http.StatusBadRequest, "invalid input")
 			return
 		case errors.Is(err, tenant.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			respond.Error(w, http.StatusUnauthorized, "unauthorized")
 			return
 		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
+			respond.Error(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 	}
 
-	if lc, ok := logContextFromContext(r.Context()); ok {
+	if lc, ok := requestlog.MetadataFromContext(r.Context()); ok {
 		lc.ProjectID = project.ID
 	}
 
-	writeJSON(w, http.StatusOK, createProjectResponse{
+	respond.JSON(w, http.StatusOK, createProjectResponse{
 		ID:          project.ID,
 		WorkspaceID: project.WorkspaceID,
 		Name:        project.Name,
@@ -243,7 +244,7 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 
 // handleUpdateProject updates one project in an owned workspace.
 func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireCallerUser(w, r)
+	user, ok := auth.RequireCallerUser(w, r, s.users)
 	if !ok {
 		return
 	}
@@ -251,18 +252,18 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
 	projectID := strings.TrimSpace(chi.URLParam(r, "projectId"))
 	if workspaceID == "" || projectID == "" {
-		writeErr(w, http.StatusBadRequest, "invalid input")
+		respond.Error(w, http.StatusBadRequest, "invalid input")
 		return
 	}
 
 	var req updateProjectRequest
-	if err := readJSON(r, &req); err != nil {
+	if err := respond.ReadJSON(r, &req); err != nil {
 		switch {
-		case errors.Is(err, errRequestBodyTooLarge):
-			writeErr(w, http.StatusRequestEntityTooLarge, "request body too large")
+		case errors.Is(err, respond.ErrRequestBodyTooLarge):
+			respond.Error(w, http.StatusRequestEntityTooLarge, "request body too large")
 			return
 		default:
-			writeErr(w, http.StatusBadRequest, "invalid json")
+			respond.Error(w, http.StatusBadRequest, "invalid json")
 			return
 		}
 	}
@@ -273,25 +274,25 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, tenant.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
+			respond.Error(w, http.StatusBadRequest, "invalid input")
 			return
 		case errors.Is(err, tenant.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			respond.Error(w, http.StatusUnauthorized, "unauthorized")
 			return
 		case errors.Is(err, tenant.ErrConflict):
-			writeErr(w, http.StatusConflict, "conflict")
+			respond.Error(w, http.StatusConflict, "conflict")
 			return
 		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
+			respond.Error(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 	}
 
-	if lc, ok := logContextFromContext(r.Context()); ok {
+	if lc, ok := requestlog.MetadataFromContext(r.Context()); ok {
 		lc.ProjectID = project.ID
 	}
 
-	writeJSON(w, http.StatusOK, createProjectResponse{
+	respond.JSON(w, http.StatusOK, createProjectResponse{
 		ID:          project.ID,
 		WorkspaceID: project.WorkspaceID,
 		Name:        project.Name,
@@ -303,7 +304,7 @@ func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 
 // handleDeleteProject deletes one project in an owned workspace.
 func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireCallerUser(w, r)
+	user, ok := auth.RequireCallerUser(w, r, s.users)
 	if !ok {
 		return
 	}
@@ -311,7 +312,7 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
 	projectID := strings.TrimSpace(chi.URLParam(r, "projectId"))
 	if workspaceID == "" || projectID == "" {
-		writeErr(w, http.StatusBadRequest, "invalid input")
+		respond.Error(w, http.StatusBadRequest, "invalid input")
 		return
 	}
 
@@ -319,18 +320,18 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, tenant.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
+			respond.Error(w, http.StatusBadRequest, "invalid input")
 			return
 		case errors.Is(err, tenant.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			respond.Error(w, http.StatusUnauthorized, "unauthorized")
 			return
 		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
+			respond.Error(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 	}
 
-	if lc, ok := logContextFromContext(r.Context()); ok {
+	if lc, ok := requestlog.MetadataFromContext(r.Context()); ok {
 		lc.ProjectID = projectID
 	}
 

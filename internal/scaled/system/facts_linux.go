@@ -1,5 +1,3 @@
-// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
-
 // Package system reads Linux host facts and prepares host state for scaled
 // startup.
 //

@@ -1,5 +1,3 @@
-// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
-
 // Package http_api
 // This file provides authenticated workspace CRUD HTTP handlers.
 package api
@@ -12,6 +10,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/spacescale/core/internal/scalecp/api/auth"
+	"github.com/spacescale/core/internal/scalecp/api/respond"
 	"github.com/spacescale/core/internal/scalecp/service/tenant"
 )
 
@@ -35,17 +35,17 @@ type listWorkspacesResponse struct {
 }
 
 func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireCallerUser(w, r)
+	user, ok := auth.RequireCallerUser(w, r, s.users)
 	if !ok {
 		return
 	}
 	var req createWorkspaceRequest
-	if err := readJSON(r, &req); err != nil {
+	if err := respond.ReadJSON(r, &req); err != nil {
 		switch {
-		case errors.Is(err, errRequestBodyTooLarge):
-			writeErr(w, http.StatusRequestEntityTooLarge, "request body too large")
+		case errors.Is(err, respond.ErrRequestBodyTooLarge):
+			respond.Error(w, http.StatusRequestEntityTooLarge, "request body too large")
 		default:
-			writeErr(w, http.StatusBadRequest, "invalid json")
+			respond.Error(w, http.StatusBadRequest, "invalid json")
 		}
 		return
 	}
@@ -54,18 +54,18 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, tenant.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
+			respond.Error(w, http.StatusBadRequest, "invalid input")
 		case errors.Is(err, tenant.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			respond.Error(w, http.StatusUnauthorized, "unauthorized")
 		case errors.Is(err, tenant.ErrConflict):
-			writeErr(w, http.StatusConflict, "conflict")
+			respond.Error(w, http.StatusConflict, "conflict")
 		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
+			respond.Error(w, http.StatusInternalServerError, "internal error")
 		}
 		return
 	}
 	w.Header().Set("Location", "/v1/workspaces/"+url.PathEscape(out.ID))
-	writeJSON(w, http.StatusCreated, workspaceResponse{
+	respond.JSON(w, http.StatusCreated, workspaceResponse{
 		ID:        out.ID,
 		Name:      out.Name,
 		CreatedAt: out.CreatedAt.Format(time.RFC3339),
@@ -74,7 +74,7 @@ func (s *Server) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireCallerUser(w, r)
+	user, ok := auth.RequireCallerUser(w, r, s.users)
 	if !ok {
 		return
 	}
@@ -82,11 +82,11 @@ func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, tenant.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
+			respond.Error(w, http.StatusBadRequest, "invalid input")
 		case errors.Is(err, tenant.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			respond.Error(w, http.StatusUnauthorized, "unauthorized")
 		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
+			respond.Error(w, http.StatusInternalServerError, "internal error")
 		}
 		return
 	}
@@ -99,32 +99,32 @@ func (s *Server) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 			UpdatedAt: ws.UpdatedAt.Format(time.RFC3339),
 		})
 	}
-	writeJSON(w, http.StatusOK, listWorkspacesResponse{Workspaces: out})
+	respond.JSON(w, http.StatusOK, listWorkspacesResponse{Workspaces: out})
 }
 
 func (s *Server) handleGetWorkspace(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireCallerUser(w, r)
+	user, ok := auth.RequireCallerUser(w, r, s.users)
 	if !ok {
 		return
 	}
 	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
 	if workspaceID == "" {
-		writeErr(w, http.StatusBadRequest, "invalid input")
+		respond.Error(w, http.StatusBadRequest, "invalid input")
 		return
 	}
 	ws, err := s.workspaces.GetWorkspace(r.Context(), user.ID, workspaceID)
 	if err != nil {
 		switch {
 		case errors.Is(err, tenant.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
+			respond.Error(w, http.StatusBadRequest, "invalid input")
 		case errors.Is(err, tenant.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			respond.Error(w, http.StatusUnauthorized, "unauthorized")
 		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
+			respond.Error(w, http.StatusInternalServerError, "internal error")
 		}
 		return
 	}
-	writeJSON(w, http.StatusOK, workspaceResponse{
+	respond.JSON(w, http.StatusOK, workspaceResponse{
 		ID:        ws.ID,
 		Name:      ws.Name,
 		CreatedAt: ws.CreatedAt.Format(time.RFC3339),
@@ -133,22 +133,22 @@ func (s *Server) handleGetWorkspace(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireCallerUser(w, r)
+	user, ok := auth.RequireCallerUser(w, r, s.users)
 	if !ok {
 		return
 	}
 	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
 	if workspaceID == "" {
-		writeErr(w, http.StatusBadRequest, "invalid input")
+		respond.Error(w, http.StatusBadRequest, "invalid input")
 		return
 	}
 	var req updateWorkspaceRequest
-	if err := readJSON(r, &req); err != nil {
+	if err := respond.ReadJSON(r, &req); err != nil {
 		switch {
-		case errors.Is(err, errRequestBodyTooLarge):
-			writeErr(w, http.StatusRequestEntityTooLarge, "request body too large")
+		case errors.Is(err, respond.ErrRequestBodyTooLarge):
+			respond.Error(w, http.StatusRequestEntityTooLarge, "request body too large")
 		default:
-			writeErr(w, http.StatusBadRequest, "invalid json")
+			respond.Error(w, http.StatusBadRequest, "invalid json")
 		}
 		return
 	}
@@ -158,17 +158,17 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, tenant.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
+			respond.Error(w, http.StatusBadRequest, "invalid input")
 		case errors.Is(err, tenant.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			respond.Error(w, http.StatusUnauthorized, "unauthorized")
 		case errors.Is(err, tenant.ErrConflict):
-			writeErr(w, http.StatusConflict, "conflict")
+			respond.Error(w, http.StatusConflict, "conflict")
 		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
+			respond.Error(w, http.StatusInternalServerError, "internal error")
 		}
 		return
 	}
-	writeJSON(w, http.StatusOK, workspaceResponse{
+	respond.JSON(w, http.StatusOK, workspaceResponse{
 		ID:        ws.ID,
 		Name:      ws.Name,
 		CreatedAt: ws.CreatedAt.Format(time.RFC3339),
@@ -176,23 +176,23 @@ func (s *Server) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 	})
 }
 func (s *Server) handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireCallerUser(w, r)
+	user, ok := auth.RequireCallerUser(w, r, s.users)
 	if !ok {
 		return
 	}
 	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
 	if workspaceID == "" {
-		writeErr(w, http.StatusBadRequest, "invalid input")
+		respond.Error(w, http.StatusBadRequest, "invalid input")
 		return
 	}
 	if err := s.workspaces.DeleteWorkspace(r.Context(), user.ID, workspaceID); err != nil {
 		switch {
 		case errors.Is(err, tenant.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
+			respond.Error(w, http.StatusBadRequest, "invalid input")
 		case errors.Is(err, tenant.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			respond.Error(w, http.StatusUnauthorized, "unauthorized")
 		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
+			respond.Error(w, http.StatusInternalServerError, "internal error")
 		}
 		return
 	}

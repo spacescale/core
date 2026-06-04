@@ -1,5 +1,3 @@
-// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
-
 // This file implements bootstrap workflows that span multiple domain entities.
 // Bootstrap is intentionally isolated from workspace/project CRUD so future
 // onboarding steps (for example free trial setup) can evolve independently.

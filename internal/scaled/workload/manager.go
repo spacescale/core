@@ -1,5 +1,3 @@
-// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
-
 //go:build linux
 
 // Package workload provides the top-level orchestration boundary for workload

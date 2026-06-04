@@ -1,5 +1,3 @@
-// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
-
 // This file implements HTTP transport for app endpoints.
 //
 // Responsibilities in this file:
@@ -23,6 +21,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/spacescale/core/internal/scalecp/api/auth"
+	"github.com/spacescale/core/internal/scalecp/api/requestlog"
+	"github.com/spacescale/core/internal/scalecp/api/respond"
 	"github.com/spacescale/core/internal/scalecp/fabric/dispatch"
 	"github.com/spacescale/core/internal/scalecp/service/tenant"
 )
@@ -108,7 +109,7 @@ func resolveCreateAppAfterDispatch(current tenant.App, dispatchErr error, refres
 }
 
 func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireCallerUser(w, r)
+	user, ok := auth.RequireCallerUser(w, r, s.users)
 	if !ok {
 		return
 	}
@@ -116,7 +117,7 @@ func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
 	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
 	projectID := strings.TrimSpace(chi.URLParam(r, "projectId"))
 	if workspaceID == "" || projectID == "" {
-		writeErr(w, http.StatusBadRequest, "invalid input")
+		respond.Error(w, http.StatusBadRequest, "invalid input")
 		return
 	}
 
@@ -124,11 +125,11 @@ func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, tenant.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
+			respond.Error(w, http.StatusBadRequest, "invalid input")
 		case errors.Is(err, tenant.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			respond.Error(w, http.StatusUnauthorized, "unauthorized")
 		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
+			respond.Error(w, http.StatusInternalServerError, "internal error")
 		}
 		return
 	}
@@ -138,12 +139,12 @@ func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
 		items = append(items, appResponseFromModel(app))
 	}
 
-	writeJSON(w, http.StatusOK, listAppsResponse{Apps: items})
+	respond.JSON(w, http.StatusOK, listAppsResponse{Apps: items})
 }
 
 // handleCreateApp creates one app in an owned workspace/project.
 func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.requireCallerUser(w, r)
+	user, ok := auth.RequireCallerUser(w, r, s.users)
 	if !ok {
 		return
 	}
@@ -151,17 +152,17 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 	workspaceID := strings.TrimSpace(chi.URLParam(r, "workspaceId"))
 	projectID := strings.TrimSpace(chi.URLParam(r, "projectId"))
 	if workspaceID == "" || projectID == "" {
-		writeErr(w, http.StatusBadRequest, "invalid input")
+		respond.Error(w, http.StatusBadRequest, "invalid input")
 		return
 	}
 
 	var req createAppRequest
-	if err := readJSON(r, &req); err != nil {
+	if err := respond.ReadJSON(r, &req); err != nil {
 		switch {
-		case errors.Is(err, errRequestBodyTooLarge):
-			writeErr(w, http.StatusRequestEntityTooLarge, "request body too large")
+		case errors.Is(err, respond.ErrRequestBodyTooLarge):
+			respond.Error(w, http.StatusRequestEntityTooLarge, "request body too large")
 		default:
-			writeErr(w, http.StatusBadRequest, "invalid json")
+			respond.Error(w, http.StatusBadRequest, "invalid json")
 		}
 		return
 	}
@@ -193,20 +194,20 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, tenant.ErrInvalidInput):
-			writeErr(w, http.StatusBadRequest, "invalid input")
+			respond.Error(w, http.StatusBadRequest, "invalid input")
 		case errors.Is(err, tenant.ErrUnauthorized):
-			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			respond.Error(w, http.StatusUnauthorized, "unauthorized")
 		case errors.Is(err, tenant.ErrConflict):
-			writeErr(w, http.StatusConflict, "conflict")
+			respond.Error(w, http.StatusConflict, "conflict")
 		default:
-			writeErr(w, http.StatusInternalServerError, "internal error")
+			respond.Error(w, http.StatusInternalServerError, "internal error")
 		}
 		return
 	}
 
 	app := result.App
 
-	if lc, ok := logContextFromContext(r.Context()); ok {
+	if lc, ok := requestlog.MetadataFromContext(r.Context()); ok {
 		lc.ProjectID = app.ProjectID
 		lc.AppID = app.ID
 	}
@@ -236,5 +237,5 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		"Location",
 		"/v1/workspaces/"+url.PathEscape(workspaceID)+"/projects/"+url.PathEscape(projectID)+"/apps/"+url.PathEscape(app.ID),
 	)
-	writeJSON(w, http.StatusCreated, appResponseFromModel(app))
+	respond.JSON(w, http.StatusCreated, appResponseFromModel(app))
 }

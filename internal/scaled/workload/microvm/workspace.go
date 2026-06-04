@@ -1,5 +1,3 @@
-// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
-
 // Package microvm owns the host-side Firecracker boot path for SpaceScale
 // workloads.
 //

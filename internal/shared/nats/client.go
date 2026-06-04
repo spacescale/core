@@ -1,5 +1,3 @@
-// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
-
 // Package nats provides the unified transport layer for the SpaceScale platform.
 //
 // This client wraps the official NATS Go client to enforce architectural standards

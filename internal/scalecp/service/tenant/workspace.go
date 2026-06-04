@@ -1,5 +1,3 @@
-// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
-
 // This file implements workspace CRUD workflows in the service layer.
 // It validates input, enforces ownership-scoped operations, maps DB rows into
 // service models, and normalizes persistence errors into service sentinel errors.

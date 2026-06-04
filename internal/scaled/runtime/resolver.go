@@ -1,5 +1,3 @@
-// Copyright (c) 2026 SpaceScale Systems Inc. All rights reserved.
-
 // Package runtime reconciles fixed host and guest files before scaled accepts
 // work.
 //
