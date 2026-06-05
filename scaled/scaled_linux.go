@@ -32,11 +32,7 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("nats init failed: %w", err)
 	}
-	defer func() {
-		if err := natsClient.Drain(); err != nil {
-			log.Warn("nats drain failed", "component", "scaled", "error", err)
-		}
-	}()
+	defer func() { _ = natsClient.Drain() }()
 
 	return runDaemon(ctx, cfg, log, natsClient)
 }
