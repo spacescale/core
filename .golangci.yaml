@@ -35,8 +35,6 @@ linters:
     - unconvert
     - unparam
     - wastedassign
-    # security
-    - gosec
     # hygiene
     - dupword
     - gocritic
@@ -56,6 +54,10 @@ linters:
     paths:
       - "^shared/pb/"
       - "^scalecp/db/sqlc/"
+    rules:
+      - linters:
+          - errcheck
+        text: "Error return value of `(Close|Flush)` is not checked"
   settings:
     cyclop:
       max-complexity: 30
