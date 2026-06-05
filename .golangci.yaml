@@ -79,6 +79,7 @@ linters:
     - goconst
     - modernize
     - thelper
+    - embeddedstructfieldcheck
     - unconvert
     - unparam
     - gocyclo
