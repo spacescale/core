@@ -171,12 +171,25 @@ func (s *Server) handleCreateApp(responseWriter http.ResponseWriter, request *ht
 			AppID:        result.AppID,
 			DeploymentID: result.DeploymentID,
 			MicroVMID:    result.MicroVMID,
-			Region:       result.Region,
+			Region:       result.App.PrimaryRegion,
 			Shape:        result.Shape,
-			ImageRef:     result.ImageRef,
+			ImageRef:     result.App.ImageRef,
 			Env:          result.Env,
-			RuntimePort:  result.RuntimePort,
+			RuntimePort:  uint32(result.App.RuntimePort),
 		})
+
+		if dispatchErr != nil {
+			switch {
+			case errors.Is(dispatchErr, fabric.ErrNoAuctionBids):
+				Error(responseWriter, http.StatusServiceUnavailable, "no capacity available")
+
+				return
+			case errors.Is(dispatchErr, fabric.ErrLaunchRejected):
+				Error(responseWriter, http.StatusBadGateway, "launch rejected")
+
+				return
+			}
+		}
 
 		refreshed, refreshErr := s.apps.GetApp(dispatchCtx, user.ID, workspaceID, projectID, app.ID)
 		app = resolveCreateAppAfterDispatch(app, dispatchErr, refreshed, refreshErr)
