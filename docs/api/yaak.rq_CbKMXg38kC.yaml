@@ -21,41 +21,15 @@ description: |-
   make db
   ```
 
-  2. Start the control plane API in another terminal:
-
-  ```bash
-  make cp
-  ```
+  2. Start the control plane API in another terminal.
 
   3. For full app placement tests, make sure at least one `scaled` node is already bootstrapped and connected in the same region you will use for app creation.
 
   Common dev flow for the manual node:
 
-  ```bash
-  make provision-node
-  make scaled
-  ```
-
   `scaled` is Linux-only and bootstraps over NATS, not HTTP.
 
-  4. Refresh the Yaak environment before opening requests:
-
-  ```bash
-  make yaak-refresh
-  ```
-
-  That refresh step:
-  - mints a fresh local BFF token from `.env.local`
-  - calls `POST /v1/internal/auth-sync`
-  - calls `POST /v1/bootstrap-defaults`
-  - resolves the current workspace + project ids
-  - rewrites `docs/api/yaak.ev_hTkEdmm6xq.yaml`
-
-  If you only need the raw bearer token:
-
-  ```bash
-  make mint
-  ```
+  4. Refresh the Yaak environment before opening requests.
 
   ### Current Route Prefixes
   - health: `/healthz`
@@ -64,13 +38,8 @@ description: |-
 
   ### Yaak Environment Notes
   - `LOCAL` contains the variables Yaak requests expect
-  - `make yaak-refresh` is the source of truth for:
-    - `BASE_URL=127.0.0.1:8080`
-    - `BFF_TOKEN`
-    - `WORKSPACE_ID`
-    - `PROJECT_ID`
+  - `BFF_TOKEN`, `WORKSPACE_ID`, and `PROJECT_ID` must be refreshed manually when the token expires, the DB is reset, or bootstrap state changes
   - `PRIMARY_REGION` defaults to `eu-central` for the current manual node path
-  - rerun `make yaak-refresh` whenever the token expires, DB is reset, or bootstrap state changes
 
   ### Recommended Request Order In Yaak
   1. `Health Check`

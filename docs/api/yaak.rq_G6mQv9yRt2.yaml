@@ -36,7 +36,7 @@ description: |-
 
   ### Notes
   - this route is outside `/v1` and does not require bearer auth
-  - use this first when debugging local startup (`make cp`)
+  - use this first when debugging local startup
 headers: []
 method: GET
 name: Health Check
