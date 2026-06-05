@@ -51,6 +51,7 @@ linters:
     - loggercheck
     - makezero
     - mirror
+    - tagalign
     - misspell
     - nestif
     - nilerr
@@ -66,14 +67,23 @@ linters:
     - reassign
     - recvcheck
     - revive
+    - maintidx
+    - grouper
+    - gocognit
+    - iface
     - rowserrcheck
     - sloglint
     - sqlclosecheck
     - tagliatelle
     - testifylint
+    - goconst
+    - modernize
     - thelper
     - unconvert
     - unparam
+    - gocyclo
+    - nlreturn
+    - gochecksumtype
     - unqueryvet
     - usestdlibvars
     - usetesting
