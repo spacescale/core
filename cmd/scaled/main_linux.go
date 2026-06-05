@@ -1,4 +1,6 @@
-// Package main starts the scalecp control-plane process.
+//go:build linux
+
+// Package main starts the scaled edge daemon process.
 package main
 
 import (
@@ -8,7 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/spacescale/core/scalecp"
+	"github.com/spacescale/core/scaled"
 )
 
 func main() {
@@ -19,7 +21,7 @@ func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := scalecp.Run(ctx); err != nil {
+	if err := scaled.Run(ctx); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 
 		return 1
