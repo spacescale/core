@@ -1,0 +1,98 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - canonicalheader
+    - containedctx
+    - contextcheck
+    - copyloopvar
+    - cyclop
+    - decorder
+    - dogsled
+    - dupl
+    - dupword
+    - durationcheck
+    - errchkjson
+    - errname
+    - errorlint
+    - exhaustive
+    - exptostd
+    - fatcontext
+    - forcetypeassert
+    - funcorder
+    - gocheckcompilerdirectives
+    - gochecknoinits
+    - gocritic
+    - godox
+    - gomoddirectives
+    - goprintffuncname
+    - gosec
+    - interfacebloat
+    - intrange
+    - iotamixing
+    - loggercheck
+    - makezero
+    - mirror
+    - misspell
+    - nestif
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - noctx
+    - nolintlint
+    - nosprintfhostport
+    - perfsprint
+    - prealloc
+    - predeclared
+    - protogetter
+    - reassign
+    - recvcheck
+    - revive
+    - rowserrcheck
+    - sloglint
+    - sqlclosecheck
+    - testifylint
+    - thelper
+    - unconvert
+    - unparam
+    - unqueryvet
+    - usestdlibvars
+    - usetesting
+    - varnamelen
+    - wastedassign
+    - whitespace
+  exclusions:
+    paths:
+      - "^shared/pb/"
+      - "^scalecp/db/sqlc/"
+  settings:
+    cyclop:
+      max-complexity: 30
+      package-average: 10
+    varnamelen:
+      min-name-length: 3
+      ignore-names:
+        - db
+        - id
+        - ok
+        - tx
+        - vm
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

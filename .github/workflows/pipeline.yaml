@@ -37,6 +37,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+
       - name: test
         run: |
           go install github.com/pressly/goose/v3/cmd/goose@v3.25.0

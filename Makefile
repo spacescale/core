@@ -1,4 +1,4 @@
-.PHONY: db cp provision-node scaled view-bootstrap-token view-identity proto mint yaak-refresh test stop
+.PHONY: db cp provision-node scaled view-bootstrap-token view-identity proto lint mint yaak-refresh test stop
 
 
 db:
@@ -31,6 +31,10 @@ view-identity:
 
 proto:
 	protoc --proto_path=. --go_out=. --go_opt=module=github.com/spacescale/core $$(find proto -type f -name '*.proto' | sort)
+
+
+lint:
+	golangci-lint run ./...
 
 
 mint:
