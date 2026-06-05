@@ -40,9 +40,11 @@ linters:
     - gochecknoinits
     - gocritic
     - godox
+    - nakedret
     - gomoddirectives
     - goprintffuncname
     - gosec
+    - mnd
     - importas
     - inamedparam
     - interfacebloat
@@ -53,7 +55,7 @@ linters:
     - mirror
     - tagalign
     - misspell
-    - nestif
+    - exhaustruct
     - nilerr
     - nilnesserr
     - nilnil
@@ -70,6 +72,7 @@ linters:
     - maintidx
     - grouper
     - gocognit
+    - gocognit
     - iface
     - rowserrcheck
     - sloglint
@@ -82,7 +85,6 @@ linters:
     - embeddedstructfieldcheck
     - unconvert
     - unparam
-    - gocyclo
     - nlreturn
     - gochecksumtype
     - unqueryvet
@@ -102,13 +104,24 @@ linters:
     varnamelen:
       min-name-length: 3
       ignore-names:
-        - db
-        - id
         - ok
+        - db
         - tx
+        - id
+        - ip
         - vm
+        - fd
+        - wg
+        - mu
+        - ch
+        - cp
 
 formatters:
+  exclusions:
+    paths:
+      - "^shared/pb/"
+      - "^scalecp/db/sqlc/"
   enable:
     - gofmt
     - goimports
+    - gci
