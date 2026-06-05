@@ -72,7 +72,6 @@ linters:
     - maintidx
     - grouper
     - gocognit
-    - gocognit
     - iface
     - rowserrcheck
     - sloglint
