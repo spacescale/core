@@ -124,4 +124,3 @@ formatters:
   enable:
     - gofmt
     - goimports
-    - gci
