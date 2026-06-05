@@ -13,6 +13,7 @@ linters:
     - ineffassign
     - staticcheck
     - unused
+    - asasalint
     - asciicheck
     - bidichk
     - bodyclose
@@ -32,6 +33,7 @@ linters:
     - exhaustive
     - exptostd
     - fatcontext
+    - forbidigo
     - forcetypeassert
     - funcorder
     - gocheckcompilerdirectives
@@ -41,6 +43,8 @@ linters:
     - gomoddirectives
     - goprintffuncname
     - gosec
+    - importas
+    - inamedparam
     - interfacebloat
     - intrange
     - iotamixing
@@ -65,6 +69,7 @@ linters:
     - rowserrcheck
     - sloglint
     - sqlclosecheck
+    - tagliatelle
     - testifylint
     - thelper
     - unconvert
