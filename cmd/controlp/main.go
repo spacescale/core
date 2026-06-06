@@ -1,4 +1,4 @@
-// Package main starts the controld control-plane process.
+// Package main starts the controlp control-plane process.
 package main
 
 import (

@@ -1,12 +1,12 @@
-.PHONY: compose-start controld proto lint test stop
+.PHONY: compose-start controlp proto lint test stop
 
 
 compose-start:
 	docker-compose up -d
 
 
-controld:
-	go run ./cmd/controld
+controlp:
+	go run ./cmd/controlp
 
 
 proto:

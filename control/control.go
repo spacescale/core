@@ -43,7 +43,7 @@ func Run(ctx context.Context) error {
 		return fmt.Errorf("service init failed: %w", err)
 	}
 
-	natsClient, err := nats.New(cfg.NATSURL, "controld", log)
+	natsClient, err := nats.New(cfg.NATSURL, "controlp", log)
 	if err != nil {
 		return fmt.Errorf("nats init failed: %w", err)
 	}
@@ -60,7 +60,7 @@ func Run(ctx context.Context) error {
 	group, groupCtx := errgroup.WithContext(ctx)
 
 	group.Go(func() error {
-		log.Info("controld listening", "component", "controld", "addr", cfg.ListenAddr())
+		log.Info("controlp listening", "component", "controlp", "addr", cfg.ListenAddr())
 
 		return apiServer.Start()
 	})

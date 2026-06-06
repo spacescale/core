@@ -62,5 +62,5 @@ jobs:
       - name: build
         run: |
           mkdir -p dist
-          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/controld ./cmd/controld
+          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/controlp ./cmd/controlp
           GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/scaled ./cmd/scaled
