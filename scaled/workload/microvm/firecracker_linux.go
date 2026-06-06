@@ -150,8 +150,8 @@ func firecrackerConfigFromPlan(plan firecrackerPlan, jailerOutput io.Writer) fir
 		MmdsAddress: plan.MMDSAddress,
 		MmdsVersion: firecracker.MMDSv2,
 		JailerCfg: &firecracker.JailerConfig{
-			UID:            &uid,
-			GID:            &gid,
+			UID:            new(plan.Jailer.UID),
+			GID:            new(plan.Jailer.GID),
 			ID:             plan.Jailer.ID,
 			NumaNode:       new(plan.Jailer.NumaNode),
 			ChrootBaseDir:  plan.Jailer.ChrootBaseDir,
