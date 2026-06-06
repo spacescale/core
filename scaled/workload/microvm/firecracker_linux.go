@@ -39,15 +39,15 @@ type firecrackerPlan struct {
 }
 
 type firecrackerPlanJailer struct {
-	UID            int
-	GID            int
-	ID             string
-	NumaNode       int
-	ChrootBaseDir  string
-	KernelPath     string
-	ExecFile       string
-	JailerBinary   string
-	CgroupVersion  string
+	UID           int
+	GID           int
+	ID            string
+	NumaNode      int
+	ChrootBaseDir string
+	KernelPath    string
+	ExecFile      string
+	JailerBinary  string
+	CgroupVersion string
 }
 
 // buildFirecrackerPlan collects every host and jail-visible value for one VM
@@ -120,9 +120,6 @@ func (l *Launcher) startFirecracker(ctx context.Context, req LaunchRequest, vm *
 }
 
 func firecrackerConfigFromPlan(plan firecrackerPlan, jailerOutput io.Writer) firecracker.Config {
-	uid := plan.Jailer.UID
-	gid := plan.Jailer.GID
-
 	return firecracker.Config{
 		SocketPath:      plan.SocketPath,
 		KernelImagePath: plan.KernelImagePath,
