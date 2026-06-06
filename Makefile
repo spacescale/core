@@ -1,12 +1,12 @@
-.PHONY: compose-start scalec proto lint test stop
+.PHONY: compose-start controld proto lint test stop
 
 
 compose-start:
 	docker-compose up -d
 
 
-scalec:
-	go run ./cmd/scalecp
+controld:
+	go run ./cmd/controld
 
 
 proto:

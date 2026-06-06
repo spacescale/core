@@ -23,14 +23,13 @@ func TestLoad(t *testing.T) {
 	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", " key-v1 ")
 	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 
-	cfg, err := Load()
+	cfg, err := LoadControl()
 	require.NoError(t, err)
 
 	assert.Equal(t, "production", cfg.Environment)
 	assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
 	assert.Equal(t, "postgres://user:pass@db/spacescale", cfg.DatabaseURL)
 	assert.Equal(t, "9090", cfg.Port)
-	assert.Equal(t, "/opt/firecracker", cfg.FirecrackerBin)
 	assert.Equal(t, "secret", cfg.Auth.JWTSecret)
 	assert.Equal(t, "issuer", cfg.Auth.Issuer)
 	assert.Equal(t, "audience", cfg.Auth.Audience)
@@ -45,7 +44,6 @@ func TestConfigNormalized(t *testing.T) {
 		NATSURL:            "   ",
 		DatabaseURL:        " postgres://db ",
 		Port:               "   ",
-		FirecrackerBin:     "   ",
 		InternalAuthSecret: " secret ",
 		EnvEncryptionKeyID: " key-id ",
 		Auth: AuthConfig{
@@ -61,7 +59,6 @@ func TestConfigNormalized(t *testing.T) {
 	assert.Equal(t, defaultNATSURL, normalized.NATSURL)
 	assert.Equal(t, "postgres://db", normalized.DatabaseURL)
 	assert.Equal(t, defaultPort, normalized.Port)
-	assert.Equal(t, defaultFirecrackerBin, normalized.FirecrackerBin)
 	assert.Equal(t, "secret", normalized.InternalAuthSecret)
 	assert.Equal(t, "key-id", normalized.EnvEncryptionKeyID)
 	assert.Equal(t, "jwt-secret", normalized.Auth.JWTSecret)
@@ -117,7 +114,7 @@ func TestConfigValidateScalecp(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := tc.cfg.ValidateScalecp()
+			_, err := tc.cfg.validateScalecp()
 			if tc.wantErrMsg == "" {
 				require.NoError(t, err)
 				return
@@ -128,7 +125,7 @@ func TestConfigValidateScalecp(t *testing.T) {
 }
 
 func TestConfigValidateScaled(t *testing.T) {
-	_, err := (Config{}).ValidateScaled()
+	_, err := (Config{}).validateScaled()
 	require.NoError(t, err)
 }
 

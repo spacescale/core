@@ -52,4 +52,4 @@ linters:
   exclusions:
     paths:
       - "^shared/pb/"
-      - "^scalecp/db/sqlc/"
+      - "^control/db/sqlc/"

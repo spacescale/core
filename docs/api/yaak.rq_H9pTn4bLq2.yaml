@@ -65,7 +65,7 @@ description: |-
   ### Behavior Notes
   - create operation persists app, deployment, microvm, optional registry binding, and encrypted env vars atomically
   - new apps default to `targetReplicas = 1`, so create currently launches one microvm
-  - when dispatch is active, `scalecp` immediately runs auction + targeted launch after create
+  - when dispatch is active, `control` immediately runs auction + targeted launch after create
   - current manual node region is `eu-central`, so use `primaryRegion=eu-central` for the live end-to-end path
 
   ### Success Response

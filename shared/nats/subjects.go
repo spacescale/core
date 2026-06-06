@@ -1,7 +1,7 @@
 // Package nats defines the shared NATS messaging taxonomy.
 //
 // It is the central registry for NATS subjects used by the stateless
-// Control Plane (scalecp) and the autonomous Edge daemons (scaled).
+// Control Plane (control) and the autonomous Edge daemons (scaled).
 //
 // Architecture: The Decentralized Auction
 //

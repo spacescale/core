@@ -2,13 +2,13 @@ version: "2"
 sql:
   - engine: "postgresql"
     schema:
-      - "internal/scalecp/db/migrations/*.sql"
+      - "control/db/migrations/*.sql"
     queries:
-      - "internal/scalecp/db/queries/*.sql"
+      - "control/db/queries/*.sql"
     gen:
       go:
         package: "sqlc"
-        out: "internal/scalecp/db/sqlc"
+        out: "control/db/sqlc"
         sql_package: "pgx/v5"
         overrides:
           - db_type: "uuid"

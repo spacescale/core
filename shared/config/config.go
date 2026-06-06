@@ -19,7 +19,7 @@ const (
 	defaultAuthAudience   = "spacescale-api"
 )
 
-// Config is the normalized runtime configuration shared by scalecp and scaled.
+// Config is the normalized runtime configuration shared by control and scaled.
 type Config struct {
 	Environment string
 	NATSURL     string
@@ -40,8 +40,8 @@ type AuthConfig struct {
 	Audience  string
 }
 
-// LoadScalecp reads, normalizes, and validates config required by the control plane.
-func LoadScalecp() (Config, error) {
+// LoadControl reads, normalizes, and validates config required by the control plane.
+func LoadControl() (Config, error) {
 	cfg, err := loadFromEnv()
 	if err != nil {
 		return Config{}, err

@@ -2,7 +2,7 @@
 
 This repository is organized into two primary functional layers:
 
-## scalecp 
+## control
 
 The stateless control plane  that serves the public API, manages tenant metadata, and orchestrates workload
 distribution. It leverages PostgreSQL for durable state and NATS for its decentralized communication fabric.
