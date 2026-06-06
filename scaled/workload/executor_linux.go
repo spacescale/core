@@ -25,6 +25,11 @@ const (
 	microVMLaunchBootTimeout = 10 * time.Second
 )
 
+type launcher interface {
+	Launch(ctx context.Context, request microvm.LaunchRequest) (*microvm.ActiveVM, error)
+	Stop(ctx context.Context, microvmID string) error
+}
+
 // Executor handles targeted microVM launch commands after placement wins.
 type Executor struct {
 	logger   *slog.Logger
