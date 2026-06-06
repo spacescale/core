@@ -8,8 +8,7 @@
 //   - ensureFirecrackerJailerAccount / createFirecrackerJailerUser / firecrackerJailerIdentity
 //                                 requires root + useradd
 //   - kvmDeviceGID                requires /dev/kvm + syscall.Stat_t
-//   - preflight / validateRuntimePaths / Collect
-//                                 compose the above; tested via integration
+//   - preflight / validateRuntimePaths / Collect compose the above; tested via integration
 package node
 
 import (
