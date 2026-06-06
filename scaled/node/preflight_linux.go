@@ -73,7 +73,7 @@ func identityPath() string {
 }
 
 // Collect gathers host facts, validates runtime paths, loads identity, and runs
-// system preflight. Call once at startup and pass the result to NewRuntime.
+// node preflight. Call once at startup and pass the result to NewRuntime.
 func Collect(logger *slog.Logger) (Info, error) {
 	runtimePaths, err := validateRuntimePaths()
 	if err != nil {
@@ -130,7 +130,7 @@ type FirecrackerJailerIdentity struct {
 // preflight prepares the host before scaled joins the workload fabric. It returns
 // the jailer identity that later Firecracker launches should use.
 func preflight(logger *slog.Logger) (FirecrackerJailerIdentity, error) {
-	logger = logger.With("component", "system")
+	logger = logger.With("component", "preflight")
 
 	if err := ensureKVM(); err != nil {
 		return FirecrackerJailerIdentity{}, err
@@ -153,7 +153,7 @@ func preflight(logger *slog.Logger) (FirecrackerJailerIdentity, error) {
 		return FirecrackerJailerIdentity{}, err
 	}
 
-	logger.Info("system preflight ready",
+	logger.Info("node preflight ready",
 		"kvm", kvmDevicePath,
 		"jailer_user", FirecrackerJailerAccountName,
 		"jailer_uid", jailerIdentity.UID,

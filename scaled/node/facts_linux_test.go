@@ -152,14 +152,26 @@ func TestReadDiskStatsRejectsMissingPath(t *testing.T) {
 }
 
 func TestReadPhysicalCoreCount(t *testing.T) {
-	root := t.TempDir()
-	writeCPUFixture(t, root, "cpu0", "0", "0")
-	writeCPUFixture(t, root, "cpu1", "1", "0")
-	writeCPUFixture(t, root, "cpu2", "0", "1")
+	t.Run("counts distinct package and core pairs", func(t *testing.T) {
+		root := t.TempDir()
+		writeCPUFixture(t, root, "cpu0", "0", "0")
+		writeCPUFixture(t, root, "cpu1", "1", "0")
+		writeCPUFixture(t, root, "cpu2", "0", "1")
 
-	count, err := readPhysicalCoreCount(filepath.Join(root, "cpu[0-9]*", "topology", "core_id"))
-	require.NoError(t, err)
-	assert.Equal(t, uint32(3), count)
+		count, err := readPhysicalCoreCount(filepath.Join(root, "cpu[0-9]*", "topology", "core_id"))
+		require.NoError(t, err)
+		assert.Equal(t, uint32(3), count)
+	})
+
+	t.Run("deduplicates sibling threads on one physical core", func(t *testing.T) {
+		root := t.TempDir()
+		writeCPUFixture(t, root, "cpu0", "0", "0")
+		writeCPUFixture(t, root, "cpu1", "0", "0")
+
+		count, err := readPhysicalCoreCount(filepath.Join(root, "cpu[0-9]*", "topology", "core_id"))
+		require.NoError(t, err)
+		assert.Equal(t, uint32(1), count)
+	})
 }
 
 func TestReadTopologyValueRejectsMissingPath(t *testing.T) {
@@ -182,6 +194,15 @@ func TestReadTopologyValue(t *testing.T) {
 		_, err := readTopologyValue("/no/such/topology")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "read topology")
+	})
+
+	t.Run("rejects empty value", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "topology_value")
+		require.NoError(t, os.WriteFile(path, []byte(" \n"), 0o644))
+
+		_, err := readTopologyValue(path)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "empty value")
 	})
 }
 

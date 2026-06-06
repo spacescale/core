@@ -1,18 +1,18 @@
-// Package node tests cover IO helpers (validateRuntimePath, readSysfsValue,
-// writeSysfsValue) and loadIdentity. The following functions require real
-// Linux host state (KVM, sysfs, /proc) or root privileges and are excluded:
+// Package node tests cover loadIdentity plus pure file and sysfs helpers.
+// The following functions require real Linux host state (KVM, sysfs, /proc) or
+// root privileges and are intentionally excluded from normal CI unit tests:
 //
 //   - ensureKVM                  requires /dev/kvm
-//   - disableSwap / ensureSwapDisabled   requires root + /proc/swaps
+//   - disableSwap / ensureSwapDisabled    require root + /proc/swaps
 //   - disableKSM / disableSMT    requires sysfs filesystem
 //   - ensureFirecrackerJailerAccount / createFirecrackerJailerUser / firecrackerJailerIdentity
-//                                 requires root + useradd
-//   - kvmDeviceGID                requires /dev/kvm + syscall.Stat_t
-//   - preflight / validateRuntimePaths / Collect compose the above; tested via integration
+//     requires root + useradd
+//   - kvmDeviceGID               requires /dev/kvm + syscall.Stat_t
+//   - preflight / validateRuntimePaths / Collect compose the above and are
+//     better validated in privileged integration environments
 package node
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -23,36 +23,24 @@ import (
 
 func TestLoadIdentityReadsValidIdentity(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "identity.json")
-	if err := os.WriteFile(path, []byte(`{"node_id":"node-1","region":"eu-central"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(`{"node_id":"node-1","region":"eu-central"}`), 0o600))
 
 	identity, err := loadIdentity(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if identity.NodeID != "node-1" || identity.Region != "eu-central" {
-		t.Fatalf("unexpected identity: %+v", identity)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, Identity{NodeID: "node-1", Region: "eu-central"}, identity)
 }
 
 func TestLoadIdentityMissingFile(t *testing.T) {
 	_, err := loadIdentity(filepath.Join(t.TempDir(), "identity.json"))
-	if !errors.Is(err, errIdentityNotFound) {
-		t.Fatalf("expected errIdentityNotFound, got %v", err)
-	}
+	require.ErrorIs(t, err, errIdentityNotFound)
 }
 
 func TestLoadIdentityRejectsIncompleteIdentity(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "identity.json")
-	if err := os.WriteFile(path, []byte(`{"node_id":"node-1"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(`{"node_id":"node-1"}`), 0o600))
 
 	_, err := loadIdentity(path)
-	if !errors.Is(err, errInvalidIdentity) {
-		t.Fatalf("expected errInvalidIdentity, got %v", err)
-	}
+	require.ErrorIs(t, err, errInvalidIdentity)
 }
 
 func TestValidateRuntimePath(t *testing.T) {
