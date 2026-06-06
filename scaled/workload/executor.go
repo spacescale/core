@@ -1,12 +1,11 @@
 //go:build linux
 
-// Package executor handles targeted microVM launch commands after placement
-// wins.
+// Executor handles targeted microVM launch commands after placement wins.
 //
 // The package validates launch messages, commits reserved capacity, invokes the
 // local microvm launcher, and publishes accepted only after guestd hello. On boot
 // or reply failure it reverts capacity and tears down any started VM.
-package executor
+package workload
 
 import (
 	"context"
@@ -14,16 +13,12 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/spacescale/core/internal/scaled/workload/microvm"
-	"github.com/spacescale/core/internal/scaled/workload/placement"
-	"github.com/spacescale/core/internal/shared/nats"
-	pb "github.com/spacescale/core/internal/shared/pb/v1"
+	"github.com/spacescale/core/scaled/workload/microvm"
+	"github.com/spacescale/core/shared/nats"
+	pb "github.com/spacescale/core/shared/pb/v1"
 )
 
 const (
-	microVMLaunchAcceptedStatus = "starting"
-	microVMLaunchFailedStatus   = "failed"
-
 	// microVMLaunchBootTimeout is a failure guard, not the expected boot time.
 	// The guestd path should be fast; if Firecracker cannot start and send hello
 	// inside this window, the node should reject the launch and free capacity.
@@ -32,12 +27,12 @@ const (
 
 type Executor struct {
 	logger   *slog.Logger
-	capacity *placement.Capacity
+	capacity *Capacity
 	bootID   string
 	launcher *microvm.Launcher
 }
 
-func New(logger *slog.Logger, capacity *placement.Capacity, bootID string, launcher *microvm.Launcher) *Executor {
+func NewExecutor(logger *slog.Logger, capacity *Capacity, bootID string, launcher *microvm.Launcher) *Executor {
 	return &Executor{
 		logger:   logger,
 		capacity: capacity,
@@ -73,16 +68,14 @@ func (e *Executor) handle(client *nats.Client, msg *nats.Msg) error {
 		return errors.New("microvm launch request missing microvm id")
 	}
 
-	if _, err := placement.SpecFromShape(req.Shape); err != nil {
+	if _, err := SpecFromShape(req.Shape); err != nil {
 		return err
 	}
 
 	committedSpec, ok := e.capacity.Commit(req.MicrovmId)
 	if !ok {
 		return client.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
-			MicrovmId:    req.MicrovmId,
 			Accepted:     false,
-			Status:       microVMLaunchFailedStatus,
 			ErrorMessage: "reservation expired or not found",
 		})
 	}
@@ -91,7 +84,7 @@ func (e *Executor) handle(client *nats.Client, msg *nats.Msg) error {
 		"microvm_id", req.MicrovmId,
 		"vcpu", committedSpec.VCPU,
 		"ram_mb", committedSpec.RAM,
-		"cpu_mode", placement.CpuModeLogValue(req.GetShape()),
+		"cpu_mode", CpuModeLogValue(req.GetShape()),
 		"volume_mb", req.GetShape().GetVolumeMb(),
 	)
 
@@ -106,18 +99,14 @@ func (e *Executor) handle(client *nats.Client, msg *nats.Msg) error {
 	if err != nil {
 		e.capacity.Revert(committedSpec)
 		publishErr := client.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
-			MicrovmId:    req.MicrovmId,
 			Accepted:     false,
-			Status:       microVMLaunchFailedStatus,
 			ErrorMessage: err.Error(),
 		})
 		return errors.Join(err, publishErr)
 	}
 
 	reply := &pb.MicroVMLaunchResponse{
-		MicrovmId: req.MicrovmId,
-		Accepted:  true,
-		Status:    microVMLaunchAcceptedStatus,
+		Accepted: true,
 	}
 
 	if err := client.PublishProto(msg.Reply, reply); err != nil {

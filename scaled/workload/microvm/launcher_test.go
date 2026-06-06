@@ -7,16 +7,16 @@ import (
 	"testing"
 
 	firecracker "github.com/firecracker-microvm/firecracker-go-sdk"
-	"github.com/spacescale/core/internal/scaled/runtime"
+	"github.com/spacescale/core/scaled/node"
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuildFirecrackerConfigUsesJailVisiblePaths(t *testing.T) {
-	paths := runtime.Paths{
-		FirecrackerPath: "/var/lib/spacescale/runtime/host/firecracker-v1.15.1-x86_64",
-		JailerPath:      "/var/lib/spacescale/runtime/host/jailer-v1.15.1-x86_64",
-		KernelPath:      "/var/lib/spacescale/runtime/guest/vmlinux-v6.1.80-x86_64",
-		RootFSPath:      "/var/lib/spacescale/runtime/guest/guestd-rootfs-v0.1.3-x86_64-ext4",
+func TestFirecrackerConfigFromPlanUsesJailVisiblePaths(t *testing.T) {
+	paths := node.RuntimePaths{
+		FirecrackerPath: "/usr/bin/firecracker",
+		JailerPath:      "/usr/bin/jailer",
+		KernelPath:      "/var/lib/spacescale/golden/vmlinux",
+		RootFSPath:      "/var/lib/spacescale/golden/rootfs.ext4",
 	}
 
 	launcher := &Launcher{
@@ -45,7 +45,8 @@ func TestBuildFirecrackerConfigUsesJailVisiblePaths(t *testing.T) {
 		MMDSIP:    net.ParseIP(mmdsIPv4).To4(),
 	}
 
-	cfg := launcher.buildFirecrackerConfig(req, workspace, 3, network, nil)
+	plan := launcher.buildFirecrackerPlan(req, workspace, 3, network)
+	cfg := firecrackerConfigFromPlan(plan, nil)
 
 	require.Equal(t, workspace.FirecrackerSocketPathInJail(), cfg.SocketPath)
 	require.Equal(t, workspace.FirecrackerLogPathInJail(), cfg.LogPath)
@@ -63,7 +64,7 @@ func TestBuildFirecrackerConfigUsesJailVisiblePaths(t *testing.T) {
 	require.Equal(t, network.TapName, cfg.NetworkInterfaces[0].StaticConfiguration.HostDevName)
 	require.Equal(t, network.GuestMAC, cfg.NetworkInterfaces[0].StaticConfiguration.MacAddress)
 	require.Nil(t, cfg.NetworkInterfaces[0].StaticConfiguration.IPConfiguration)
-	require.Equal(t, network.MMDSIP, cfg.MmdsAddress)
+	require.Equal(t, network.MMDSIP.String(), cfg.MmdsAddress)
 	require.Equal(t, firecracker.MMDSv2, cfg.MmdsVersion)
 
 	require.Len(t, cfg.Drives, 1)

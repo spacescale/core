@@ -14,9 +14,7 @@ import (
 	"time"
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
-	"github.com/firecracker-microvm/firecracker-go-sdk/client/models"
-	scaledruntime "github.com/spacescale/core/internal/scaled/runtime"
-	"github.com/spacescale/core/internal/scaled/system"
+	"github.com/spacescale/core/scaled/node"
 )
 
 // guestdKernelArgs is the fixed first-boot command line for the minimal guestd
@@ -54,7 +52,7 @@ type ActiveVM struct {
 // the executor before it calls Launch.
 type Launcher struct {
 	logger       *slog.Logger
-	runtimePaths scaledruntime.Paths
+	runtimePaths node.RuntimePaths
 	jailerUID    int
 	jailerGID    int
 	cids         *cidAllocator
@@ -64,8 +62,10 @@ type Launcher struct {
 }
 
 // NewLauncher creates the in-memory lifecycle owner for local Firecracker VMs.
-// Startup preflight owns creating and resolving the fixed jailer account.
-func NewLauncher(logger *slog.Logger, runtimePaths scaledruntime.Paths, jailerIdentity system.FirecrackerJailerIdentity) *Launcher {
+// Startup preflight owns creating and resolving the fixed jailer account, so
+// runtimePaths come from the golden image and the jailer identity is already
+// resolved when the launcher is built.
+func NewLauncher(logger *slog.Logger, runtimePaths node.RuntimePaths, jailerIdentity node.FirecrackerJailerIdentity) *Launcher {
 	return &Launcher{
 		logger:       logger.With("component", "microvm"),
 		runtimePaths: runtimePaths,
@@ -201,91 +201,6 @@ func (l *Launcher) prepareVM(vm *ActiveVM) error {
 	vm.Network = network
 
 	return nil
-}
-
-// startFirecracker builds the jailer-aware SDK config and starts the jailed VMM.
-func (l *Launcher) startFirecracker(ctx context.Context, req LaunchRequest, vm *ActiveVM, jailerOutput io.Writer) error {
-	// Build the full Firecracker SDK config before creating the Machine. This
-	// is where host paths, jail-visible paths, vsock, and network settings are
-	// frozen for this boot attempt.
-	fcCfg := l.buildFirecrackerConfig(req, vm.Workspace, vm.GuestCID, vm.Network, jailerOutput)
-	machine, err := firecracker.NewMachine(ctx, fcCfg)
-	if err != nil {
-		return fmt.Errorf("create firecracker machine: %w", err)
-	}
-
-	// Keep normal SDK request/response chatter out of scaled stdout. Firecracker,
-	// jailer, and guestd still write their diagnostic files in the VM workspace.
-	machine.Logger().Logger.SetOutput(io.Discard)
-
-	// Firecracker's FcInit handler chain configures the VM before InstanceStart.
-	// Append metadata after the SDK has configured MMDS so guestd can read stable
-	// boot metadata from inside the guest.
-	machine.Handlers.FcInit = machine.Handlers.FcInit.AppendAfter(
-		firecracker.ConfigMmdsHandlerName,
-		firecracker.NewSetMetadataHandler(map[string]any{
-			"version":    1,
-			"microvm_id": req.MicroVMID,
-		}),
-	)
-
-	// Store the Machine before Start so cleanup can stop the VMM if startup
-	// fails after the process is created.
-	vm.machine = machine
-
-	if err := machine.Start(ctx); err != nil {
-		return fmt.Errorf("start firecracker machine: %w", err)
-	}
-	return nil
-}
-
-// Firecracker config stays explicit here because this is the boundary where host
-// paths become jail-visible paths for the SDK and jailer.
-func (l *Launcher) buildFirecrackerConfig(req LaunchRequest, workspace Workspace, cid uint32, network *Network, jailerOutput io.Writer) firecracker.Config {
-	uid := l.jailerUID
-	gid := l.jailerGID
-
-	return firecracker.Config{
-		SocketPath:      workspace.FirecrackerSocketPathInJail(),
-		KernelImagePath: l.runtimePaths.KernelPath,
-		KernelArgs:      guestdKernelArgs,
-		Drives:          firecracker.NewDrivesBuilder(workspace.RootFSPath).Build(),
-		NetworkInterfaces: firecracker.NetworkInterfaces{{
-			StaticConfiguration: &firecracker.StaticNetworkConfiguration{
-				HostDevName: network.TapName,
-				MacAddress:  network.GuestMAC,
-			},
-			AllowMMDS: true,
-		}},
-		LogPath:  workspace.FirecrackerLogPathInJail(),
-		LogLevel: "Info",
-		MachineCfg: models.MachineConfiguration{
-			VcpuCount:  firecracker.Int64(int64(req.VCPU)),
-			MemSizeMib: firecracker.Int64(int64(req.RAMMB)),
-			Smt:        firecracker.Bool(false),
-		},
-		VsockDevices: []firecracker.VsockDevice{{
-			ID:   "guestd",
-			Path: workspace.VSockPathInJail(),
-			CID:  cid,
-		}},
-
-		MmdsAddress: network.MMDSIP,
-		MmdsVersion: firecracker.MMDSv2,
-		JailerCfg: &firecracker.JailerConfig{
-			UID:            &uid,
-			GID:            &gid,
-			ID:             req.MicroVMID,
-			NumaNode:       firecracker.Int(0),
-			ChrootBaseDir:  workspace.JailerBaseDir,
-			ChrootStrategy: firecracker.NewNaiveChrootStrategy(l.runtimePaths.KernelPath),
-			ExecFile:       l.runtimePaths.FirecrackerPath,
-			JailerBinary:   l.runtimePaths.JailerPath,
-			Stdout:         jailerOutput,
-			Stderr:         jailerOutput,
-			CgroupVersion:  "2",
-		},
-	}
 }
 
 // openJailerLog captures jailer stdout/stderr during Firecracker startup.

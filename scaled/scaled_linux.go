@@ -2,9 +2,11 @@
 
 // Package scaled starts the Linux edge daemon and wires startup subsystems.
 //
-// The package validates config, runs host preflight, loads node identity, and
-// starts workload handling. It should orchestrate only; subsystem internals stay
-// in node and workload.
+// The package is a thin glue layer. It loads config, runs node.Collect to
+// resolve runtime paths and host facts, then hands a node.Info to the
+// workload Runtime. The Runtime owns the Bidder, Executor, Launcher, and
+// the periodic node heartbeat; scaled itself only orchestrates startup and
+// forwards the process context.
 package scaled
 
 import (
@@ -19,7 +21,8 @@ import (
 	"github.com/spacescale/core/shared/nats"
 )
 
-// Run starts the scaled edge daemon and blocks until the context is canceled or a startup/runtime error occurs.
+// Run starts the scaled edge daemon and blocks until the context is canceled
+// or a startup/runtime error occurs.
 func Run(ctx context.Context) error {
 	cfg, err := config.LoadScaled()
 	if err != nil {
@@ -38,51 +41,24 @@ func Run(ctx context.Context) error {
 }
 
 func runDaemon(ctx context.Context, cfg config.Config, log *slog.Logger, natsClient *nats.Client) error {
-	runtimePaths, err := node.ValidateRuntimePaths(cfg.FirecrackerBin, cfg.JailerBin, cfg.GuestKernelPath, cfg.GuestRootFSPath)
+	info, err := node.Collect(log)
 	if err != nil {
-		return err
+		return fmt.Errorf("collect node info: %w", err)
 	}
 
-	jailerIdentity, err := node.Preflight(log)
-	if err != nil {
-		return err
-	}
-
-	snapshot, err := node.Read()
-	if err != nil {
-		return err
-	}
-	identity, err := node.LoadIdentity()
-	if err != nil {
-		return fmt.Errorf("load node identity: %w", err)
-	}
-
-	heartbeats, err := natsClient.EnsureNodeHeartbeatKV(ctx)
-	if err != nil {
-		return fmt.Errorf("init heartbeat kv: %w", err)
-	}
-
-	workloadRuntime, err := workload.NewRuntime(
-		log,
-		runtimePaths,
-		jailerIdentity,
-		snapshot.TotalRAMMb,
-		snapshot.TotalCores,
-		identity.NodeID,
-		snapshot.BootID,
-		identity.Region,
-	)
-	if err != nil {
-		return fmt.Errorf("create workload runtime: %w", err)
-	}
-	if err := workloadRuntime.Start(ctx, natsClient); err != nil {
+	runtime := workload.NewRuntime(log, info)
+	if err := runtime.Start(ctx, natsClient); err != nil {
 		return fmt.Errorf("start workload runtime: %w", err)
 	}
+	defer runtime.Stop()
 
-	go node.Heartbeater(ctx, heartbeats, identity, snapshot, log)
+	log.Info("scaled ready",
+		"node_id", info.Identity.NodeID,
+		"region", info.Identity.Region,
+	)
 
 	<-ctx.Done()
-	log.Info("scaled stopped", "node_id", identity.NodeID)
+	log.Info("scaled stopped", "node_id", info.Identity.NodeID)
 
 	return nil
 }

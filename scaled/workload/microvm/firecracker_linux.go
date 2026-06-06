@@ -1,17 +1,94 @@
+//go:build linux
+
 package microvm
 
 import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 	"github.com/firecracker-microvm/firecracker-go-sdk/client/models"
 )
 
-// startFirecracker builds the jailer-aware SDK config and starts the jailed VMM.
+// firecrackerPlan is the host-side Firecracker boot plan for one VM.
+//
+// The plan captures every host and jail-visible value in one struct so the
+// SDK config builder stays a pure translation with no hidden state. Build
+// the plan with (*Launcher).buildFirecrackerPlan, then translate it to the
+// SDK Config with firecrackerConfigFromPlan.
+type firecrackerPlan struct {
+	SocketPath      string
+	KernelImagePath string
+	KernelArgs      string
+	RootFSPath      string
+	HostDevName     string
+	MacAddress      string
+	AllowMMDS       bool
+	LogPath         string
+	VCPUCount       int64
+	MemSizeMib      int64
+	Smt             bool
+	VSockID         string
+	VSockPath       string
+	VSockCID        uint32
+	MMDSAddress     net.IP
+
+	Jailer firecrackerPlanJailer
+}
+
+type firecrackerPlanJailer struct {
+	UID            int
+	GID            int
+	ID             string
+	NumaNode       int
+	ChrootBaseDir  string
+	KernelPath     string
+	ExecFile       string
+	JailerBinary   string
+	CgroupVersion  string
+}
+
+// buildFirecrackerPlan collects every host and jail-visible value for one VM
+// boot attempt. Keeping the values in a dedicated struct makes the SDK config
+// translation a pure function and gives callers a place to assert on the
+// exact configuration that was sent to Firecracker.
+func (l *Launcher) buildFirecrackerPlan(req LaunchRequest, workspace Workspace, cid uint32, network *Network) firecrackerPlan {
+	return firecrackerPlan{
+		SocketPath:      workspace.FirecrackerSocketPathInJail(),
+		KernelImagePath: l.runtimePaths.KernelPath,
+		KernelArgs:      guestdKernelArgs,
+		RootFSPath:      workspace.RootFSPath,
+		HostDevName:     network.TapName,
+		MacAddress:      network.GuestMAC,
+		AllowMMDS:       true,
+		LogPath:         workspace.FirecrackerLogPathInJail(),
+		VCPUCount:       int64(req.VCPU),
+		MemSizeMib:      int64(req.RAMMB),
+		Smt:             false,
+		VSockID:         "guestd",
+		VSockPath:       workspace.VSockPathInJail(),
+		VSockCID:        cid,
+		MMDSAddress:     network.MMDSIP,
+		Jailer: firecrackerPlanJailer{
+			UID:           l.jailerUID,
+			GID:           l.jailerGID,
+			ID:            req.MicroVMID,
+			NumaNode:      0,
+			ChrootBaseDir: workspace.JailerBaseDir,
+			KernelPath:    l.runtimePaths.KernelPath,
+			ExecFile:      l.runtimePaths.FirecrackerPath,
+			JailerBinary:  l.runtimePaths.JailerPath,
+			CgroupVersion: "2",
+		},
+	}
+}
+
+// startFirecracker builds the jailer-aware SDK config from a plan and starts
+// the jailed VMM.
 func (l *Launcher) startFirecracker(ctx context.Context, req LaunchRequest, vm *ActiveVM, jailerOutput io.Writer) error {
-	plan := l.buildFirecrackerPlan(req, vm.Workspace, vm.GuestCID, vm.Network, jailerOutput)
+	plan := l.buildFirecrackerPlan(req, vm.Workspace, vm.GuestCID, vm.Network)
 	machine, err := firecracker.NewMachine(ctx, firecrackerConfigFromPlan(plan, jailerOutput))
 	if err != nil {
 		return fmt.Errorf("create firecracker machine: %w", err)
@@ -43,6 +120,9 @@ func (l *Launcher) startFirecracker(ctx context.Context, req LaunchRequest, vm *
 }
 
 func firecrackerConfigFromPlan(plan firecrackerPlan, jailerOutput io.Writer) firecracker.Config {
+	uid := plan.Jailer.UID
+	gid := plan.Jailer.GID
+
 	return firecracker.Config{
 		SocketPath:      plan.SocketPath,
 		KernelImagePath: plan.KernelImagePath,
@@ -70,8 +150,8 @@ func firecrackerConfigFromPlan(plan firecrackerPlan, jailerOutput io.Writer) fir
 		MmdsAddress: plan.MMDSAddress,
 		MmdsVersion: firecracker.MMDSv2,
 		JailerCfg: &firecracker.JailerConfig{
-			UID:            new(plan.Jailer.UID),
-			GID:            new(plan.Jailer.GID),
+			UID:            &uid,
+			GID:            &gid,
 			ID:             plan.Jailer.ID,
 			NumaNode:       new(plan.Jailer.NumaNode),
 			ChrootBaseDir:  plan.Jailer.ChrootBaseDir,
