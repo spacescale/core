@@ -12,17 +12,11 @@ import (
 const (
 	envEncryptionKeyBytes = 32
 	productionEnvironment = "production"
-
-	defaultEnvironment     = "development"
-	defaultNATSURL         = "nats://127.0.0.1:4222"
-	defaultPort            = "8080"
-	defaultFirecrackerBin  = "/usr/bin/firecracker"
-	defaultJailerBin       = "/usr/bin/jailer"
-	defaultGuestKernelPath = "/var/lib/spacescale/golden/vmlinux-v6.1.169-spacescale4-x86_64"
-	defaultGuestRootFSPath = "/var/lib/spacescale/golden/guestd-rootfs-v0.1.3-x86_64-ext4"
-
-	defaultAuthIssuer   = "spacescale-web-bff"
-	defaultAuthAudience = "spacescale-api"
+	defaultEnvironment    = "development"
+	defaultNATSURL        = "nats://127.0.0.1:4222"
+	defaultPort           = "8080"
+	defaultAuthIssuer     = "spacescale-web-bff"
+	defaultAuthAudience   = "spacescale-api"
 )
 
 // Config is the normalized runtime configuration shared by scalecp and scaled.
@@ -30,12 +24,8 @@ type Config struct {
 	Environment string
 	NATSURL     string
 
-	DatabaseURL     string
-	Port            string // api server runtime port
-	FirecrackerBin  string
-	JailerBin       string
-	GuestKernelPath string
-	GuestRootFSPath string
+	DatabaseURL string
+	Port        string // api server runtime port
 
 	Auth               AuthConfig
 	InternalAuthSecret string
@@ -81,12 +71,8 @@ func loadFromEnv() (Config, error) {
 		Environment: normalizeEnvironment(firstNonEmptyEnv("APP_ENV", "ENVIRONMENT")),
 		NATSURL:     envStr("NATS_URL", defaultNATSURL),
 
-		DatabaseURL:     strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		Port:            envStr("PORT", defaultPort),
-		FirecrackerBin:  envStr("FIRECRACKER_BIN", defaultFirecrackerBin),
-		JailerBin:       envStr("JAILER_BIN", defaultJailerBin),
-		GuestKernelPath: envStr("GUEST_KERNEL_PATH", defaultGuestKernelPath),
-		GuestRootFSPath: envStr("GUEST_ROOTFS_PATH", defaultGuestRootFSPath),
+		DatabaseURL: strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		Port:        envStr("PORT", defaultPort),
 
 		Auth: AuthConfig{
 			JWTSecret: strings.TrimSpace(os.Getenv("BFF_JWT_SECRET")),
@@ -105,10 +91,6 @@ func (c Config) Normalized() Config {
 	c.NATSURL = envOrDefault(strings.TrimSpace(c.NATSURL), defaultNATSURL)
 	c.DatabaseURL = strings.TrimSpace(c.DatabaseURL)
 	c.Port = envOrDefault(strings.TrimSpace(c.Port), defaultPort)
-	c.FirecrackerBin = envOrDefault(strings.TrimSpace(c.FirecrackerBin), defaultFirecrackerBin)
-	c.JailerBin = envOrDefault(strings.TrimSpace(c.JailerBin), defaultJailerBin)
-	c.GuestKernelPath = envOrDefault(strings.TrimSpace(c.GuestKernelPath), defaultGuestKernelPath)
-	c.GuestRootFSPath = envOrDefault(strings.TrimSpace(c.GuestRootFSPath), defaultGuestRootFSPath)
 	c.Auth = c.Auth.Normalized()
 	c.InternalAuthSecret = strings.TrimSpace(c.InternalAuthSecret)
 	c.EnvEncryptionKeyID = strings.TrimSpace(c.EnvEncryptionKeyID)

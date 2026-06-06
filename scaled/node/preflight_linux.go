@@ -51,8 +51,54 @@ type Identity struct {
 	Region string `json:"region"`
 }
 
+
+// RuntimePaths are the host-local binaries and guest images baked into the node image.
+type RuntimePaths struct {
+	FirecrackerPath string
+	JailerPath      string
+	KernelPath      string
+	RootFSPath      string
+}
+
+// Info bundles everything the workload runtime and downstream components need
+// about the host. Collected once at startup by Collect.
+type Info struct {
+	RuntimePaths   RuntimePaths
+	JailerIdentity FirecrackerJailerIdentity
+	Snapshot       Snapshot
+	Identity       Identity
+}
+
 func identityPath() string {
 	return filepath.Join(defaultStateDir, identityFileName)
+}
+
+// Collect gathers host facts, validates runtime paths, loads identity, and runs
+// system preflight. Call once at startup and pass the result to NewRuntime.
+func Collect(logger *slog.Logger) (Info, error) {
+	runtimePaths, err := validateRuntimePaths()
+	if err != nil {
+		return Info{}, err
+	}
+	jailerIdentity, err := preflight(logger)
+	if err != nil {
+		return Info{}, err
+	}
+	snapshot, err := read()
+	if err != nil {
+		return Info{}, err
+	}
+	identity, err := loadIdentity(identityPath())
+	if err != nil {
+		return Info{}, err
+	}
+
+	return Info{
+		RuntimePaths:   runtimePaths,
+		JailerIdentity: jailerIdentity,
+		Snapshot:       snapshot,
+		Identity:       identity,
+	}, nil
 }
 
 func loadIdentity(path string) (Identity, error) {
@@ -358,50 +404,9 @@ func writeSysfsValue(path string, value string) error {
 	return os.WriteFile(path, []byte(value), 0o644)
 }
 
-// RuntimePaths are the host-local binaries and guest images baked into the node image.
-type RuntimePaths struct {
-	FirecrackerPath string
-	JailerPath      string
-	KernelPath      string
-	RootFSPath      string
-}
 
-// Info bundles everything the workload runtime and downstream components need
-// about the host. Collected once at startup by Collect.
-type Info struct {
-	RuntimePaths   RuntimePaths
-	JailerIdentity FirecrackerJailerIdentity
-	Snapshot       Snapshot
-	Identity       Identity
-}
 
-// Collect gathers host facts, validates runtime paths, loads identity, and runs
-// system preflight. Call once at startup and pass the result to NewRuntime.
-func Collect(logger *slog.Logger) (Info, error) {
-	runtimePaths, err := validateRuntimePaths()
-	if err != nil {
-		return Info{}, err
-	}
-	jailerIdentity, err := preflight(logger)
-	if err != nil {
-		return Info{}, err
-	}
-	snapshot, err := read()
-	if err != nil {
-		return Info{}, err
-	}
-	identity, err := loadIdentity(identityPath())
-	if err != nil {
-		return Info{}, err
-	}
 
-	return Info{
-		RuntimePaths:   runtimePaths,
-		JailerIdentity: jailerIdentity,
-		Snapshot:       snapshot,
-		Identity:       identity,
-	}, nil
-}
 
 // validateRuntimePaths verifies the golden-image binaries and guest files exist
 // at their fixed host locations.
