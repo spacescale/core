@@ -9,7 +9,6 @@ db:
 
 
 scalecp: db
-	@echo "Starting scalecp..."
 	set -a && . ./.env.local && set +a && : "$${DATABASE_URL:?DATABASE_URL missing in .env.local}" && go run ./cmd/scalecp
 
 
