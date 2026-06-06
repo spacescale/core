@@ -1,12 +1,12 @@
 //go:build linux
 
-// Runtime is the workload subsystem boundary for one scaled node.
+// Package workload is the workload subsystem boundary for one scaled node.
 //
 // Runtime owns the Bidder (auction handler), Executor (targeted launch
 // handler), local Firecracker Launcher, and the periodic node heartbeat. The
 // main daemon calls NewRuntime once with the values produced by node.Collect
 // and Start once with the NATS client; from that point the workload boundary
-// runs itself and stops when the caller's context is cancelled.
+// runs itself and stops when the caller's context is canceled.
 package workload
 
 import (
@@ -18,7 +18,7 @@ import (
 	"github.com/spacescale/core/scaled/node"
 	"github.com/spacescale/core/scaled/workload/microvm"
 	"github.com/spacescale/core/shared/nats"
-	 "github.com/spacescale/core/shared/pb/v1"
+	"github.com/spacescale/core/shared/pb/v1"
 )
 
 const heartbeatInterval = 5 * time.Second
@@ -66,12 +66,12 @@ func NewRuntime(logger *slog.Logger, info node.Info) *Runtime {
 // start one workload component without knowing the internal NATS subjects,
 // handler order, or heartbeat key shape.
 func (r *Runtime) Start(ctx context.Context, nc *nats.Client) error {
-	auctionSubject, err := r.bidder.Register(nc)
+	auctionSubject, err := r.bidder.Register(ctx, nc)
 	if err != nil {
 		return fmt.Errorf("register bidder: %w", err)
 	}
 
-	launchSubject, err := r.executor.Register(nc)
+	launchSubject, err := r.executor.Register(ctx, nc)
 	if err != nil {
 		return fmt.Errorf("register executor: %w", err)
 	}
@@ -100,7 +100,7 @@ func (r *Runtime) Start(ctx context.Context, nc *nats.Client) error {
 }
 
 // Stop halts the periodic node heartbeat. The NATS subscriptions registered
-// in Start are torn down when the caller's context is cancelled, so Stop only
+// in Start are torn down when the caller's context is canceled, so Stop only
 // owns the heartbeat lifecycle.
 func (r *Runtime) Stop() {
 	if r.stopHeartbeat != nil {

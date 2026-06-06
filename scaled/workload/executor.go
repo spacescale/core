@@ -15,7 +15,7 @@ import (
 
 	"github.com/spacescale/core/scaled/workload/microvm"
 	"github.com/spacescale/core/shared/nats"
-	pb "github.com/spacescale/core/shared/pb/v1"
+	"github.com/spacescale/core/shared/pb/v1"
 )
 
 const (
@@ -44,10 +44,10 @@ func NewExecutor(logger *slog.Logger, capacity *Capacity, bootID string, launche
 // Register connects the executor to the node's specific targeted inbox.
 // This subject includes the boot ID to guarantee that stale launch commands
 // from previous boot lifecycles are naturally dropped.
-func (e *Executor) Register(client *nats.Client) (string, error) {
+func (e *Executor) Register(ctx context.Context, client *nats.Client) (string, error) {
 	subject := nats.NodeMicroVMLaunchSubject(e.bootID)
 	_, err := client.Subscribe(subject, func(msg *nats.Msg) error {
-		return e.handle(client, msg)
+		return e.handle(ctx, client, msg)
 	})
 	if err != nil {
 		return "", err
@@ -55,7 +55,7 @@ func (e *Executor) Register(client *nats.Client) (string, error) {
 	return subject, nil
 }
 
-func (e *Executor) handle(client *nats.Client, msg *nats.Msg) error {
+func (e *Executor) handle(ctx context.Context, client *nats.Client, msg *nats.Msg) error {
 	if msg.Reply == "" {
 		return errors.New("microvm launch request missing reply subject")
 	}
@@ -88,7 +88,7 @@ func (e *Executor) handle(client *nats.Client, msg *nats.Msg) error {
 		"volume_mb", req.GetShape().GetVolumeMb(),
 	)
 
-	launchCtx, cancel := context.WithTimeout(context.Background(), microVMLaunchBootTimeout)
+	launchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), microVMLaunchBootTimeout)
 	defer cancel()
 
 	active, err := e.launcher.Launch(launchCtx, microvm.LaunchRequest{
@@ -111,7 +111,7 @@ func (e *Executor) handle(client *nats.Client, msg *nats.Msg) error {
 
 	if err := client.PublishProto(msg.Reply, reply); err != nil {
 		if active != nil {
-			err = errors.Join(err, e.launcher.Stop(context.Background(), active.MicroVMID))
+			err = errors.Join(err, e.launcher.Stop(context.WithoutCancel(ctx), active.MicroVMID))
 		}
 		e.capacity.Revert(committedSpec)
 		return err

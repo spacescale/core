@@ -10,6 +10,7 @@
 package workload
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"sync"
@@ -420,10 +421,10 @@ func NewBidder(logger *slog.Logger, c *Capacity, nodeID, bootID, region string) 
 // Register connects the bidder to the NATS regional broadcast subject.
 // This allows the orchestrator to explicitly control when the node begins
 // accepting workloads.
-func (b *Bidder) Register(client *nats.Client) (string, error) {
+func (b *Bidder) Register(ctx context.Context, client *nats.Client) (string, error) {
 	subject := nats.NodeAuctionSubject(b.region)
 	_, err := client.Subscribe(subject, func(msg *nats.Msg) error {
-		return b.handle(client, msg)
+		return b.handle(ctx, client, msg)
 	})
 	if err != nil {
 		return "", err
@@ -431,7 +432,7 @@ func (b *Bidder) Register(client *nats.Client) (string, error) {
 	return subject, nil
 }
 
-func (b *Bidder) handle(client *nats.Client, msg *nats.Msg) error {
+func (b *Bidder) handle(_ context.Context, client *nats.Client, msg *nats.Msg) error {
 	if msg.Reply == "" {
 		return errors.New("auction request missing reply subject")
 	}
