@@ -45,8 +45,8 @@ type diskStats struct {
 	AvailableMb uint64
 }
 
-// Read performs a one-time scan of the local hardware.
-func Read() (Snapshot, error) {
+// read performs a one-time scan of the local hardware.
+func read() (Snapshot, error) {
 	return readSnapshot(bootIDPath, memInfoPath, cpuTopologyCoreIDGlob, rootMountDir)
 }
 
