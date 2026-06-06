@@ -38,7 +38,7 @@ func Run(ctx context.Context) error {
 }
 
 func runDaemon(ctx context.Context, log *slog.Logger, natsClient *nats.Client) error {
-	info, err := node.Collect(log)
+	info, err := node.Collect(ctx, log)
 	if err != nil {
 		return fmt.Errorf("collect node info: %w", err)
 	}

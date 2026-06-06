@@ -2,6 +2,7 @@ package node
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -74,12 +75,12 @@ func identityPath() string {
 
 // Collect gathers host facts, validates runtime paths, loads identity, and runs
 // node preflight. Call once at startup and pass the result to NewRuntime.
-func Collect(logger *slog.Logger) (Info, error) {
+func Collect(ctx context.Context, logger *slog.Logger) (Info, error) {
 	runtimePaths, err := validateRuntimePaths()
 	if err != nil {
 		return Info{}, err
 	}
-	jailerIdentity, err := preflight(logger)
+	jailerIdentity, err := preflight(ctx, logger)
 	if err != nil {
 		return Info{}, err
 	}
@@ -129,19 +130,19 @@ type FirecrackerJailerIdentity struct {
 
 // preflight prepares the host before scaled joins the workload fabric. It returns
 // the jailer identity that later Firecracker launches should use.
-func preflight(logger *slog.Logger) (FirecrackerJailerIdentity, error) {
+func preflight(ctx context.Context, logger *slog.Logger) (FirecrackerJailerIdentity, error) {
 	logger = logger.With("component", "preflight")
 
 	if err := ensureKVM(); err != nil {
 		return FirecrackerJailerIdentity{}, err
 	}
 
-	jailerIdentity, err := ensureFirecrackerJailerAccount()
+	jailerIdentity, err := ensureFirecrackerJailerAccount(ctx)
 	if err != nil {
 		return FirecrackerJailerIdentity{}, err
 	}
 
-	if err := disableSwap(); err != nil {
+	if err := disableSwap(ctx); err != nil {
 		return FirecrackerJailerIdentity{}, err
 	}
 
@@ -185,8 +186,8 @@ func ensureKVM() error {
 }
 
 // disableSwap keeps guest memory off host swap.
-func disableSwap() error {
-	if err := exec.Command("swapoff", "-a").Run(); err != nil {
+func disableSwap(ctx context.Context) error {
+	if err := exec.CommandContext(ctx, "swapoff", "-a").Run(); err != nil {
 		return fmt.Errorf("system preflight: disable swap: %w (ensure daemon has root or CAP_SYS_ADMIN)", err)
 	}
 
@@ -203,7 +204,7 @@ func ensureSwapDisabled() error {
 	if err != nil {
 		return fmt.Errorf("system preflight: open %s: %w", procSwapsPath, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	lineNumber := 0
@@ -291,7 +292,7 @@ func disableSMT() error {
 
 // ensureFirecrackerJailerAccount makes sure the dedicated Firecracker jailer
 // Linux account exists and returns its UID/GID.
-func ensureFirecrackerJailerAccount() (FirecrackerJailerIdentity, error) {
+func ensureFirecrackerJailerAccount(ctx context.Context) (FirecrackerJailerIdentity, error) {
 	kvmGID, err := kvmDeviceGID()
 	if err != nil {
 		return FirecrackerJailerIdentity{}, err
@@ -309,7 +310,7 @@ func ensureFirecrackerJailerAccount() (FirecrackerJailerIdentity, error) {
 		if _, ok := errors.AsType[user.UnknownUserError](err); !ok {
 			return FirecrackerJailerIdentity{}, fmt.Errorf("system preflight: lookup firecracker jailer user: %w", err)
 		}
-		if err := createFirecrackerJailerUser(kvmGID); err != nil {
+		if err := createFirecrackerJailerUser(ctx, kvmGID); err != nil {
 			return FirecrackerJailerIdentity{}, err
 		}
 	}
@@ -344,7 +345,7 @@ func firecrackerJailerIdentity(kvmGID int) (FirecrackerJailerIdentity, error) {
 	return FirecrackerJailerIdentity{UID: uid, GID: gid}, nil
 }
 
-func createFirecrackerJailerUser(kvmGID int) error {
+func createFirecrackerJailerUser(ctx context.Context, kvmGID int) error {
 	shell := nologinShellPath
 
 	if _, err := os.Stat(shell); err != nil {
@@ -361,7 +362,7 @@ func createFirecrackerJailerUser(kvmGID int) error {
 		"--shell", shell,
 		FirecrackerJailerAccountName,
 	}
-	output, err := exec.Command("useradd", args...).CombinedOutput()
+	output, err := exec.CommandContext(ctx, "useradd", args...).CombinedOutput()
 	if err != nil {
 		if _, lookupErr := user.Lookup(FirecrackerJailerAccountName); lookupErr == nil {
 			return nil

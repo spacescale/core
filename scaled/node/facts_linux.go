@@ -96,7 +96,7 @@ func readMemoryStats(path string) (memoryStats, error) {
 	if err != nil {
 		return memoryStats{}, fmt.Errorf("open %s: %w", path, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var stats memoryStats
 	var foundTotal bool
