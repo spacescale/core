@@ -13,7 +13,7 @@ func TestCapacityReserveSharedPoolLimit(t *testing.T) {
 	capacity := NewCapacity(131072, 8)
 	spec := HardwareSpec{VCPU: 4, RAM: 8192, IsPinned: false}
 
-	for i := 0; i < 7; i++ {
+	for i := range 7 {
 		microvmID := "growth-" + string(rune('a'+i))
 		_, ok := capacity.Reserve(microvmID, spec, time.Second)
 		require.True(t, ok)

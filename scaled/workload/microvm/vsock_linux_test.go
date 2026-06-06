@@ -1,3 +1,5 @@
+//go:build linux
+
 package microvm
 
 import (
@@ -158,10 +160,10 @@ func TestAcceptUnixReturnsAcceptedConnection(t *testing.T) {
 
 	serverConn, err := acceptUnix(ctx, listener)
 	require.NoError(t, err)
-	defer serverConn.Close()
+	defer func() { _ = serverConn.Close() }()
 
 	clientConn := requireClientConn(t, clientCh, errCh)
-	defer clientConn.Close()
+	defer func() { _ = clientConn.Close() }()
 }
 
 func TestAcceptUnixStopsWhenContextIsCanceled(t *testing.T) {
@@ -200,7 +202,7 @@ func TestWaitForHelloAcceptsValidControlFrame(t *testing.T) {
 			errCh <- err
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		_, err = conn.Write(validHelloFrame())
 		errCh <- err
@@ -234,10 +236,10 @@ func TestAcceptLogReturnsLogConnection(t *testing.T) {
 
 	serverConn, err := listeners.AcceptLog(ctx)
 	require.NoError(t, err)
-	defer serverConn.Close()
+	defer func() { _ = serverConn.Close() }()
 
 	clientConn := requireClientConn(t, clientCh, errCh)
-	defer clientConn.Close()
+	defer func() { _ = clientConn.Close() }()
 }
 
 func validHelloFrame() []byte {
@@ -252,8 +254,7 @@ func validHelloFrame() []byte {
 func shortTempDir(t *testing.T) string {
 	t.Helper()
 
-	dir, err := os.MkdirTemp("/tmp", "vsock-test-")
-	require.NoError(t, err)
+	dir := t.TempDir()
 	t.Cleanup(func() {
 		_ = os.RemoveAll(dir)
 	})

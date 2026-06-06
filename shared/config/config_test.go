@@ -9,51 +9,55 @@ import (
 )
 
 func TestLoadControl(t *testing.T) {
-	key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
+	t.Run("reads explicit config", func(t *testing.T) {
+		key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
 
-	t.Setenv("APP_ENV", " prod ")
-	t.Setenv("NATS_URL", " nats://10.0.0.1:4222 ")
-	t.Setenv("DATABASE_URL", " postgres://user:pass@db/spacescale ")
-	t.Setenv("PORT", " 9090 ")
-	t.Setenv("BFF_JWT_SECRET", " secret ")
-	t.Setenv("BFF_JWT_ISSUER", " issuer ")
-	t.Setenv("BFF_JWT_AUDIENCE", " audience ")
-	t.Setenv("INTERNAL_AUTH_SYNC_SECRET", " internal-secret ")
-	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", " key-v1 ")
-	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+		t.Setenv("APP_ENV", " prod ")
+		t.Setenv("NATS_URL", " nats://10.0.0.1:4222 ")
+		t.Setenv("DATABASE_URL", " postgres://user:pass@db/spacescale ")
+		t.Setenv("PORT", " 9090 ")
+		t.Setenv("BFF_JWT_SECRET", " secret ")
+		t.Setenv("BFF_JWT_ISSUER", " issuer ")
+		t.Setenv("BFF_JWT_AUDIENCE", " audience ")
+		t.Setenv("INTERNAL_AUTH_SYNC_SECRET", " internal-secret ")
+		t.Setenv("API_ENV_ENCRYPTION_KEY_ID", " key-v1 ")
+		t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 
-	cfg, err := LoadControl()
-	require.NoError(t, err)
+		cfg, err := LoadControl()
+		require.NoError(t, err)
 
-	assert.Equal(t, "production", cfg.Environment)
-	assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
-	assert.Equal(t, "postgres://user:pass@db/spacescale", cfg.DatabaseURL)
-	assert.Equal(t, "9090", cfg.Port)
-	assert.Equal(t, "secret", cfg.Auth.JWTSecret)
-	assert.Equal(t, "issuer", cfg.Auth.Issuer)
-	assert.Equal(t, "audience", cfg.Auth.Audience)
-	assert.Equal(t, "internal-secret", cfg.InternalAuthSecret)
-	assert.Equal(t, "key-v1", cfg.EnvEncryptionKeyID)
-	assert.Len(t, cfg.EnvEncryptionKey, 32)
+		assert.Equal(t, "production", cfg.Environment)
+		assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
+		assert.Equal(t, "postgres://user:pass@db/spacescale", cfg.DatabaseURL)
+		assert.Equal(t, "9090", cfg.Port)
+		assert.Equal(t, "secret", cfg.Auth.JWTSecret)
+		assert.Equal(t, "issuer", cfg.Auth.Issuer)
+		assert.Equal(t, "audience", cfg.Auth.Audience)
+		assert.Equal(t, "internal-secret", cfg.InternalAuthSecret)
+		assert.Equal(t, "key-v1", cfg.EnvEncryptionKeyID)
+		assert.Len(t, cfg.EnvEncryptionKey, 32)
+	})
 }
 
 func TestLoadControlAppliesDefaults(t *testing.T) {
-	key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
+	t.Run("fills optional defaults", func(t *testing.T) {
+		key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
 
-	t.Setenv("DATABASE_URL", "postgres://db")
-	t.Setenv("BFF_JWT_SECRET", "secret")
-	t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
-	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
-	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+		t.Setenv("DATABASE_URL", "postgres://db")
+		t.Setenv("BFF_JWT_SECRET", "secret")
+		t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
+		t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+		t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 
-	cfg, err := LoadControl()
-	require.NoError(t, err)
+		cfg, err := LoadControl()
+		require.NoError(t, err)
 
-	assert.Equal(t, defaultEnvironment, cfg.Environment)
-	assert.Equal(t, defaultNATSURL, cfg.NATSURL)
-	assert.Equal(t, defaultPort, cfg.Port)
-	assert.Equal(t, defaultAuthIssuer, cfg.Auth.Issuer)
-	assert.Equal(t, defaultAuthAudience, cfg.Auth.Audience)
+		assert.Equal(t, defaultEnvironment, cfg.Environment)
+		assert.Equal(t, defaultNATSURL, cfg.NATSURL)
+		assert.Equal(t, defaultPort, cfg.Port)
+		assert.Equal(t, defaultAuthIssuer, cfg.Auth.Issuer)
+		assert.Equal(t, defaultAuthAudience, cfg.Auth.Audience)
+	})
 }
 
 func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
@@ -131,18 +135,22 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 }
 
 func TestLoadScaled(t *testing.T) {
-	t.Setenv("ENVIRONMENT", " prod ")
-	t.Setenv("NATS_URL", " nats://10.0.0.1:4222 ")
+	t.Run("reads explicit config", func(t *testing.T) {
+		t.Setenv("ENVIRONMENT", " prod ")
+		t.Setenv("NATS_URL", " nats://10.0.0.1:4222 ")
 
-	cfg := LoadScaled()
-	assert.Equal(t, "production", cfg.Environment)
-	assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
+		cfg := LoadScaled()
+		assert.Equal(t, "production", cfg.Environment)
+		assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
+	})
 }
 
 func TestLoadScaledAppliesDefaults(t *testing.T) {
-	cfg := LoadScaled()
-	assert.Equal(t, defaultEnvironment, cfg.Environment)
-	assert.Equal(t, defaultNATSURL, cfg.NATSURL)
+	t.Run("fills defaults", func(t *testing.T) {
+		cfg := LoadScaled()
+		assert.Equal(t, defaultEnvironment, cfg.Environment)
+		assert.Equal(t, defaultNATSURL, cfg.NATSURL)
+	})
 }
 
 func TestControlListenAddr(t *testing.T) {

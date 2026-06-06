@@ -15,7 +15,7 @@ import (
 const (
 	// CID 2 is the Linux vsock host; guests start at 3.
 	firstGuestCID uint32 = 3
-	lastGuestCID  uint32 = ^uint32(0)
+	lastGuestCID         = ^uint32(0)
 )
 
 const (
@@ -174,14 +174,14 @@ func allowJailerSocketAccess(path string, uid int, gid int) error {
 // WaitForHello proves the guest reached guestd userspace on the control channel.
 func (v *VSockListeners) WaitForHello(ctx context.Context) error {
 	if v == nil || v.control == nil {
-		return fmt.Errorf("control listener is not initialized")
+		return errors.New("control listener is not initialized")
 	}
 
 	conn, err := acceptUnix(ctx, v.control)
 	if err != nil {
 		return fmt.Errorf("accept control connection: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if err := expectHelloFrame(conn); err != nil {
 		return fmt.Errorf("read hello frame: %w", err)
@@ -193,7 +193,7 @@ func (v *VSockListeners) WaitForHello(ctx context.Context) error {
 // AcceptLog waits for the guest raw log stream. The launcher writes it to disk.
 func (v *VSockListeners) AcceptLog(ctx context.Context) (*net.UnixConn, error) {
 	if v == nil || v.log == nil {
-		return nil, fmt.Errorf("log listener is not initialized")
+		return nil, errors.New("log listener is not initialized")
 	}
 	conn, err := acceptUnix(ctx, v.log)
 	if err != nil {
@@ -266,8 +266,7 @@ func acceptUnix(ctx context.Context, listener *net.UnixListener) (*net.UnixConn,
 			return conn, nil
 		}
 
-		var netErr net.Error
-		if errors.As(err, &netErr) && netErr.Timeout() {
+		if netErr, ok := errors.AsType[net.Error](err); ok && netErr.Timeout() {
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()

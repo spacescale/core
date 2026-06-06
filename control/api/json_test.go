@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -17,7 +18,8 @@ type readJSONPayload struct {
 }
 
 func newJSONTestRequest(body string) *http.Request {
-	return httptest.NewRequest(
+	return httptest.NewRequestWithContext(
+		context.Background(),
 		http.MethodPost,
 		"/v1/projects",
 		strings.NewReader(body),

@@ -18,7 +18,7 @@ import (
 	"github.com/spacescale/core/scaled/node"
 	"github.com/spacescale/core/scaled/workload/microvm"
 	"github.com/spacescale/core/shared/nats"
-	pb "github.com/spacescale/core/shared/pb/v1"
+	 "github.com/spacescale/core/shared/pb/v1"
 )
 
 const heartbeatInterval = 5 * time.Second

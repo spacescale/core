@@ -5,7 +5,7 @@
 // - UserService owns user identity resolution and profile upsert behavior.
 // - ProjectService consumes resolved user IDs and focuses only on projects.
 
-// Package service defines core models for service workflows.
+// Package tenant implements control-plane business workflows for tenant-owned resources.
 package tenant
 
 import (
@@ -270,13 +270,13 @@ func sanitizeAvatarURL(raw string) string {
 }
 
 // truncateRunes truncates to a maximum rune count.
-func truncateRunes(in string, max int) string {
-	if max <= 0 {
+func truncateRunes(in string, limit int) string {
+	if limit <= 0 {
 		return ""
 	}
 	runes := []rune(in)
-	if len(runes) <= max {
+	if len(runes) <= limit {
 		return in
 	}
-	return string(runes[:max])
+	return string(runes[:limit])
 }

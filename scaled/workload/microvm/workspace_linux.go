@@ -150,12 +150,12 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return fmt.Errorf("open source file: %w", err)
 	}
-	defer source.Close()
+	defer func() { _ = source.Close() }()
 	dest, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("open destination file: %w", err)
 	}
-	defer dest.Close()
+	defer func() { _ = dest.Close() }()
 	if _, err := io.Copy(dest, source); err != nil {
 		return fmt.Errorf("copy bytes: %w", err)
 	}

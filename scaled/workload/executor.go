@@ -64,15 +64,15 @@ func (e *Executor) handle(client *nats.Client, msg *nats.Msg) error {
 	if err := nats.UnmarshalProto(msg, &req); err != nil {
 		return err
 	}
-	if req.MicrovmId == "" {
+	if req.GetMicrovmId() == "" {
 		return errors.New("microvm launch request missing microvm id")
 	}
 
-	if _, err := SpecFromShape(req.Shape); err != nil {
+	if _, err := SpecFromShape(req.GetShape()); err != nil {
 		return err
 	}
 
-	committedSpec, ok := e.capacity.Commit(req.MicrovmId)
+	committedSpec, ok := e.capacity.Commit(req.GetMicrovmId())
 	if !ok {
 		return client.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
 			Accepted:     false,
@@ -81,10 +81,10 @@ func (e *Executor) handle(client *nats.Client, msg *nats.Msg) error {
 	}
 
 	e.logger.Info("won microvm placement auction",
-		"microvm_id", req.MicrovmId,
+		"microvm_id", req.GetMicrovmId(),
 		"vcpu", committedSpec.VCPU,
 		"ram_mb", committedSpec.RAM,
-		"cpu_mode", CpuModeLogValue(req.GetShape()),
+		"cpu_mode", CPUModeLogValue(req.GetShape()),
 		"volume_mb", req.GetShape().GetVolumeMb(),
 	)
 
@@ -92,7 +92,7 @@ func (e *Executor) handle(client *nats.Client, msg *nats.Msg) error {
 	defer cancel()
 
 	active, err := e.launcher.Launch(launchCtx, microvm.LaunchRequest{
-		MicroVMID: req.MicrovmId,
+		MicroVMID: req.GetMicrovmId(),
 		VCPU:      committedSpec.VCPU,
 		RAMMB:     committedSpec.RAM,
 	})

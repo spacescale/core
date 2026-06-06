@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -36,7 +37,6 @@ func TestAccessLogLevel(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, accessLogLevel(tc.status).String())
 		})
@@ -60,7 +60,6 @@ func TestAccessLogMiddlewareEmitsStructuredFields(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			buf, restore := withCapturedAccessLogger(t)
 			defer restore()
@@ -83,7 +82,7 @@ func TestAccessLogMiddlewareEmitsStructuredFields(t *testing.T) {
 			})
 
 			rr := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/v1/projects/123", nil)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/projects/123", nil)
 			req.RemoteAddr = "192.168.97.1:54321"
 			req.Header.Set("User-Agent", "yaak")
 			r.ServeHTTP(rr, req)
@@ -129,13 +128,13 @@ func TestAuthFailureEnrichesSingleAccessLog(t *testing.T) {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(Middleware())
-	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
-		SetAuthFailure(r, "invalid_token")
+	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, req *http.Request) {
+		SetAuthFailure(req, "invalid_token")
 		Error(w, http.StatusUnauthorized, "unauthorized")
 	})
 
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/projects/123", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/projects/123", nil)
 	r.ServeHTTP(rr, req)
 	require.Equal(t, http.StatusUnauthorized, rr.Code)
 
@@ -157,7 +156,7 @@ func TestRecovererMiddlewareRecoversPanicAndWritesInternalError(t *testing.T) {
 	r.Use(middleware.RequestID)
 	r.Use(Middleware())
 	r.Use(Recoverer())
-	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/v1/projects/{id}", func(_ http.ResponseWriter, r *http.Request) {
 		if lc, ok := MetadataFromContext(r.Context()); ok {
 			lc.UserID = "github:t0gun"
 			lc.ProjectID = "proj_123"
@@ -166,7 +165,7 @@ func TestRecovererMiddlewareRecoversPanicAndWritesInternalError(t *testing.T) {
 	})
 
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/projects/123", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/projects/123", nil)
 	req.RemoteAddr = "192.168.97.1:54321"
 	req.Header.Set("User-Agent", "yaak")
 	r.ServeHTTP(rr, req)
@@ -207,13 +206,13 @@ func TestRecovererMiddlewareDoesNotRewriteStartedResponse(t *testing.T) {
 	r.Use(middleware.RequestID)
 	r.Use(Middleware())
 	r.Use(Recoverer())
-	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		panic("after write")
 	})
 
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/projects/123", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/projects/123", nil)
 	r.ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusAccepted, rr.Code)
@@ -237,12 +236,12 @@ func TestRecovererMiddlewareTruncatesLongPanicValue(t *testing.T) {
 	r.Use(middleware.RequestID)
 	r.Use(Middleware())
 	r.Use(Recoverer())
-	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/v1/projects/{id}", func(_ http.ResponseWriter, _ *http.Request) {
 		panic(strings.Repeat("a", 300))
 	})
 
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/projects/123", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/projects/123", nil)
 	r.ServeHTTP(rr, req)
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
 

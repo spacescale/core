@@ -151,7 +151,7 @@ func TestSyncAuthUserRateLimitIsPerIdentity(t *testing.T) {
 	identityA := uniqueIdentityKey(t)
 	bodyA := []byte(fmt.Sprintf(`{"identityKey":"%s"}`, identityA))
 
-	for i := 0; i < 60; i++ {
+	for range 60 {
 		resp, data := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", bodyA, map[string]string{
 			"X-Internal-Auth": testInternalAuthSecret,
 			"Content-Type":    "application/json",

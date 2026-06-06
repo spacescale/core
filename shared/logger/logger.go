@@ -1,3 +1,4 @@
+// Package logger configures the process-wide slog logger used across the repo.
 package logger
 
 import (
@@ -24,6 +25,7 @@ const (
 
 const componentKey = "component"
 
+// Init creates and installs the process-wide structured logger.
 func Init(environment string) *slog.Logger {
 	env := strings.ToLower(strings.TrimSpace(environment))
 	opts := &slog.HandlerOptions{Level: levelFor(env)}
@@ -65,11 +67,11 @@ func newOrderedHandler(out io.Writer, opts *slog.HandlerOptions, format logForma
 }
 
 func (h *orderedHandler) Enabled(_ context.Context, level slog.Level) bool {
-	min := slog.LevelInfo
+	minimumLevel := slog.LevelInfo
 	if h.opts.Level != nil {
-		min = h.opts.Level.Level()
+		minimumLevel = h.opts.Level.Level()
 	}
-	return level >= min
+	return level >= minimumLevel
 }
 
 func (h *orderedHandler) Handle(_ context.Context, record slog.Record) error {
@@ -77,6 +79,8 @@ func (h *orderedHandler) Handle(_ context.Context, record slog.Record) error {
 	buf := make([]byte, 0, 512)
 
 	switch h.format {
+	case logFormatText:
+		buf = appendTextRecord(buf, record, component, attrs)
 	case logFormatJSON:
 		buf = appendJSONRecord(buf, record, component, attrs, h.opts.AddSource)
 	default:
@@ -163,6 +167,10 @@ func appendTextAttr(buf []byte, attr slog.Attr) []byte {
 
 func appendTextValue(buf []byte, value slog.Value) []byte {
 	switch value.Kind() {
+	case slog.KindGroup:
+		return appendMaybeQuoted(buf, value.String())
+	case slog.KindLogValuer:
+		return appendMaybeQuoted(buf, value.String())
 	case slog.KindString:
 		return appendMaybeQuoted(buf, value.String())
 	case slog.KindBool:
@@ -195,38 +203,46 @@ func appendJSONRecord(buf []byte, record slog.Record, component string, attrs []
 	buf = append(buf, '{')
 	first := true
 	if !record.Time.IsZero() {
-		buf, first = appendJSONAttr(buf, first, slog.String(slog.TimeKey, record.Time.Format(time.RFC3339Nano)))
+		buf = appendJSONAttr(buf, &first, slog.String(slog.TimeKey, record.Time.Format(time.RFC3339Nano)))
 	}
-	buf, first = appendJSONAttr(buf, first, slog.String(slog.LevelKey, record.Level.String()))
+	buf = appendJSONAttr(buf, &first, slog.String(slog.LevelKey, record.Level.String()))
 	if component != "" {
-		buf, first = appendJSONAttr(buf, first, slog.String(componentKey, component))
+		buf = appendJSONAttr(buf, &first, slog.String(componentKey, component))
 	}
-	buf, first = appendJSONAttr(buf, first, slog.String(slog.MessageKey, record.Message))
+	buf = appendJSONAttr(buf, &first, slog.String(slog.MessageKey, record.Message))
 	for _, attr := range attrs {
-		buf, first = appendJSONAttr(buf, first, attr)
+		buf = appendJSONAttr(buf, &first, attr)
 	}
 	if addSource && record.PC != 0 {
-		buf, first = appendJSONAttr(buf, first, slog.String(slog.SourceKey, sourceLocation(record.PC)))
+		buf = appendJSONAttr(buf, &first, slog.String(slog.SourceKey, sourceLocation(record.PC)))
 	}
-	_ = first
 	buf = append(buf, '}', '\n')
 	return buf
 }
 
-func appendJSONAttr(buf []byte, first bool, attr slog.Attr) ([]byte, bool) {
-	if !first {
+func appendJSONAttr(buf []byte, first *bool, attr slog.Attr) []byte {
+	if !*first {
 		buf = append(buf, ',')
 	}
-	key, _ := json.Marshal(attr.Key)
-	value, _ := json.Marshal(jsonValue(attr.Value))
-	buf = append(buf, key...)
+	buf = strconv.AppendQuote(buf, attr.Key)
 	buf = append(buf, ':')
+	value, err := json.Marshal(jsonValue(attr.Value))
+	if err != nil {
+		buf = strconv.AppendQuote(buf, err.Error())
+		*first = false
+		return buf
+	}
 	buf = append(buf, value...)
-	return buf, false
+	*first = false
+	return buf
 }
 
 func jsonValue(value slog.Value) any {
 	switch value.Kind() {
+	case slog.KindGroup:
+		return value.String()
+	case slog.KindLogValuer:
+		return value.String()
 	case slog.KindString:
 		return value.String()
 	case slog.KindBool:

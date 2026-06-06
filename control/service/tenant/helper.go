@@ -49,7 +49,7 @@ func slugifyProjectName(name string) string {
 	b.Grow(len(normalized))
 	var prevHyphen bool
 
-	for i := 0; i < len(normalized); i++ {
+	for i := range len(normalized) {
 		ch := normalized[i]
 		if isASCIIAlphaNum(ch) {
 			b.WriteByte(ch)
@@ -116,10 +116,10 @@ func randomSuffix(n int) (string, error) {
 
 	var b strings.Builder
 	b.Grow(n)
-	max := big.NewInt(int64(len(alphabet)))
+	alphabetLen := big.NewInt(int64(len(alphabet)))
 
-	for i := 0; i < n; i++ {
-		idx, err := rand.Int(rand.Reader, max)
+	for range n {
+		idx, err := rand.Int(rand.Reader, alphabetLen)
 		if err != nil {
 			return "", err
 		}

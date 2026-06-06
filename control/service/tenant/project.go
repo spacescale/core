@@ -39,6 +39,7 @@ type CreateProjectParams struct {
 	Name string
 }
 
+// UpdateProjectParams contains mutable project fields.
 type UpdateProjectParams struct {
 	Name string
 }
@@ -80,7 +81,7 @@ func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID, workspa
 	}
 
 	baseSlug := project.Slug
-	for i := 0; i < maxSlugRetries; i++ {
+	for range maxSlugRetries {
 		row, err := s.queries.CreateProject(ctx, sqlc.CreateProjectParams{
 			WorkspaceID: workspaceUUID,
 			Name:        project.Name,
@@ -102,6 +103,7 @@ func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID, workspa
 	return Project{}, ErrConflict
 }
 
+// ListProjects returns all projects in one workspace owned by the caller.
 func (s *ProjectService) ListProjects(ctx context.Context, ownerUserID, workspaceID string) ([]Project, error) {
 	ownerUUID, workspaceUUID, err := s.authorizeWorkspace(ctx, ownerUserID, workspaceID)
 	if err != nil {
@@ -121,6 +123,7 @@ func (s *ProjectService) ListProjects(ctx context.Context, ownerUserID, workspac
 	return out, nil
 }
 
+// GetProject returns one project in a workspace owned by the caller.
 func (s *ProjectService) GetProject(ctx context.Context, ownerUserID, workspaceID, projectID string) (Project, error) {
 	ownerUUID, workspaceUUID, err := s.authorizeWorkspace(ctx, ownerUserID, workspaceID)
 	if err != nil {
@@ -137,6 +140,7 @@ func (s *ProjectService) GetProject(ctx context.Context, ownerUserID, workspaceI
 	return projectFromRow(row), nil
 }
 
+// UpdateProject updates one owned project.
 func (s *ProjectService) UpdateProject(
 	ctx context.Context,
 	ownerUserID, workspaceID, projectID string,
@@ -171,6 +175,7 @@ func (s *ProjectService) UpdateProject(
 	return projectFromRow(row), nil
 }
 
+// DeleteProject deletes one owned project.
 func (s *ProjectService) DeleteProject(ctx context.Context, ownerUserID, workspaceID, projectID string) error {
 	ownerUUID, workspaceUUID, err := s.authorizeWorkspace(ctx, ownerUserID, workspaceID)
 	if err != nil {

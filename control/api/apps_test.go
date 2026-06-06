@@ -201,7 +201,7 @@ func TestCreateAppRejectsTooManyEnvVars(t *testing.T) {
 	project := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("project-%d", time.Now().UnixNano()))
 
 	envVars := make([]map[string]any, 0, 51)
-	for i := 0; i < 51; i++ {
+	for i := range 51 {
 		envVars = append(envVars, map[string]any{
 			"key":      fmt.Sprintf("KEY_%d", i),
 			"value":    "x",

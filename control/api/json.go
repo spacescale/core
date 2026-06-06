@@ -1,4 +1,4 @@
-// Package respond owns JSON request decoding and response writing for the
+// Package api owns JSON request decoding and response writing for the
 // control HTTP API. It keeps transport envelopes consistent without tying
 // feature packages back to the parent api package.
 package api
@@ -19,9 +19,14 @@ type errorResponse struct {
 
 // JSON writes a JSON response body with the supplied HTTP status code.
 func JSON(w http.ResponseWriter, status int, v any) {
+	payload, err := json.Marshal(v)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	_, _ = w.Write(payload)
 }
 
 // Error writes the API's canonical JSON error envelope.

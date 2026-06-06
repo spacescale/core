@@ -21,7 +21,6 @@ func TestUserAgentLogAttr(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			gotKey, gotValue, gotOK := userAgentLogAttr(tc.rawUA)
 			require.Equal(t, tc.wantOK, gotOK)
@@ -49,7 +48,6 @@ func TestTruncateLogString(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, truncateLogString(tc.input, tc.maxLen))
 		})

@@ -87,7 +87,7 @@ func NewLauncher(logger *slog.Logger, runtimePaths node.RuntimePaths, jailerIden
 // validated runtime paths and shape values.
 func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *ActiveVM, err error) {
 	startedAt := time.Now()
-	vm, vmCtx := l.newActiveVM(req)
+	vm, vmCtx := l.newActiveVM(ctx, req)
 	defer func() {
 		if err != nil && vm != nil {
 			err = errors.Join(err, l.cleanupActive(vm, true, false))
@@ -103,13 +103,13 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 	if err != nil {
 		return nil, err
 	}
-	defer jailerLog.Close()
+	defer func() { _ = jailerLog.Close() }()
 
 	if err := l.startFirecracker(vmCtx, req, vm, jailerLog); err != nil {
 		return nil, err
 	}
 
-	vmmExit := waitForMachine(vm.machine)
+	vmmExit := waitForMachine(vmCtx, vm.machine)
 	if err := l.waitForHelloOrExit(ctx, vm, vmmExit); err != nil {
 		return nil, err
 	}
@@ -143,7 +143,7 @@ func (l *Launcher) Stop(_ context.Context, microvmID string) error {
 // newActiveVM creates the local lifecycle record before any host resources exist.
 // The returned context belongs to the VM lifecycle; the caller's ctx only gates
 // the boot attempt and guestd hello wait.
-func (l *Launcher) newActiveVM(req LaunchRequest) (*ActiveVM, context.Context) {
+func (l *Launcher) newActiveVM(ctx context.Context, req LaunchRequest) (*ActiveVM, context.Context) {
 	workspace := newWorkspace(
 		microVMStateDir,
 		microVMJailerStateDir,
@@ -151,7 +151,7 @@ func (l *Launcher) newActiveVM(req LaunchRequest) (*ActiveVM, context.Context) {
 		l.runtimePaths.FirecrackerPath,
 	)
 
-	vmCtx, cancel := context.WithCancel(context.Background())
+	vmCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	vm := &ActiveVM{
 		MicroVMID: req.MicroVMID,
 		Workspace: workspace,
@@ -241,7 +241,7 @@ func (l *Launcher) drainGuestdLog(ctx context.Context, vm *ActiveVM) {
 		)
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	logFile, err := openGuestdLog(vm.Workspace.RootDir)
 	if err != nil {
@@ -251,7 +251,7 @@ func (l *Launcher) drainGuestdLog(ctx context.Context, vm *ActiveVM) {
 		)
 		return
 	}
-	defer logFile.Close()
+	defer func() { _ = logFile.Close() }()
 
 	if _, err := io.Copy(logFile, conn); err != nil {
 		select {
@@ -268,11 +268,11 @@ func (l *Launcher) drainGuestdLog(ctx context.Context, vm *ActiveVM) {
 
 // waitForMachine starts exactly one Firecracker wait goroutine. Launch and
 // watchVM share the same result so we do not call Machine.Wait twice.
-func waitForMachine(machine *firecracker.Machine) <-chan error {
+func waitForMachine(ctx context.Context, machine *firecracker.Machine) <-chan error {
 	exited := make(chan error, 1)
-	go func() {
-		exited <- machine.Wait(context.Background())
-	}()
+	go func(waitCtx context.Context) {
+		exited <- machine.Wait(waitCtx)
+	}(ctx)
 	return exited
 }
 

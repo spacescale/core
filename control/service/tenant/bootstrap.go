@@ -50,7 +50,7 @@ func (s *BootstrapService) BootstrapDefaults(ctx context.Context, ownerUserID st
 	}
 	// Keep a stable human-readable base slug and only vary suffix on collisions.
 	candidateSlug := baseSlug
-	for i := 0; i < maxSlugRetries; i++ {
+	for range maxSlugRetries {
 		row, err := s.queries.BootstrapDefaults(ctx, sqlc.BootstrapDefaultsParams{
 			OwnerUserID:   ownerUUID,
 			WorkspaceName: defaultBootstrapWorkspaceName,

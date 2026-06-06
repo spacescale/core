@@ -40,6 +40,7 @@ type UpdateWorkspaceParams struct {
 	Name string
 }
 
+// NewWorkspaceService creates a WorkspaceService bound to the provided query set.
 func NewWorkspaceService(queries *sqlc.Queries) *WorkspaceService {
 	return &WorkspaceService{
 		queries: queries,

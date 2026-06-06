@@ -12,6 +12,7 @@ type Services struct {
 	Fleet  FleetServices
 }
 
+// Deps groups shared dependencies used to construct control-plane services.
 type Deps struct {
 	Queries            *sqlc.Queries
 	DBPool             *pgxpool.Pool

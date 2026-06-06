@@ -4,13 +4,16 @@
 // Keeping shared error contracts in one file avoids inconsistent comparisons and
 // makes cross-layer error handling easier to reason about during maintenance.
 
-// Package service contains business error definitions.
+// Package tenant implements control-plane business workflows for tenant-owned resources.
 package tenant
 
 import "errors"
 
 var (
-	ErrInvalidInput = errors.New("invalid input") // request validation failed.
-	ErrConflict     = errors.New("conflict")      // conflicting write or duplicate resource.
-	ErrUnauthorized = errors.New("unauthorized")  // caller identity is not allowed for requested operation.
+	// ErrInvalidInput reports that request validation failed before persistence.
+	ErrInvalidInput = errors.New("invalid input")
+	// ErrConflict reports a conflicting write or duplicate resource.
+	ErrConflict = errors.New("conflict")
+	// ErrUnauthorized reports that the caller is not allowed to access the requested resource.
+	ErrUnauthorized = errors.New("unauthorized")
 )

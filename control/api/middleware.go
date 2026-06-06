@@ -1,4 +1,4 @@
-// Package requestlog owns request-scoped access and panic logging for the
+// Package api owns request-scoped access and panic logging for the
 // control HTTP API. It emits one structured access event per request and lets
 // middleware or handlers attach safe, low-cardinality metadata discovered while
 // handling the request.
@@ -46,7 +46,8 @@ func Middleware() func(http.Handler) http.Handler {
 			start := time.Now()
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			metadata := &Metadata{}
-			req := r.WithContext(context.WithValue(r.Context(), contextKey{}, metadata))
+			ctx := context.WithValue(r.Context(), contextKey{}, metadata)
+			req := r.WithContext(ctx)
 			next.ServeHTTP(ww, req)
 
 			status := ww.Status()
@@ -57,9 +58,9 @@ func Middleware() func(http.Handler) http.Handler {
 			attrs := []any{
 				"component", "api",
 				"event", "http_access",
-				"request_id", middleware.GetReqID(req.Context()),
+				"request_id", middleware.GetReqID(ctx),
 				"method", req.Method,
-				"route", routePatternFromContext(req.Context()),
+				"route", routePatternFromContext(ctx),
 				"path", req.URL.Path,
 				"status_code", status,
 				"rate_limited", status == http.StatusTooManyRequests,
@@ -84,7 +85,7 @@ func Middleware() func(http.Handler) http.Handler {
 				attrs = append(attrs, "auth_reason", metadata.AuthFailureReason)
 			}
 
-			slog.Log(req.Context(), accessLogLevel(status), "http_access", attrs...)
+			slog.Log(ctx, accessLogLevel(status), "http_access", attrs...)
 		})
 	}
 }
@@ -93,7 +94,8 @@ func Middleware() func(http.Handler) http.Handler {
 func Recoverer() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			defer func() {
+			ctx := r.Context()
+			defer func(ctx context.Context) {
 				recovered := recover()
 				if recovered == nil {
 					return
@@ -102,9 +104,9 @@ func Recoverer() func(http.Handler) http.Handler {
 				attrs := []any{
 					"component", "api",
 					"event", "panic",
-					"request_id", middleware.GetReqID(r.Context()),
+					"request_id", middleware.GetReqID(ctx),
 					"method", r.Method,
-					"route", routePatternFromContext(r.Context()),
+					"route", routePatternFromContext(ctx),
 					"path", r.URL.Path,
 					"status_code", http.StatusInternalServerError,
 					"client_ip", clientIP(r.RemoteAddr),
@@ -115,7 +117,7 @@ func Recoverer() func(http.Handler) http.Handler {
 				if key, value, ok := userAgentLogAttr(r.UserAgent()); ok {
 					attrs = append(attrs, key, value)
 				}
-				if metadata, ok := MetadataFromContext(r.Context()); ok {
+				if metadata, ok := MetadataFromContext(ctx); ok {
 					if metadata.UserID != "" {
 						attrs = append(attrs, "user_id", metadata.UserID)
 					}
@@ -132,7 +134,7 @@ func Recoverer() func(http.Handler) http.Handler {
 					return
 				}
 				Error(w, http.StatusInternalServerError, "internal error")
-			}()
+			}(ctx)
 			next.ServeHTTP(w, r)
 		})
 	}

@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/spacescale/core/shared/nats"
-	pb "github.com/spacescale/core/shared/pb/v1"
+	"github.com/spacescale/core/shared/pb/v1"
 )
 
 // reservationTTL defines the maximum time the node will hold physical resources
@@ -75,13 +75,16 @@ const (
 	hostTaxOver64GBMB uint64 = 8601
 )
 
+// SpecFromShape converts a protobuf microVM shape to a hardware spec.
 func SpecFromShape(shape *pb.MicroVMShape) (HardwareSpec, error) {
-	if shape == nil || shape.Vcpu == 0 || shape.RamMb == 0 {
+	if shape == nil || shape.GetVcpu() == 0 || shape.GetRamMb() == 0 {
 		return HardwareSpec{}, ErrInvalidMicroVMShape
 	}
 
-	spec := HardwareSpec{VCPU: shape.Vcpu, RAM: shape.RamMb}
-	switch shape.CpuMode {
+	spec := HardwareSpec{VCPU: shape.GetVcpu(), RAM: shape.GetRamMb()}
+	switch shape.GetCpuMode() {
+	case pb.CpuMode_CPU_MODE_UNSPECIFIED:
+		return HardwareSpec{}, ErrInvalidMicroVMShape
 	case pb.CpuMode_CPU_MODE_SHARED:
 		return spec, nil
 	case pb.CpuMode_CPU_MODE_PINNED:
@@ -92,14 +95,15 @@ func SpecFromShape(shape *pb.MicroVMShape) (HardwareSpec, error) {
 	}
 }
 
-func CpuModeLogValue(shape *pb.MicroVMShape) string {
+// CPUModeLogValue converts a CPU mode to a log string.
+func CPUModeLogValue(shape *pb.MicroVMShape) string {
 	if shape == nil {
 		return "unspecified"
 	}
-	if shape.CpuMode == pb.CpuMode_CPU_MODE_PINNED {
+	if shape.GetCpuMode() == pb.CpuMode_CPU_MODE_PINNED {
 		return "pinned"
 	}
-	if shape.CpuMode == pb.CpuMode_CPU_MODE_SHARED {
+	if shape.GetCpuMode() == pb.CpuMode_CPU_MODE_SHARED {
 		return "shared"
 	}
 	return "unspecified"
@@ -267,6 +271,7 @@ func (c *Capacity) Commit(microvmID string) (HardwareSpec, bool) {
 	}, true
 }
 
+// Revert returns resources to the capacity pool.
 func (c *Capacity) Revert(spec HardwareSpec) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -435,29 +440,25 @@ func (b *Bidder) handle(client *nats.Client, msg *nats.Msg) error {
 	if err := nats.UnmarshalProto(msg, &req); err != nil {
 		return err
 	}
-	if req.MicrovmId == "" {
+	if req.GetMicrovmId() == "" {
 		return errors.New("auction request missing microvm id")
 	}
 
-	spec, err := SpecFromShape(req.Shape)
+	spec, err := SpecFromShape(req.GetShape())
 	if err != nil {
 		return err
 	}
 
-	freeRAM, ok := b.capacity.Reserve(req.MicrovmId, spec, reservationTTL)
+	freeRAM, ok := b.capacity.Reserve(req.GetMicrovmId(), spec, reservationTTL)
 	if !ok {
 		return nil
 	}
 
 	b.logger.Info(
-		"submitted bid",
-		"microvm_id", req.MicrovmId,
-		"vcpu", req.GetShape().GetVcpu(),
-		"ram_mb", req.GetShape().GetRamMb(),
-		"cpu_mode", CpuModeLogValue(req.GetShape()),
+
+		"submitted bid", "microvm_id", req.GetMicrovmId(), "vcpu", req.GetShape().GetVcpu(), "ram_mb", req.GetShape().GetRamMb(), "cpu_mode", CPUModeLogValue(req.GetShape()),
 		"free_ram_mb", freeRAM,
 	)
-	_ = freeRAM
 
 	reply := &pb.AuctionReply{
 		NodeId: b.nodeID,
@@ -465,7 +466,7 @@ func (b *Bidder) handle(client *nats.Client, msg *nats.Msg) error {
 	}
 
 	if err := client.PublishProto(msg.Reply, reply); err != nil {
-		b.capacity.Release(req.MicrovmId)
+		b.capacity.Release(req.GetMicrovmId())
 		return err
 	}
 

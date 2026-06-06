@@ -39,6 +39,11 @@ type testJWTClaims struct {
 	jwt.RegisteredClaims
 }
 
+type testResponse struct {
+	StatusCode int
+	Header     http.Header
+}
+
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
@@ -96,7 +101,6 @@ func TestInternalAuthSyncHeaderValidation(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			headers := map[string]string{"Content-Type": "application/json"}
 			if tc.header != "" {
@@ -117,7 +121,7 @@ func TestUnauthorizedRequestsStayUnauthorized(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces/00000000-0000-0000-0000-000000000000/projects", []byte(`{}`), map[string]string{
 			"Content-Type": "application/json",
 		})
@@ -163,19 +167,19 @@ func (ts *testServer) close() {
 	ts.pool.Close()
 }
 
-func doRequest(t *testing.T, ts *testServer, method, path string, body []byte, headers map[string]string) (*http.Response, []byte) {
+func doRequest(t *testing.T, ts *testServer, method, path string, body []byte, headers map[string]string) (testResponse, []byte) {
 	t.Helper()
-	req, err := http.NewRequest(method, ts.server.URL+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), method, ts.server.URL+path, bytes.NewReader(body))
 	require.NoError(t, err)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	return resp, data
+	require.NoError(t, resp.Body.Close())
+	return testResponse{StatusCode: resp.StatusCode, Header: resp.Header}, data
 }
 
 func authHeaderForIdentityKey(t *testing.T, identityKey string) string {
