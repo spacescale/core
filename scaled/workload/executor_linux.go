@@ -38,7 +38,7 @@ type executor struct {
 	logger   *slog.Logger
 	capacity *Capacity
 	bootID   string
-	launcher *microvm.Launcher
+	launcher launcher
 }
 
 // newExecutor constructs an executor for one node boot identity.
