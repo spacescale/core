@@ -4,9 +4,9 @@
 //
 // The package is a thin glue layer. It loads config, runs node.Collect to
 // resolve runtime paths and host facts, then hands a node.Info to the
-// workload Runtime. The Runtime owns the Bidder, Executor, Launcher, and
-// the periodic node heartbeat; scaled itself only orchestrates startup and
-// forwards the process context.
+// workload Runtime. Runtime owns the internal bidding, launch, and heartbeat
+// machinery; scaled itself only orchestrates startup and forwards the process
+// context.
 package scaled
 
 import (
