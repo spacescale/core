@@ -31,17 +31,17 @@ type launcher interface {
 	Stop(ctx context.Context, microvmID string) error
 }
 
-// Executor handles targeted microVM launch commands after placement wins.
-type Executor struct {
+// executor handles targeted microVM launch commands after placement wins.
+type executor struct {
 	logger   *slog.Logger
 	capacity *Capacity
 	bootID   string
 	launcher *microvm.Launcher
 }
 
-// NewExecutor constructs an Executor for one node boot identity.
-func NewExecutor(logger *slog.Logger, capacity *Capacity, bootID string, launcher *microvm.Launcher) *Executor {
-	return &Executor{
+// newExecutor constructs an executor for one node boot identity.
+func newExecutor(logger *slog.Logger, capacity *Capacity, bootID string, launcher *microvm.Launcher) *executor {
+	return &executor{
 		logger:   logger,
 		capacity: capacity,
 		bootID:   bootID,
@@ -49,10 +49,10 @@ func NewExecutor(logger *slog.Logger, capacity *Capacity, bootID string, launche
 	}
 }
 
-// Register connects the executor to the node's specific targeted inbox.
+// register connects the executor to the node's specific targeted inbox.
 // This subject includes the boot ID to guarantee that stale launch commands
 // from previous boot lifecycles are naturally dropped.
-func (e *Executor) Register(ctx context.Context, client *nats.Client) (string, error) {
+func (e *executor) register(ctx context.Context, client *nats.Client) (string, error) {
 	subject := nats.NodeMicroVMLaunchSubject(e.bootID)
 	_, err := client.Subscribe(subject, func(msg *nats.Msg) error {
 		return e.handle(ctx, client, msg)
@@ -63,7 +63,7 @@ func (e *Executor) Register(ctx context.Context, client *nats.Client) (string, e
 	return subject, nil
 }
 
-func (e *Executor) handle(ctx context.Context, client *nats.Client, msg *nats.Msg) error {
+func (e *executor) handle(ctx context.Context, client *nats.Client, msg *nats.Msg) error {
 	if msg.Reply == "" {
 		return errors.New("microvm launch request missing reply subject")
 	}
