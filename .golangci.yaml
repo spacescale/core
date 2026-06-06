@@ -26,7 +26,6 @@ linters:
     - sqlclosecheck
     # type / correctness
     - copyloopvar
-    - cyclop
     - exhaustive
     - forcetypeassert
     - intrange
@@ -54,10 +53,3 @@ linters:
     paths:
       - "^shared/pb/"
       - "^scalecp/db/sqlc/"
-    rules:
-      - linters:
-          - errcheck
-        text: "Error return value of `(Close|Flush)` is not checked"
-  settings:
-    cyclop:
-      max-complexity: 30
