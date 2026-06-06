@@ -1,4 +1,4 @@
-package fleet
+package service
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/spacescale/core/internal/scalecp/db/sqlc"
+	"github.com/spacescale/core/scalecp/db/sqlc"
 )
 
 var (

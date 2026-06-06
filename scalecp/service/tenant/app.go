@@ -105,7 +105,7 @@ type AppEnvVarInput struct {
 type CreateAppParams struct {
 	Name                 string           // optional; derived from ImageRef when empty.
 	ImageRef             string           // required OCI image reference.
-	Compute              AppComputeInput  // required resolved compute request.
+	Compute              AppComputeInput  // required to be resolved compute request.
 	PrimaryRegion        string           // required placement region.
 	RuntimePort          *int             // optional; nil uses defaultAppRuntimePort.
 	IsPublic             *bool            // optional; nil defaults to false.

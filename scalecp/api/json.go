@@ -1,7 +1,7 @@
 // Package respond owns JSON request decoding and response writing for the
 // scalecp HTTP API. It keeps transport envelopes consistent without tying
 // feature packages back to the parent api package.
-package respond
+package api
 
 import (
 	"encoding/json"

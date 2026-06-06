@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spacescale/core/internal/scalecp/service/tenant"
+	"github.com/spacescale/core/scalecp/service/tenant"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

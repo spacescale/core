@@ -9,9 +9,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/spacescale/core/internal/scalecp/api/auth"
-	"github.com/spacescale/core/internal/scalecp/api/respond"
-	"github.com/spacescale/core/internal/scalecp/service/tenant"
+	"github.com/spacescale/core/scalecp/service/tenant"
 )
 
 // bootstrapDefaultsResponse is the response shape for default bootstrap calls.
@@ -24,22 +22,22 @@ type bootstrapDefaultsResponse struct {
 // handleBootstrapDefaults creates default workspace/project for first-time users.
 // Returning users receive a no-op response with created=false.
 func (s *Server) handleBootstrapDefaults(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.RequireCallerUser(w, r, s.users)
+	user, ok := RequireCallerUser(w, r, s.users)
 	if !ok {
 		return
 	}
 
 	// Empty body is allowed, but malformed JSON should still fail.
 	var req struct{}
-	if err := respond.ReadJSON(r, &req); err != nil {
+	if err := ReadJSON(r, &req); err != nil {
 		switch {
 		case errors.Is(err, io.EOF):
 			// empty body is valid
-		case errors.Is(err, respond.ErrRequestBodyTooLarge):
-			respond.Error(w, http.StatusRequestEntityTooLarge, "request body too large")
+		case errors.Is(err, ErrRequestBodyTooLarge):
+			Error(w, http.StatusRequestEntityTooLarge, "request body too large")
 			return
 		default:
-			respond.Error(w, http.StatusBadRequest, "invalid json")
+			Error(w, http.StatusBadRequest, "invalid json")
 			return
 		}
 	}
@@ -48,18 +46,18 @@ func (s *Server) handleBootstrapDefaults(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		switch {
 		case errors.Is(err, tenant.ErrInvalidInput):
-			respond.Error(w, http.StatusBadRequest, "invalid input")
+			Error(w, http.StatusBadRequest, "invalid input")
 		case errors.Is(err, tenant.ErrUnauthorized):
-			respond.Error(w, http.StatusUnauthorized, "unauthorized")
+			Error(w, http.StatusUnauthorized, "unauthorized")
 		case errors.Is(err, tenant.ErrConflict):
-			respond.Error(w, http.StatusConflict, "conflict")
+			Error(w, http.StatusConflict, "conflict")
 		default:
-			respond.Error(w, http.StatusInternalServerError, "internal error")
+			Error(w, http.StatusInternalServerError, "internal error")
 		}
 		return
 	}
 
-	respond.JSON(w, http.StatusOK, bootstrapDefaultsResponse{
+	JSON(w, http.StatusOK, bootstrapDefaultsResponse{
 		Created:     out.Created,
 		WorkspaceID: out.WorkspaceID,
 		ProjectID:   out.ProjectID,

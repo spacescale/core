@@ -10,7 +10,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/spacescale/core/internal/scalecp/db/sqlc"
+	"github.com/spacescale/core/scalecp/db/sqlc"
 )
 
 const defaultBootstrapWorkspaceName = "workspace-01"

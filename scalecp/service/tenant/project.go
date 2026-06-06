@@ -16,7 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/spacescale/core/internal/scalecp/db/sqlc"
+	"github.com/spacescale/core/scalecp/db/sqlc"
 )
 
 // Project represents a user-owned project.

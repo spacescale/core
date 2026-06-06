@@ -12,7 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/spacescale/core/internal/scalecp/db/sqlc"
+	"github.com/spacescale/core/scalecp/db/sqlc"
 )
 
 const maxWorkspaceNameChars = 255

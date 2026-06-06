@@ -1,4 +1,4 @@
-package requestlog
+package api
 
 import (
 	"bytes"
@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/spacescale/core/internal/scalecp/api/respond"
 	"github.com/stretchr/testify/require"
 )
 
@@ -132,7 +131,7 @@ func TestAuthFailureEnrichesSingleAccessLog(t *testing.T) {
 	r.Use(Middleware())
 	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 		SetAuthFailure(r, "invalid_token")
-		respond.Error(w, http.StatusUnauthorized, "unauthorized")
+		Error(w, http.StatusUnauthorized, "unauthorized")
 	})
 
 	rr := httptest.NewRecorder()

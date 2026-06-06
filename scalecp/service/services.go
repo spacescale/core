@@ -2,9 +2,8 @@ package service
 
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/spacescale/core/internal/scalecp/db/sqlc"
-	"github.com/spacescale/core/internal/scalecp/service/fleet"
-	"github.com/spacescale/core/internal/scalecp/service/tenant"
+	"github.com/spacescale/core/scalecp/db/sqlc"
+	"github.com/spacescale/core/scalecp/service/tenant"
 )
 
 // Services groups domain services used by HTTP and control-fabric wiring.
@@ -31,7 +30,7 @@ type TenantServices struct {
 
 // FleetServices groups control plane business logic for managed edge fleet lifecycle.
 type FleetServices struct {
-	Bootstrap *fleet.BootstrapService
+	Bootstrap *BootstrapService
 }
 
 // NewServices builds all service dependencies from one shared dependency set.
@@ -50,7 +49,7 @@ func NewServices(deps Deps) (*Services, error) {
 			Apps:       tenant.NewAppService(deps.Queries, deps.DBPool, envCipher),
 		},
 		Fleet: FleetServices{
-			Bootstrap: fleet.NewBootstrapService(deps.Queries, deps.DBPool),
+			Bootstrap: NewBootstrapService(deps.Queries, deps.DBPool),
 		},
 	}, nil
 }

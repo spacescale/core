@@ -117,7 +117,7 @@ func (s *Server) Router() http.Handler {
 	// Base middleware stack.
 	router.Use(middleware.RequestID)
 	router.Use(middleware.ClientIPFromRemoteAddr)
-	router.Use(AccessLogMiddleware())
+	router.Use(Middleware())
 	router.Use(Recoverer())
 
 	// userLimiter applies per-authenticated-user request limits on API v1 routes.

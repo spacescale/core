@@ -14,10 +14,10 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/spacescale/core/internal/scalecp/api"
-	"github.com/spacescale/core/internal/scalecp/db/sqlc"
-	"github.com/spacescale/core/internal/scalecp/service"
-	"github.com/spacescale/core/internal/shared/config"
+	"github.com/spacescale/core/scalecp/api"
+	"github.com/spacescale/core/scalecp/db/sqlc"
+	"github.com/spacescale/core/scalecp/service"
+	"github.com/spacescale/core/shared/config"
 	"github.com/stretchr/testify/require"
 )
 

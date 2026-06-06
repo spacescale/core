@@ -2,7 +2,7 @@
 // scalecp HTTP API. It emits one structured access event per request and lets
 // middleware or handlers attach safe, low-cardinality metadata discovered while
 // handling the request.
-package requestlog
+package api
 
 import (
 	"context"
@@ -14,7 +14,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/spacescale/core/internal/scalecp/api/respond"
 )
 
 // Metadata stores request log fields discovered after middleware setup.
@@ -132,7 +131,7 @@ func Recoverer() func(http.Handler) http.Handler {
 				if responseWriterStatus(w) != 0 {
 					return
 				}
-				respond.Error(w, http.StatusInternalServerError, "internal error")
+				Error(w, http.StatusInternalServerError, "internal error")
 			}()
 			next.ServeHTTP(w, r)
 		})
