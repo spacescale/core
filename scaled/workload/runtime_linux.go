@@ -2,7 +2,7 @@
 
 // Package workload is the workload subsystem boundary for one scaled node.
 //
-// Runtime owns the Bidder (auction handler), Executor (targeted launch
+// Runtime owns the Bidder (auction handler), executor (targeted launch
 // handler), local Firecracker Launcher, and the periodic node heartbeat. The
 // main daemon calls NewRuntime once with the values produced by node.Collect
 // and Start once with the NATS client; from that point the workload boundary
@@ -32,7 +32,7 @@ type Runtime struct {
 	logger   *slog.Logger
 	info     node.Info
 	bidder   *Bidder
-	executor *Executor
+	executor *executor
 	launcher *microvm.Launcher
 
 	stopHeartbeat context.CancelFunc
@@ -53,7 +53,7 @@ func NewRuntime(logger *slog.Logger, info node.Info) *Runtime {
 		logger:   logger,
 		info:     info,
 		bidder:   NewBidder(logger, capacity, info.Identity.NodeID, info.Snapshot.BootID, info.Identity.Region),
-		executor: NewExecutor(logger, capacity, info.Snapshot.BootID, launcher),
+		executor: newExecutor(logger, capacity, info.Snapshot.BootID, launcher),
 		launcher: launcher,
 	}
 }
@@ -71,7 +71,7 @@ func (r *Runtime) Start(ctx context.Context, nc *nats.Client) error {
 		return fmt.Errorf("register bidder: %w", err)
 	}
 
-	launchSubject, err := r.executor.Register(ctx, nc)
+	launchSubject, err := r.executor.register(ctx, nc)
 	if err != nil {
 		return fmt.Errorf("register executor: %w", err)
 	}

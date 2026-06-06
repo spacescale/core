@@ -16,6 +16,7 @@ import (
 	"github.com/spacescale/core/scaled/workload/microvm"
 	"github.com/spacescale/core/shared/nats"
 	"github.com/spacescale/core/shared/pb/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -33,6 +34,14 @@ type launcher interface {
 	Stop(ctx context.Context, microvmID string) error
 }
 
+// replyPublisher abstracts only the launch-reply publish path used by executor.
+// register still depends on the concrete NATS client for subscription setup,
+// but handle only needs reply publishing, which keeps executor unit tests small
+// and avoids coupling them to the full NATS client surface.
+type replyPublisher interface {
+	PublishProto(subject string, message proto.Message) error
+}
+
 // executor handles targeted microVM launch commands after placement wins.
 type executor struct {
 	logger   *slog.Logger
@@ -42,7 +51,7 @@ type executor struct {
 }
 
 // newExecutor constructs an executor for one node boot identity.
-func newExecutor(logger *slog.Logger, capacity *Capacity, bootID string, launcher *microvm.Launcher) *executor {
+func newExecutor(logger *slog.Logger, capacity *Capacity, bootID string, launcher launcher) *executor {
 	return &executor{
 		logger:   logger,
 		capacity: capacity,
@@ -65,7 +74,7 @@ func (e *executor) register(ctx context.Context, client *nats.Client) (string, e
 	return subject, nil
 }
 
-func (e *executor) handle(ctx context.Context, client *nats.Client, msg *nats.Msg) error {
+func (e *executor) handle(ctx context.Context, publisher replyPublisher, msg *nats.Msg) error {
 	if msg.Reply == "" {
 		return errors.New("microvm launch request missing reply subject")
 	}
@@ -84,7 +93,7 @@ func (e *executor) handle(ctx context.Context, client *nats.Client, msg *nats.Ms
 
 	committedSpec, ok := e.capacity.Commit(req.GetMicrovmId())
 	if !ok {
-		return client.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
+		return publisher.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
 			Accepted:     false,
 			ErrorMessage: "reservation expired or not found",
 		})
@@ -108,7 +117,7 @@ func (e *executor) handle(ctx context.Context, client *nats.Client, msg *nats.Ms
 	})
 	if err != nil {
 		e.capacity.Revert(committedSpec)
-		publishErr := client.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
+		publishErr := publisher.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
 			Accepted:     false,
 			ErrorMessage: err.Error(),
 		})
@@ -119,7 +128,7 @@ func (e *executor) handle(ctx context.Context, client *nats.Client, msg *nats.Ms
 		Accepted: true,
 	}
 
-	if err := client.PublishProto(msg.Reply, reply); err != nil {
+	if err := publisher.PublishProto(msg.Reply, reply); err != nil {
 		if active != nil {
 			err = errors.Join(err, e.launcher.Stop(context.WithoutCancel(ctx), active.MicroVMID))
 		}
