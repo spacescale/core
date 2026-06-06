@@ -1,6 +1,6 @@
 //go:build linux
 
-// Executor handles targeted microVM launch commands after placement wins.
+// Package workload handles targeted microVM launch commands after placement wins.
 //
 // The package validates launch messages, commits reserved capacity, invokes the
 // local microvm launcher, and publishes accepted only after guestd hello. On boot
@@ -25,6 +25,7 @@ const (
 	microVMLaunchBootTimeout = 10 * time.Second
 )
 
+// Executor handles targeted microVM launch commands after placement wins.
 type Executor struct {
 	logger   *slog.Logger
 	capacity *Capacity
@@ -32,6 +33,7 @@ type Executor struct {
 	launcher *microvm.Launcher
 }
 
+// NewExecutor constructs an Executor for one node boot identity.
 func NewExecutor(logger *slog.Logger, capacity *Capacity, bootID string, launcher *microvm.Launcher) *Executor {
 	return &Executor{
 		logger:   logger,
