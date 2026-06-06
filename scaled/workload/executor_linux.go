@@ -25,6 +25,7 @@ const (
 	microVMLaunchBootTimeout = 10 * time.Second
 )
 
+// launcher interface is created to make executor unit test friendly. the concrete implmentation owns firecracker boot behavior
 type launcher interface {
 	Launch(ctx context.Context, request microvm.LaunchRequest) (*microvm.ActiveVM, error)
 	Stop(ctx context.Context, microvmID string) error
