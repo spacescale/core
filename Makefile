@@ -1,4 +1,4 @@
-.PHONY: compose-start controlp proto lint test stop
+.PHONY: compose-start controlp build-scaled proto lint test stop
 
 
 compose-start:
@@ -7,6 +7,11 @@ compose-start:
 
 controlp:
 	go run ./cmd/controlp
+
+
+build-scaled:
+	mkdir -p dist
+	GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/scaled ./cmd/scaled
 
 
 proto:
