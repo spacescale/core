@@ -67,6 +67,7 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 		{
 			name: "missing database url",
 			setenv: func(t *testing.T) {
+				t.Helper()
 				t.Setenv("BFF_JWT_SECRET", "secret")
 				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
 				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
@@ -77,6 +78,7 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 		{
 			name: "missing jwt secret",
 			setenv: func(t *testing.T) {
+				t.Helper()
 				t.Setenv("DATABASE_URL", "postgres://db")
 				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
 				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
@@ -87,6 +89,7 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 		{
 			name: "missing internal auth secret",
 			setenv: func(t *testing.T) {
+				t.Helper()
 				t.Setenv("DATABASE_URL", "postgres://db")
 				t.Setenv("BFF_JWT_SECRET", "secret")
 				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
@@ -97,6 +100,7 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 		{
 			name: "missing key id",
 			setenv: func(t *testing.T) {
+				t.Helper()
 				t.Setenv("DATABASE_URL", "postgres://db")
 				t.Setenv("BFF_JWT_SECRET", "secret")
 				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
@@ -107,6 +111,7 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 		{
 			name: "missing key",
 			setenv: func(t *testing.T) {
+				t.Helper()
 				t.Setenv("DATABASE_URL", "postgres://db")
 				t.Setenv("BFF_JWT_SECRET", "secret")
 				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
