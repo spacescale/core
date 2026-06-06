@@ -3,40 +3,101 @@ package node
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestRead(t *testing.T) {
-	root := t.TempDir()
-	bootIDPath := filepath.Join(root, "boot_id")
-	memInfoPath := filepath.Join(root, "meminfo")
-	cpuRoot := filepath.Join(root, "sys", "devices", "system", "cpu")
+func TestReadSnapshot(t *testing.T) {
+	t.Run("reads snapshot", func(t *testing.T) {
+		root := t.TempDir()
+		bootIDPath := filepath.Join(root, "boot_id")
+		memInfoPath := filepath.Join(root, "meminfo")
+		cpuRoot := filepath.Join(root, "sys", "devices", "system", "cpu")
 
-	require.NoError(t, os.WriteFile(bootIDPath, []byte("11111111-2222-3333-4444-555555555555\n"), 0o644))
-	require.NoError(t, os.WriteFile(memInfoPath, []byte("MemTotal:       2097152 kB\n"), 0o644))
-	writeCPUFixture(t, cpuRoot, "cpu0", "0", "0")
-	writeCPUFixture(t, cpuRoot, "cpu1", "1", "0")
+		require.NoError(t, os.WriteFile(bootIDPath, []byte("11111111-2222-3333-4444-555555555555\n"), 0o644))
+		require.NoError(t, os.WriteFile(memInfoPath, []byte("MemTotal:       2097152 kB\n"), 0o644))
+		writeCPUFixture(t, cpuRoot, "cpu0", "0", "0")
+		writeCPUFixture(t, cpuRoot, "cpu1", "1", "0")
 
-	snapshot, err := readSnapshot(
-		bootIDPath,
-		memInfoPath,
-		filepath.Join(cpuRoot, "cpu[0-9]*", "topology", "core_id"),
-		root,
-	)
-	require.NoError(t, err)
+		snapshot, err := readSnapshot(
+			bootIDPath,
+			memInfoPath,
+			filepath.Join(cpuRoot, "cpu[0-9]*", "topology", "core_id"),
+			root,
+		)
+		require.NoError(t, err)
 
-	assert.NotEmpty(t, snapshot.BootID)
-	assert.Equal(t, strings.TrimSpace(snapshot.BootID), snapshot.BootID)
-	assert.Len(t, snapshot.BootID, 36)
-	assert.Contains(t, snapshot.BootID, "-")
-	assert.Equal(t, uint32(2), snapshot.TotalCores)
-	assert.Equal(t, uint64(2048), snapshot.TotalRAMMb)
-	assert.Positive(t, snapshot.TotalDiskMb)
-	assert.GreaterOrEqual(t, snapshot.TotalDiskMb, snapshot.AvailableDiskMb)
+		assert.Equal(t, "11111111-2222-3333-4444-555555555555", snapshot.BootID)
+		assert.Equal(t, uint32(2), snapshot.TotalCores)
+		assert.Equal(t, uint64(2048), snapshot.TotalRAMMb)
+		assert.Positive(t, snapshot.TotalDiskMb)
+		assert.GreaterOrEqual(t, snapshot.TotalDiskMb, snapshot.AvailableDiskMb)
+	})
+
+	t.Run("propagates errors", func(t *testing.T) {
+		_, err := readSnapshot(
+			"/no/such/boot_id",
+			"/no/such/meminfo",
+			"/no/such/cpu/*/topology/core_id",
+			"/no/such/root",
+		)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "read boot id")
+	})
+}
+
+func TestReadBootID(t *testing.T) {
+	t.Run("reads valid boot id", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "boot_id")
+		require.NoError(t, os.WriteFile(path, []byte("11111111-2222-3333-4444-555555555555\n"), 0o644))
+
+		id, err := readBootID(path)
+		require.NoError(t, err)
+		assert.Equal(t, "11111111-2222-3333-4444-555555555555", id)
+	})
+
+	t.Run("rejects empty file", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "boot_id")
+		require.NoError(t, os.WriteFile(path, []byte(""), 0o644))
+
+		_, err := readBootID(path)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "empty value")
+	})
+
+	t.Run("rejects missing file", func(t *testing.T) {
+		_, err := readBootID("/no/such/boot_id")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "read boot id")
+	})
+}
+
+func TestReadMemoryStats(t *testing.T) {
+	t.Run("reads MemTotal", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "meminfo")
+		require.NoError(t, os.WriteFile(path, []byte("MemTotal:       2097152 kB\n"), 0o644))
+
+		stats, err := readMemoryStats(path)
+		require.NoError(t, err)
+		assert.Equal(t, uint64(2048), stats.TotalMb)
+	})
+
+	t.Run("rejects missing MemTotal", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "meminfo")
+		require.NoError(t, os.WriteFile(path, []byte("MemFree:       1024 kB\n"), 0o644))
+
+		_, err := readMemoryStats(path)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "MemTotal not found")
+	})
+
+	t.Run("rejects missing file", func(t *testing.T) {
+		_, err := readMemoryStats("/no/such/meminfo")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "open")
+	})
 }
 
 func TestParseMemInfoKBLine(t *testing.T) {
@@ -105,58 +166,6 @@ func TestReadTopologyValueRejectsMissingPath(t *testing.T) {
 	_, err := readTopologyValue("/path/that/should/not/exist")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "read topology")
-}
-
-func TestReadBootID(t *testing.T) {
-	t.Run("reads valid boot id", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "boot_id")
-		require.NoError(t, os.WriteFile(path, []byte("11111111-2222-3333-4444-555555555555\n"), 0o644))
-
-		id, err := readBootID(path)
-		require.NoError(t, err)
-		assert.Equal(t, "11111111-2222-3333-4444-555555555555", id)
-	})
-
-	t.Run("rejects empty file", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "boot_id")
-		require.NoError(t, os.WriteFile(path, []byte(""), 0o644))
-
-		_, err := readBootID(path)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "empty value")
-	})
-
-	t.Run("rejects missing file", func(t *testing.T) {
-		_, err := readBootID("/no/such/boot_id")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "read boot id")
-	})
-}
-
-func TestReadMemoryStats(t *testing.T) {
-	t.Run("reads MemTotal", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "meminfo")
-		require.NoError(t, os.WriteFile(path, []byte("MemTotal:       2097152 kB\n"), 0o644))
-
-		stats, err := readMemoryStats(path)
-		require.NoError(t, err)
-		assert.Equal(t, uint64(2048), stats.TotalMb)
-	})
-
-	t.Run("rejects missing MemTotal", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "meminfo")
-		require.NoError(t, os.WriteFile(path, []byte("MemFree:       1024 kB\n"), 0o644))
-
-		_, err := readMemoryStats(path)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "MemTotal not found")
-	})
-
-	t.Run("rejects missing file", func(t *testing.T) {
-		_, err := readMemoryStats("/no/such/meminfo")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "open")
-	})
 }
 
 func TestReadTopologyValue(t *testing.T) {

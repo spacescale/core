@@ -24,10 +24,7 @@ import (
 // Run starts the scaled edge daemon and blocks until the context is canceled
 // or a startup/runtime error occurs.
 func Run(ctx context.Context) error {
-	cfg, err := config.LoadScaled()
-	if err != nil {
-		return fmt.Errorf("load scaled config: %w", err)
-	}
+	cfg := config.LoadScaled()
 
 	log := logger.Init(cfg.Environment).With("component", "scaled")
 
@@ -37,26 +34,20 @@ func Run(ctx context.Context) error {
 	}
 	defer func() { _ = natsClient.Drain() }()
 
-	return runDaemon(ctx, cfg, log, natsClient)
+	return runDaemon(ctx, log, natsClient)
 }
 
-func runDaemon(ctx context.Context, cfg config.Config, log *slog.Logger, natsClient *nats.Client) error {
+func runDaemon(ctx context.Context, log *slog.Logger, natsClient *nats.Client) error {
 	info, err := node.Collect(log)
 	if err != nil {
 		return fmt.Errorf("collect node info: %w", err)
 	}
-
 	runtime := workload.NewRuntime(log, info)
 	if err := runtime.Start(ctx, natsClient); err != nil {
 		return fmt.Errorf("start workload runtime: %w", err)
 	}
 	defer runtime.Stop()
-
-	log.Info("scaled ready",
-		"node_id", info.Identity.NodeID,
-		"region", info.Identity.Region,
-	)
-
+	log.Info("scaled ready", "node_id", info.Identity.NodeID, "region", info.Identity.Region)
 	<-ctx.Done()
 	log.Info("scaled stopped", "node_id", info.Identity.NodeID)
 

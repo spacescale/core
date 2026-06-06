@@ -56,10 +56,6 @@ func newTestServer(t *testing.T) *testServer {
 	}
 
 	authCfg := config.AuthConfig{JWTSecret: testJWTSecret, Issuer: testIssuer, Audience: testAudience}
-	if err := authCfg.Validate(); err != nil {
-		pool.Close()
-		require.NoError(t, err)
-	}
 
 	queries := sqlc.New(pool)
 	svcs, err := service.NewServices(service.Deps{
@@ -75,7 +71,7 @@ func newTestServer(t *testing.T) *testServer {
 	server := api.NewServer(api.ServerDeps{
 		Services: svcs,
 		DBPool:   pool,
-		Config: config.Config{
+		Config: config.Control{
 			Auth:               authCfg,
 			InternalAuthSecret: testInternalAuthSecret,
 		},

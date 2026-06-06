@@ -30,7 +30,7 @@ type Server struct {
 
 	// dependencies
 	dbPool                  *pgxpool.Pool
-	config                  config.Config
+	config                  config.Control
 	internalIdentityLimiter *httprate.RateLimiter
 	server                  *http.Server
 
@@ -56,7 +56,7 @@ const (
 type ServerDeps struct {
 	Services *service.Services
 	DBPool   *pgxpool.Pool
-	Config   config.Config
+	Config   config.Control
 
 	// fabric dependencies
 	Dispatcher *fabric.Dispatcher

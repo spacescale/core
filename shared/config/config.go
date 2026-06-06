@@ -1,4 +1,4 @@
-// Package config loads and validates process configuration from the environment.
+// Package config loads startup configuration from the environment.
 package config
 
 import (
@@ -19,18 +19,24 @@ const (
 	defaultAuthAudience   = "spacescale-api"
 )
 
-// Config is the normalized runtime configuration shared by control and scaled.
-type Config struct {
+// Control is the runtime configuration for the control plane.
+type Control struct {
 	Environment string
 	NATSURL     string
 
 	DatabaseURL string
-	Port        string // api server runtime port
+	Port        string
 
 	Auth               AuthConfig
 	InternalAuthSecret string
 	EnvEncryptionKeyID string
 	EnvEncryptionKey   []byte
+}
+
+// Scaled is the runtime configuration for the edge daemon.
+type Scaled struct {
+	Environment string
+	NATSURL     string
 }
 
 // AuthConfig contains BFF-issued JWT verification settings.
@@ -40,153 +46,115 @@ type AuthConfig struct {
 	Audience  string
 }
 
-// LoadControl reads, normalizes, and validates config required by the control plane.
-func LoadControl() (Config, error) {
-	cfg, err := loadFromEnv()
-	if err != nil {
-		return Config{}, err
+// LoadControl reads and validates config required by the control plane.
+func LoadControl() (Control, error) {
+	environment := strings.TrimSpace(os.Getenv("APP_ENV"))
+	if environment == "" {
+		environment = strings.TrimSpace(os.Getenv("ENVIRONMENT"))
+	}
+	switch strings.ToLower(environment) {
+	case productionEnvironment, "prod":
+		environment = productionEnvironment
+	default:
+		environment = defaultEnvironment
 	}
 
-	return cfg.validateScalecp()
-}
-
-// LoadScaled reads, normalizes, and validates config required by the edge daemon.
-func LoadScaled() (Config, error) {
-	cfg, err := loadFromEnv()
-	if err != nil {
-		return Config{}, err
+	natsURL := strings.TrimSpace(os.Getenv("NATS_URL"))
+	if natsURL == "" {
+		natsURL = defaultNATSURL
 	}
 
-	return cfg.validateScaled()
-}
-
-// loadFromEnv reads process configuration from environment variables and applies defaults.
-func loadFromEnv() (Config, error) {
-	envEncryptionKeyID, envEncryptionKey, err := readEnvEncryptionConfig()
-	if err != nil {
-		return Config{}, err
+	port := strings.TrimSpace(os.Getenv("PORT"))
+	if port == "" {
+		port = defaultPort
 	}
 
-	return Config{
-		Environment: normalizeEnvironment(firstNonEmptyEnv("APP_ENV", "ENVIRONMENT")),
-		NATSURL:     envStr("NATS_URL", defaultNATSURL),
+	issuer := strings.TrimSpace(os.Getenv("BFF_JWT_ISSUER"))
+	if issuer == "" {
+		issuer = defaultAuthIssuer
+	}
 
+	audience := strings.TrimSpace(os.Getenv("BFF_JWT_AUDIENCE"))
+	if audience == "" {
+		audience = defaultAuthAudience
+	}
+
+	keyID := strings.TrimSpace(os.Getenv("API_ENV_ENCRYPTION_KEY_ID"))
+	keyRaw := strings.TrimSpace(os.Getenv("API_ENV_ENCRYPTION_KEY"))
+	if keyID == "" {
+		return Control{}, errors.New("missing required config API_ENV_ENCRYPTION_KEY_ID")
+	}
+	if keyRaw == "" {
+		return Control{}, errors.New("missing required config API_ENV_ENCRYPTION_KEY")
+	}
+	key, err := decodeEnvEncryptionKey(keyRaw, "API_ENV_ENCRYPTION_KEY")
+	if err != nil {
+		return Control{}, err
+	}
+
+	cfg := Control{
+		Environment: environment,
+		NATSURL:     natsURL,
 		DatabaseURL: strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		Port:        envStr("PORT", defaultPort),
-
+		Port:        port,
 		Auth: AuthConfig{
 			JWTSecret: strings.TrimSpace(os.Getenv("BFF_JWT_SECRET")),
-			Issuer:    envStr("BFF_JWT_ISSUER", defaultAuthIssuer),
-			Audience:  envStr("BFF_JWT_AUDIENCE", defaultAuthAudience),
+			Issuer:    issuer,
+			Audience:  audience,
 		},
 		InternalAuthSecret: strings.TrimSpace(os.Getenv("INTERNAL_AUTH_SYNC_SECRET")),
-		EnvEncryptionKeyID: envEncryptionKeyID,
-		EnvEncryptionKey:   envEncryptionKey,
-	}.Normalized(), nil
+		EnvEncryptionKeyID: keyID,
+		EnvEncryptionKey:   key,
+	}
+
+	if cfg.DatabaseURL == "" {
+		return Control{}, errors.New("missing required config DATABASE_URL")
+	}
+	if cfg.Auth.JWTSecret == "" {
+		return Control{}, errors.New("missing required config BFF_JWT_SECRET")
+	}
+	if cfg.InternalAuthSecret == "" {
+		return Control{}, errors.New("missing required config INTERNAL_AUTH_SYNC_SECRET")
+	}
+
+	return cfg, nil
 }
 
-// Normalized returns a copy with whitespace trimmed and defaults applied.
-func (c Config) Normalized() Config {
-	c.Environment = normalizeEnvironment(c.Environment)
-	c.NATSURL = envOrDefault(strings.TrimSpace(c.NATSURL), defaultNATSURL)
-	c.DatabaseURL = strings.TrimSpace(c.DatabaseURL)
-	c.Port = envOrDefault(strings.TrimSpace(c.Port), defaultPort)
-	c.Auth = c.Auth.Normalized()
-	c.InternalAuthSecret = strings.TrimSpace(c.InternalAuthSecret)
-	c.EnvEncryptionKeyID = strings.TrimSpace(c.EnvEncryptionKeyID)
+// LoadScaled reads config required by the edge daemon.
+func LoadScaled() Scaled {
+	environment := strings.TrimSpace(os.Getenv("APP_ENV"))
+	if environment == "" {
+		environment = strings.TrimSpace(os.Getenv("ENVIRONMENT"))
+	}
+	switch strings.ToLower(environment) {
+	case productionEnvironment, "prod":
+		environment = productionEnvironment
+	default:
+		environment = defaultEnvironment
+	}
 
-	return c
+	natsURL := strings.TrimSpace(os.Getenv("NATS_URL"))
+	if natsURL == "" {
+		natsURL = defaultNATSURL
+	}
+
+	return Scaled{
+		Environment: environment,
+		NATSURL:     natsURL,
+	}
 }
 
 // ListenAddr returns the HTTP listen address derived from Port.
-func (c Config) ListenAddr() string {
-	port := c.Normalized().Port
+func (c Control) ListenAddr() string {
+	port := strings.TrimSpace(c.Port)
+	if port == "" {
+		port = defaultPort
+	}
 	if strings.Contains(port, ":") {
 		return port
 	}
 
 	return ":" + port
-}
-
-// validateScalecp returns a Config or an error if any required control-plane field is missing.
-func (c Config) validateScalecp() (Config, error) {
-	c = c.Normalized()
-	if c.DatabaseURL == "" {
-		return Config{}, errors.New("missing required config DATABASE_URL")
-	}
-	if strings.TrimSpace(c.Auth.JWTSecret) == "" {
-		return Config{}, errors.New("missing required config BFF_JWT_SECRET")
-	}
-	if c.InternalAuthSecret == "" {
-		return Config{}, errors.New("missing required config INTERNAL_AUTH_SYNC_SECRET")
-	}
-	if c.EnvEncryptionKeyID == "" {
-		return Config{}, errors.New("missing required config API_ENV_ENCRYPTION_KEY_ID")
-	}
-	if len(c.EnvEncryptionKey) == 0 {
-		return Config{}, errors.New("missing required config API_ENV_ENCRYPTION_KEY")
-	}
-	if err := c.Auth.Validate(); err != nil {
-		return Config{}, err
-	}
-
-	return c, nil
-}
-
-// validateScaled returns a Config or an error if any required edge-daemon field is missing.
-func (c Config) validateScaled() (Config, error) {
-	c = c.Normalized()
-	if c.NATSURL == "" {
-		return Config{}, errors.New("missing required config NATS_URL")
-	}
-
-	return c, nil
-}
-
-// Normalized returns a copy with auth defaults applied.
-func (c AuthConfig) Normalized() AuthConfig {
-	c.JWTSecret = strings.TrimSpace(c.JWTSecret)
-	c.Issuer = envOrDefault(strings.TrimSpace(c.Issuer), defaultAuthIssuer)
-	c.Audience = envOrDefault(strings.TrimSpace(c.Audience), defaultAuthAudience)
-
-	return c
-}
-
-// Validate verifies auth settings required to accept BFF JWTs.
-func (c AuthConfig) Validate() error {
-	if c.JWTSecret == "" {
-		return errors.New("auth config JWTSecret is required")
-	}
-	if c.Issuer == "" {
-		return errors.New("auth config Issuer is required")
-	}
-	if c.Audience == "" {
-		return errors.New("auth config Audience is required")
-	}
-
-	return nil
-}
-
-func readEnvEncryptionConfig() (string, []byte, error) {
-	keyID := strings.TrimSpace(os.Getenv("API_ENV_ENCRYPTION_KEY_ID"))
-	keyRaw := strings.TrimSpace(os.Getenv("API_ENV_ENCRYPTION_KEY"))
-	if keyID == "" && keyRaw == "" {
-		return "", nil, nil
-	}
-	if keyID != "" {
-		if err := validateEnvEncryptionKeyID(keyID, "API_ENV_ENCRYPTION_KEY_ID"); err != nil {
-			return "", nil, err
-		}
-	}
-	if keyRaw == "" {
-		return keyID, nil, nil
-	}
-	key, err := decodeEnvEncryptionKey(keyRaw, "API_ENV_ENCRYPTION_KEY")
-	if err != nil {
-		return "", nil, err
-	}
-
-	return keyID, key, nil
 }
 
 func decodeEnvEncryptionKey(raw, envName string) ([]byte, error) {
@@ -199,43 +167,4 @@ func decodeEnvEncryptionKey(raw, envName string) ([]byte, error) {
 	}
 
 	return append([]byte(nil), key...), nil
-}
-
-func validateEnvEncryptionKeyID(keyID, envName string) error {
-	if strings.Contains(keyID, ":") || strings.ContainsAny(keyID, " \t\r\n") {
-		return fmt.Errorf("invalid config %s: key id must not contain ':' or whitespace", envName)
-	}
-
-	return nil
-}
-
-func envStr(key, def string) string {
-	return envOrDefault(firstNonEmptyEnv(key), def)
-}
-
-func envOrDefault(value, def string) string {
-	if value == "" {
-		return def
-	}
-
-	return value
-}
-
-func firstNonEmptyEnv(keys ...string) string {
-	for _, key := range keys {
-		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-			return value
-		}
-	}
-
-	return ""
-}
-
-func normalizeEnvironment(raw string) string {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case productionEnvironment, "prod":
-		return productionEnvironment
-	default:
-		return defaultEnvironment
-	}
 }

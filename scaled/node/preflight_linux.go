@@ -51,7 +51,6 @@ type Identity struct {
 	Region string `json:"region"`
 }
 
-
 // RuntimePaths are the host-local binaries and guest images baked into the node image.
 type RuntimePaths struct {
 	FirecrackerPath string
@@ -84,7 +83,7 @@ func Collect(logger *slog.Logger) (Info, error) {
 	if err != nil {
 		return Info{}, err
 	}
-	snapshot, err := read()
+	snapshot, err := readSnapshot(bootIDPath, memInfoPath, cpuTopologyCoreIDGlob, rootMountDir)
 	if err != nil {
 		return Info{}, err
 	}
@@ -403,10 +402,6 @@ func readSysfsValue(path string) (string, error) {
 func writeSysfsValue(path string, value string) error {
 	return os.WriteFile(path, []byte(value), 0o644)
 }
-
-
-
-
 
 // validateRuntimePaths verifies the golden-image binaries and guest files exist
 // at their fixed host locations.

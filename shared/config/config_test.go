@@ -8,14 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLoad(t *testing.T) {
+func TestLoadControl(t *testing.T) {
 	key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
 
 	t.Setenv("APP_ENV", " prod ")
 	t.Setenv("NATS_URL", " nats://10.0.0.1:4222 ")
 	t.Setenv("DATABASE_URL", " postgres://user:pass@db/spacescale ")
 	t.Setenv("PORT", " 9090 ")
-	t.Setenv("FIRECRACKER_BIN", " /opt/firecracker ")
 	t.Setenv("BFF_JWT_SECRET", " secret ")
 	t.Setenv("BFF_JWT_ISSUER", " issuer ")
 	t.Setenv("BFF_JWT_AUDIENCE", " audience ")
@@ -38,95 +37,125 @@ func TestLoad(t *testing.T) {
 	assert.Len(t, cfg.EnvEncryptionKey, 32)
 }
 
-func TestConfigNormalized(t *testing.T) {
-	cfg := Config{
-		Environment:        " prod ",
-		NATSURL:            "   ",
-		DatabaseURL:        " postgres://db ",
-		Port:               "   ",
-		InternalAuthSecret: " secret ",
-		EnvEncryptionKeyID: " key-id ",
-		Auth: AuthConfig{
-			JWTSecret: " jwt-secret ",
-			Issuer:    "   ",
-			Audience:  "   ",
-		},
-	}
+func TestLoadControlAppliesDefaults(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
 
-	normalized := cfg.Normalized()
+	t.Setenv("DATABASE_URL", "postgres://db")
+	t.Setenv("BFF_JWT_SECRET", "secret")
+	t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
+	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 
-	assert.Equal(t, "production", normalized.Environment)
-	assert.Equal(t, defaultNATSURL, normalized.NATSURL)
-	assert.Equal(t, "postgres://db", normalized.DatabaseURL)
-	assert.Equal(t, defaultPort, normalized.Port)
-	assert.Equal(t, "secret", normalized.InternalAuthSecret)
-	assert.Equal(t, "key-id", normalized.EnvEncryptionKeyID)
-	assert.Equal(t, "jwt-secret", normalized.Auth.JWTSecret)
-	assert.Equal(t, defaultAuthIssuer, normalized.Auth.Issuer)
-	assert.Equal(t, defaultAuthAudience, normalized.Auth.Audience)
+	cfg, err := LoadControl()
+	require.NoError(t, err)
+
+	assert.Equal(t, defaultEnvironment, cfg.Environment)
+	assert.Equal(t, defaultNATSURL, cfg.NATSURL)
+	assert.Equal(t, defaultPort, cfg.Port)
+	assert.Equal(t, defaultAuthIssuer, cfg.Auth.Issuer)
+	assert.Equal(t, defaultAuthAudience, cfg.Auth.Audience)
 }
 
-func TestConfigListenAddr(t *testing.T) {
-	tests := []struct {
-		name string
-		cfg  Config
-		want string
-	}{
-		{name: "bare port", cfg: Config{Port: "8081"}, want: ":8081"},
-		{name: "host and port", cfg: Config{Port: "127.0.0.1:8081"}, want: "127.0.0.1:8081"},
-		{name: "default port", cfg: Config{}, want: ":8080"},
-	}
-
-	for _, tc := range tests {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, tc.cfg.ListenAddr())
-		})
-	}
-}
-
-func TestConfigValidateScalecp(t *testing.T) {
-	valid := Config{
-		DatabaseURL:        "postgres://db",
-		InternalAuthSecret: "internal-secret",
-		EnvEncryptionKeyID: "key-v1",
-		EnvEncryptionKey:   []byte("12345678901234567890123456789012"),
-		Auth: AuthConfig{
-			JWTSecret: "jwt-secret",
-			Issuer:    "issuer",
-			Audience:  "audience",
-		},
-	}
+func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
 
 	tests := []struct {
 		name       string
-		cfg        Config
+		setenv     func(*testing.T)
 		wantErrMsg string
 	}{
-		{name: "valid config", cfg: valid},
-		{name: "missing database url", cfg: Config{Auth: valid.Auth, InternalAuthSecret: valid.InternalAuthSecret, EnvEncryptionKeyID: valid.EnvEncryptionKeyID, EnvEncryptionKey: valid.EnvEncryptionKey}, wantErrMsg: "missing required config DATABASE_URL"},
-		{name: "missing jwt secret", cfg: Config{DatabaseURL: valid.DatabaseURL, InternalAuthSecret: valid.InternalAuthSecret, EnvEncryptionKeyID: valid.EnvEncryptionKeyID, EnvEncryptionKey: valid.EnvEncryptionKey, Auth: AuthConfig{Issuer: "issuer", Audience: "audience"}}, wantErrMsg: "missing required config BFF_JWT_SECRET"},
-		{name: "missing internal auth secret", cfg: Config{DatabaseURL: valid.DatabaseURL, Auth: valid.Auth, EnvEncryptionKeyID: valid.EnvEncryptionKeyID, EnvEncryptionKey: valid.EnvEncryptionKey}, wantErrMsg: "missing required config INTERNAL_AUTH_SYNC_SECRET"},
-		{name: "missing key id", cfg: Config{DatabaseURL: valid.DatabaseURL, Auth: valid.Auth, InternalAuthSecret: valid.InternalAuthSecret, EnvEncryptionKey: valid.EnvEncryptionKey}, wantErrMsg: "missing required config API_ENV_ENCRYPTION_KEY_ID"},
-		{name: "missing key", cfg: Config{DatabaseURL: valid.DatabaseURL, Auth: valid.Auth, InternalAuthSecret: valid.InternalAuthSecret, EnvEncryptionKeyID: valid.EnvEncryptionKeyID}, wantErrMsg: "missing required config API_ENV_ENCRYPTION_KEY"},
+		{
+			name: "missing database url",
+			setenv: func(t *testing.T) {
+				t.Setenv("BFF_JWT_SECRET", "secret")
+				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
+				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+			},
+			wantErrMsg: "missing required config DATABASE_URL",
+		},
+		{
+			name: "missing jwt secret",
+			setenv: func(t *testing.T) {
+				t.Setenv("DATABASE_URL", "postgres://db")
+				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
+				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+			},
+			wantErrMsg: "missing required config BFF_JWT_SECRET",
+		},
+		{
+			name: "missing internal auth secret",
+			setenv: func(t *testing.T) {
+				t.Setenv("DATABASE_URL", "postgres://db")
+				t.Setenv("BFF_JWT_SECRET", "secret")
+				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+			},
+			wantErrMsg: "missing required config INTERNAL_AUTH_SYNC_SECRET",
+		},
+		{
+			name: "missing key id",
+			setenv: func(t *testing.T) {
+				t.Setenv("DATABASE_URL", "postgres://db")
+				t.Setenv("BFF_JWT_SECRET", "secret")
+				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
+				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+			},
+			wantErrMsg: "missing required config API_ENV_ENCRYPTION_KEY_ID",
+		},
+		{
+			name: "missing key",
+			setenv: func(t *testing.T) {
+				t.Setenv("DATABASE_URL", "postgres://db")
+				t.Setenv("BFF_JWT_SECRET", "secret")
+				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
+				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+			},
+			wantErrMsg: "missing required config API_ENV_ENCRYPTION_KEY",
+		},
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := tc.cfg.validateScalecp()
-			if tc.wantErrMsg == "" {
-				require.NoError(t, err)
-				return
-			}
+			tc.setenv(t)
+			_, err := LoadControl()
 			require.EqualError(t, err, tc.wantErrMsg)
 		})
 	}
 }
 
-func TestConfigValidateScaled(t *testing.T) {
-	_, err := (Config{}).validateScaled()
-	require.NoError(t, err)
+func TestLoadScaled(t *testing.T) {
+	t.Setenv("ENVIRONMENT", " prod ")
+	t.Setenv("NATS_URL", " nats://10.0.0.1:4222 ")
+
+	cfg := LoadScaled()
+	assert.Equal(t, "production", cfg.Environment)
+	assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
+}
+
+func TestLoadScaledAppliesDefaults(t *testing.T) {
+	cfg := LoadScaled()
+	assert.Equal(t, defaultEnvironment, cfg.Environment)
+	assert.Equal(t, defaultNATSURL, cfg.NATSURL)
+}
+
+func TestControlListenAddr(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Control
+		want string
+	}{
+		{name: "bare port", cfg: Control{Port: "8081"}, want: ":8081"},
+		{name: "host and port", cfg: Control{Port: "127.0.0.1:8081"}, want: "127.0.0.1:8081"},
+		{name: "default port", cfg: Control{}, want: ":8080"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, tc.cfg.ListenAddr())
+		})
+	}
 }
 
 func TestDecodeEnvEncryptionKey(t *testing.T) {
@@ -157,7 +186,6 @@ func TestDecodeEnvEncryptionKey(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			key, err := decodeEnvEncryptionKey(tc.raw, "API_ENV_ENCRYPTION_KEY")
 			if tc.wantErrMsg == "" {
@@ -167,30 +195,6 @@ func TestDecodeEnvEncryptionKey(t *testing.T) {
 			}
 			require.EqualError(t, err, tc.wantErrMsg)
 			assert.Nil(t, key)
-		})
-	}
-}
-
-func TestValidateEnvEncryptionKeyID(t *testing.T) {
-	tests := []struct {
-		name       string
-		keyID      string
-		wantErrMsg string
-	}{
-		{name: "valid key id", keyID: "key-v1"},
-		{name: "contains colon", keyID: "key:v1", wantErrMsg: "invalid config API_ENV_ENCRYPTION_KEY_ID: key id must not contain ':' or whitespace"},
-		{name: "contains whitespace", keyID: "key id", wantErrMsg: "invalid config API_ENV_ENCRYPTION_KEY_ID: key id must not contain ':' or whitespace"},
-	}
-
-	for _, tc := range tests {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			err := validateEnvEncryptionKeyID(tc.keyID, "API_ENV_ENCRYPTION_KEY_ID")
-			if tc.wantErrMsg == "" {
-				require.NoError(t, err)
-				return
-			}
-			require.EqualError(t, err, tc.wantErrMsg)
 		})
 	}
 }

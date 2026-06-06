@@ -81,7 +81,7 @@ func Run(ctx context.Context) error {
 	return nil
 }
 
-func openDB(ctx context.Context, cfg config.Config) (*pgxpool.Pool, error) {
+func openDB(ctx context.Context, cfg config.Control) (*pgxpool.Pool, error) {
 	poolCfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
 	if err != nil {
 		return nil, err
