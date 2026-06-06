@@ -1,3 +1,15 @@
+// Package node tests cover IO helpers (validateRuntimePath, readSysfsValue,
+// writeSysfsValue) and loadIdentity. The following functions require real
+// Linux host state (KVM, sysfs, /proc) or root privileges and are excluded:
+//
+//   - ensureKVM                  requires /dev/kvm
+//   - disableSwap / ensureSwapDisabled   requires root + /proc/swaps
+//   - disableKSM / disableSMT    requires sysfs filesystem
+//   - ensureFirecrackerJailerAccount / createFirecrackerJailerUser / firecrackerJailerIdentity
+//                                 requires root + useradd
+//   - kvmDeviceGID                requires /dev/kvm + syscall.Stat_t
+//   - preflight / validateRuntimePaths / Collect
+//                                 compose the above; tested via integration
 package node
 
 import (
