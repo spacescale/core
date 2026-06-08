@@ -31,6 +31,8 @@ services:
     working_dir: /workspace
     volumes:
       - .:/workspace
+      - gomodcache:/go/pkg/mod
+      - gobuildcache:/root/.cache/go-build
     environment:
       DATABASE_URL: postgres://spacescale:spacescale@db:5432/spacescale?sslmode=disable
     depends_on:
@@ -38,7 +40,7 @@ services:
         condition: service_healthy
     command:
       - sh
-      - -lc
+      - -c
       - go run github.com/pressly/goose/v3/cmd/goose@v3.25.0 -dir control/db/migrations postgres "$$DATABASE_URL" up
     restart: "no"
 
@@ -47,6 +49,8 @@ services:
     working_dir: /workspace
     volumes:
       - .:/workspace
+      - gomodcache:/go/pkg/mod
+      - gobuildcache:/root/.cache/go-build
     environment:
       APP_ENV: development
       PORT: "8080"
@@ -68,10 +72,12 @@ services:
     ports:
       - "8080:8080"
     command:
-      - sh
-      - -lc
-      - go run ./cmd/controlp
+      - go
+      - run
+      - ./cmd/controlp
 
 volumes:
   pgdata:
   natsdata:
+  gomodcache:
+  gobuildcache:
