@@ -1,5 +1,16 @@
 //go:build linux
 
+// vsock_linux_test covers the concrete CID, control-frame, and Unix-socket
+// helpers in this file.
+//
+// Intentionally not unit tested here:
+//   - allowJailerSocketAccess permission failure paths
+//   - openVSockListeners cleanup branches triggered by chown/chmod failures
+//
+// Reason: those paths depend on host user ownership and filesystem permission
+// failures that are awkward to force without introducing OS-specific test seams.
+// The tests here stay focused on deterministic frame parsing, CID allocation,
+// listener lifecycle, and public listener behavior.
 package microvm
 
 import (
@@ -68,6 +79,14 @@ func TestExpectHelloFrameRejectsWrongMagic(t *testing.T) {
 func TestExpectHelloFrameRejectsWrongKind(t *testing.T) {
 	raw := validHelloFrame()
 	raw[5] = 99
+
+	err := expectHelloFrame(bytes.NewReader(raw))
+	require.Error(t, err)
+}
+
+func TestExpectHelloFrameRejectsWrongVersion(t *testing.T) {
+	raw := validHelloFrame()
+	raw[4] = 99
 
 	err := expectHelloFrame(bytes.NewReader(raw))
 	require.Error(t, err)
@@ -215,6 +234,13 @@ func TestWaitForHelloAcceptsValidControlFrame(t *testing.T) {
 	require.NoError(t, requireAsyncErr(t, errCh))
 }
 
+func TestWaitForHelloRejectsUninitializedListener(t *testing.T) {
+	var listeners VSockListeners
+
+	err := listeners.WaitForHello(context.Background())
+	require.ErrorContains(t, err, "control listener is not initialized")
+}
+
 func TestAcceptLogReturnsLogConnection(t *testing.T) {
 	workspace := Workspace{
 		JailerRootDir: filepath.Join(shortTempDir(t), "root"),
@@ -240,6 +266,24 @@ func TestAcceptLogReturnsLogConnection(t *testing.T) {
 
 	clientConn := requireClientConn(t, clientCh, errCh)
 	defer func() { _ = clientConn.Close() }()
+}
+
+func TestAcceptLogRejectsUninitializedListener(t *testing.T) {
+	var listeners VSockListeners
+
+	_, err := listeners.AcceptLog(context.Background())
+	require.ErrorContains(t, err, "log listener is not initialized")
+}
+
+func TestVSockListenersCloseNilIsSafe(t *testing.T) {
+	var listeners *VSockListeners
+
+	require.NoError(t, listeners.Close())
+}
+
+func TestReadControlFrameHeaderRejectsShortRead(t *testing.T) {
+	_, err := readControlFrameHeader(bytes.NewReader(validHelloFrame()[:controlFrameHeaderSize-1]))
+	require.ErrorContains(t, err, "read control frame header")
 }
 
 func validHelloFrame() []byte {

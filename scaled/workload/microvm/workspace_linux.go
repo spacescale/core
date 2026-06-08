@@ -27,10 +27,12 @@ const (
 	// control-plane microVM UUID.
 	microVMStateDir = "/var/lib/spacescale/microvms"
 
-	// microVMJailerStateDir stores jailer paths under the host-managed jailer root.
-	// The full microVM UUID is still used in the jailer path, while the socket
-	// filenames themselves stay short enough to fit Linux's Unix socket path limit.
-	microVMJailerStateDir = "/var/lib/spacescale/jailer"
+	// microVMJailerStateDir intentionally uses the visible short name "j" instead
+	// of a longer "jailer" path. The Firecracker jail root also includes the
+	// firecracker binary name, full microVM UUID, "/root", and the vsock port
+	// suffix, so this short base directory is required to keep Unix socket paths
+	// within Linux's small pathname limit.
+	microVMJailerStateDir = "/var/lib/spacescale/j"
 )
 
 const (

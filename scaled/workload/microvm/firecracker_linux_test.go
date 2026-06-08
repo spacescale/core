@@ -28,7 +28,7 @@ func firecrackerPlanInputsFixture() (*Launcher, Workspace, LaunchRequest, *Netwo
 
 	workspace := newWorkspace(
 		"/var/lib/spacescale/microvms",
-		"/var/lib/spacescale/jailer",
+		"/var/lib/spacescale/j",
 		"vm-123",
 		paths.FirecrackerPath,
 	)
@@ -73,7 +73,7 @@ func firecrackerPlanFixture() firecrackerPlan {
 			GID:           456,
 			ID:            "vm-123",
 			NumaNode:      0,
-			ChrootBaseDir: "/var/lib/spacescale/jailer",
+			ChrootBaseDir: "/var/lib/spacescale/j",
 			KernelPath:    "/var/lib/spacescale/golden/vmlinux",
 			ExecFile:      "/usr/bin/firecracker",
 			JailerBinary:  "/usr/bin/jailer",
