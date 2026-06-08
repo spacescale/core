@@ -6,11 +6,6 @@ profile.cov
 go.work
 go.work.sum
 
-# Environment
-.env
-.env.local
-.env.*.local
-
 # IDE
 .idea/
 *.swp
