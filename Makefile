@@ -33,6 +33,8 @@ test:
 stop:
 	docker compose down
 
+stop-with-volume:
+	docker 	compose down -v
 
 ssh:
 	ssh ubuntu@4.249.148.167
