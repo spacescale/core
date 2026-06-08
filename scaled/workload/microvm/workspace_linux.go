@@ -27,10 +27,10 @@ const (
 	// control-plane microVM UUID.
 	microVMStateDir = "/var/lib/spacescale/microvms"
 
-	// microVMJailerStateDir stores jailer paths under a short root. The full
-	// microVM UUID is still used in the jailer path, but the short root plus short
-	// socket filenames keep Unix socket paths within Linux's small limit.
-	microVMJailerStateDir = "/var/lib/spacescale/j"
+	// microVMJailerStateDir stores jailer paths under the host-managed jailer root.
+	// The full microVM UUID is still used in the jailer path, while the socket
+	// filenames themselves stay short enough to fit Linux's Unix socket path limit.
+	microVMJailerStateDir = "/var/lib/spacescale/jailer"
 )
 
 const (

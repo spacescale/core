@@ -13,40 +13,40 @@ import (
 func TestNewWorkspaceBuildsExpectedPaths(t *testing.T) {
 	w := newWorkspace(
 		"/var/lib/spacescale/microvms",
-		"/var/lib/spacescale/j",
+		"/var/lib/spacescale/jailer",
 		"vm-123",
 		"/var/lib/spacescale/runtime/host/firecracker-v1.15.1-x86_64",
 	)
 
 	require.Equal(t, "vm-123", w.MicroVMID)
 	require.Equal(t, "/var/lib/spacescale/microvms/vm-123", w.RootDir)
-	require.Equal(t, "/var/lib/spacescale/j", w.JailerBaseDir)
+	require.Equal(t, "/var/lib/spacescale/jailer", w.JailerBaseDir)
 	require.Equal(
 		t,
-		"/var/lib/spacescale/j/firecracker-v1.15.1-x86_64/vm-123",
+		"/var/lib/spacescale/jailer/firecracker-v1.15.1-x86_64/vm-123",
 		w.JailerDir,
 	)
 	require.Equal(
 		t,
-		"/var/lib/spacescale/j/firecracker-v1.15.1-x86_64/vm-123/root",
+		"/var/lib/spacescale/jailer/firecracker-v1.15.1-x86_64/vm-123/root",
 		w.JailerRootDir,
 	)
 	require.Equal(t, "/var/lib/spacescale/microvms/vm-123/rootfs.ext4", w.RootFSPath)
 	require.Equal(
 		t,
-		"/var/lib/spacescale/j/firecracker-v1.15.1-x86_64/vm-123/root/api.sock",
+		"/var/lib/spacescale/jailer/firecracker-v1.15.1-x86_64/vm-123/root/api.sock",
 		w.FirecrackerSocketHostPath(),
 	)
 	require.Equal(t, "api.sock", w.FirecrackerSocketPathInJail())
 	require.Equal(
 		t,
-		"/var/lib/spacescale/j/firecracker-v1.15.1-x86_64/vm-123/root/v.sock",
+		"/var/lib/spacescale/jailer/firecracker-v1.15.1-x86_64/vm-123/root/v.sock",
 		w.VSockHostPath(),
 	)
 	require.Equal(t, "v.sock", w.VSockPathInJail())
 	require.Equal(
 		t,
-		"/var/lib/spacescale/j/firecracker-v1.15.1-x86_64/vm-123/root/fc.log",
+		"/var/lib/spacescale/jailer/firecracker-v1.15.1-x86_64/vm-123/root/fc.log",
 		w.FirecrackerLogHostPath(),
 	)
 	require.Equal(t, "fc.log", w.FirecrackerLogPathInJail())
@@ -90,7 +90,7 @@ func TestWorkspacePrepareAndCleanup(t *testing.T) {
 	root := t.TempDir()
 	w := newWorkspace(
 		filepath.Join(root, "microvms"),
-		filepath.Join(root, "j"),
+		filepath.Join(root, "jailer"),
 		"vm-123",
 		"/runtime/firecracker-v1.15.1-x86_64",
 	)
@@ -170,7 +170,7 @@ func TestCopyFileOverwritesExistingTarget(t *testing.T) {
 func TestCleanupStaleStateRemovesMicroVMAndJailerState(t *testing.T) {
 	root := t.TempDir()
 	microVMRoot := filepath.Join(root, "microvms")
-	jailerRoot := filepath.Join(root, "j")
+	jailerRoot := filepath.Join(root, "jailer")
 
 	currentJailerTree := filepath.Join(jailerRoot, "firecracker-v1.15.1-x86_64", "vm-123")
 	otherJailerTree := filepath.Join(jailerRoot, "firecracker-v1.14.0-x86_64", "vm-456")
