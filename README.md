@@ -4,10 +4,10 @@ This repository is organized into two primary functional layers:
 
 ## control
 
-The stateless control plane  that serves the public API, manages tenant metadata, and orchestrates workload
+The stateless control plane that serves the public API, manages tenant metadata, and orchestrates workload
 distribution. It leverages PostgreSQL for durable state and NATS for its decentralized communication fabric.
 
-## scaled 
+## scaled
 
 An autonomous edge daemon running on physical hardware. It manages local resource capacity, interacts directly with the
 KVM/Firecracker subsystem, and maintains workload continuity. It is designed to operate independently, ensuring
@@ -24,42 +24,24 @@ The SpaceScale API is documented and testable via **Yaak** workspaces. The colle
 
 ## Runtime Docs
 
-- [Guest kernel profile](docs/runtime/kernel-profile.md): production Firecracker guest kernel flags, rationale, and exclusions for the `guestd` app-guest model.
+- [Guest kernel profile](docs/runtime/kernel-profile.md): production Firecracker guest kernel flags, rationale, and
+  exclusions for the `guestd` app-guest model.
 
 ## Local Development
 
-The normal control plane development flow runs inside Docker Compose.
-
-You do not need a local `.env` file for this path.
-
-Compose provides the development values for Postgres, NATS, migrations, and `controlp`.
-
-Start the full control plane stack in the background.
+The normal control plane development flow runs inside Docker Compose. Compose provides the development values for
+Postgres, NATS, migrations, and `controlp`. Start the full control plane stack in the background.
 
 ```bash
 make compose-start
 ```
 
-This brings up Postgres and NATS, waits for Postgres to become healthy, runs the database migrations once, and then starts `controlp`.
-
-The control plane listens on `http://127.0.0.1:8080`.
-
-If you want to run the same flow in the foreground and watch the logs directly, use this command.
+This brings up Postgres and NATS, waits for Postgres to become healthy, runs the database migrations once, and then
+starts `controlp`. The control plane listens on `http://127.0.0.1:8080` but If you want to run the same flow in the
+foreground and watch the logs directly, use this command.
 
 ```bash
 make controlp
 ```
 
-When you are done, stop the stack with this command.
-
-```bash
-make stop
-```
-
-The Compose file uses a named Postgres volume and a named NATS data volume, so your local state survives container restarts until you remove it yourself.
-
-If you need to remove the local build output created by repository build commands, use this command.
-
-```bash
-make clean-dist
-```
+you can check the full `Makefile` for other important targets to be used during development.
