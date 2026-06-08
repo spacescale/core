@@ -23,6 +23,7 @@ Thumbs.db
 
 # Testing
 coverage/
+/dist/
 
 AGENTS.md
 pipe.sh

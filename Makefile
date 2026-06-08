@@ -1,4 +1,4 @@
-.PHONY: compose-start controlp build-scaled proto lint test stop
+.PHONY: compose-start controlp build-scaled clean-dist proto lint test stop ssh
 
 
 compose-start:
@@ -12,6 +12,10 @@ controlp:
 build-scaled:
 	mkdir -p dist
 	GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/scaled ./cmd/scaled
+
+
+clean-dist:
+	rm -rf dist
 
 
 proto:
@@ -28,3 +32,7 @@ test:
 
 stop:
 	docker-compose down
+
+
+ssh:
+	ssh ubuntu@4.249.148.167
