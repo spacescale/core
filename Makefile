@@ -2,11 +2,11 @@
 
 
 compose-start:
-	docker-compose up -d
+	docker compose up -d controlp
 
 
 controlp:
-	go run ./cmd/controlp
+	docker compose up controlp
 
 
 build-scaled:
@@ -31,7 +31,7 @@ test:
 
 
 stop:
-	docker-compose down
+	docker compose down
 
 
 ssh:
