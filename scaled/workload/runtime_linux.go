@@ -2,11 +2,10 @@
 
 // Package workload is the workload subsystem boundary for one scaled node.
 //
-// Runtime owns the Bidder (auction handler), executor (targeted launch
-// handler), local Firecracker Launcher, and the periodic node heartbeat. The
-// main daemon calls NewRuntime once with the values produced by node.Collect
-// and Start once with the NATS client; from that point the workload boundary
-// runs itself and stops when the caller's context is canceled.
+// Start wires the bidder, launch handler, local Firecracker launcher, and
+// periodic node heartbeat. The main daemon hands it the values
+// produced by node.Collect and the process context; from that point the
+// workload boundary runs itself until the caller cancels the context.
 package workload
 
 import (
@@ -23,57 +22,28 @@ import (
 
 const heartbeatInterval = 5 * time.Second
 
-// Runtime is the root workload coordinator for one scaled process.
-//
-// It wires the local capacity model, NATS placement handlers, Firecracker
-// launcher, and the periodic node heartbeat. The daemon does not need to
-// know any of those internals.
-type Runtime struct {
-	logger   *slog.Logger
-	info     node.Info
-	bidder   *Bidder
-	executor *executor
-	launcher *microvm.Launcher
-
-	stopHeartbeat context.CancelFunc
-}
-
-// NewRuntime initializes the workload subsystem from values prepared by
+// Start initializes the workload subsystem from values prepared by
 // node.Collect during scaled startup.
 //
 // The golden image runtime means every path and identity value in info is
-// already resolved and validated; NewRuntime just wires them together.
-func NewRuntime(logger *slog.Logger, info node.Info) *Runtime {
+// already resolved and validated, so Start just wires the handlers, launcher,
+// and heartbeat together behind one package boundary.
+func Start(ctx context.Context, logger *slog.Logger, info node.Info, nc *nats.Client) error {
 	logger = logger.With("component", "workload")
 
 	capacity := NewCapacity(info.Snapshot.TotalRAMMb, info.Snapshot.TotalCores)
-	launcher := microvm.NewLauncher(logger, info.RuntimePaths, info.JailerIdentity)
+	microvmLauncher := microvm.NewLauncher(logger, info.RuntimePaths, info.JailerIdentity)
+	bidder := NewBidder(logger, capacity, info.Identity.NodeID, info.Snapshot.BootID, info.Identity.Region)
+	launchHandler := newLaunchHandler(logger, capacity, info.Snapshot.BootID, microvmLauncher)
 
-	return &Runtime{
-		logger:   logger,
-		info:     info,
-		bidder:   NewBidder(logger, capacity, info.Identity.NodeID, info.Snapshot.BootID, info.Identity.Region),
-		executor: newExecutor(logger, capacity, info.Snapshot.BootID, launcher),
-		launcher: launcher,
-	}
-}
-
-// Start boots the workload subsystem. It registers the NATS subscriptions that
-// let this node bid in placement auctions and receive targeted launch commands,
-// then begins the periodic node heartbeat.
-//
-// Keeping those subscriptions and the heartbeat behind Runtime lets the daemon
-// start one workload component without knowing the internal NATS subjects,
-// handler order, or heartbeat key shape.
-func (r *Runtime) Start(ctx context.Context, nc *nats.Client) error {
-	auctionSubject, err := r.bidder.Register(ctx, nc)
+	auctionSubject, err := bidder.Register(ctx, nc)
 	if err != nil {
 		return fmt.Errorf("register bidder: %w", err)
 	}
 
-	launchSubject, err := r.executor.register(ctx, nc)
+	launchSubject, err := launchHandler.register(ctx, nc)
 	if err != nil {
-		return fmt.Errorf("register executor: %w", err)
+		return fmt.Errorf("register launch handler: %w", err)
 	}
 
 	if err := microvm.CleanupStaleState(); err != nil {
@@ -85,37 +55,26 @@ func (r *Runtime) Start(ctx context.Context, nc *nats.Client) error {
 		return fmt.Errorf("init heartbeat kv: %w", err)
 	}
 
-	heartbeatCtx, cancel := context.WithCancel(ctx)
-	r.stopHeartbeat = cancel
-	go r.runHeartbeat(heartbeatCtx, heartbeats)
+	go runHeartbeat(ctx, logger, info, heartbeats)
 
-	r.logger.Info("workload runtime ready",
+	logger.Info("workload ready",
 		"auction_subject", auctionSubject,
 		"launch_subject", launchSubject,
-		"node_id", r.info.Identity.NodeID,
-		"region", r.info.Identity.Region,
+		"node_id", info.Identity.NodeID,
+		"region", info.Identity.Region,
 	)
 
 	return nil
 }
 
-// Stop halts the periodic node heartbeat. The NATS subscriptions registered
-// in Start are torn down when the caller's context is canceled, so Stop only
-// owns the heartbeat lifecycle.
-func (r *Runtime) Stop() {
-	if r.stopHeartbeat != nil {
-		r.stopHeartbeat()
-	}
-}
-
 // runHeartbeat publishes the node heartbeat on a fixed interval and is the
-// only place that talks to the heartbeat key value store. It is internal to
-// Runtime so the daemon does not need to know the key shape or cadence.
-func (r *Runtime) runHeartbeat(ctx context.Context, kv nats.KeyValue) {
-	key := nats.NodeHeartbeatKey(r.info.Identity.NodeID)
+// only place that talks to the heartbeat key value store. It stays package
+// internal so scaled does not need to know the key shape or cadence.
+func runHeartbeat(ctx context.Context, logger *slog.Logger, info node.Info, kv nats.KeyValue) {
+	key := nats.NodeHeartbeatKey(info.Identity.NodeID)
 	seqNo := uint64(1)
 
-	r.publishHeartbeat(ctx, kv, key, seqNo)
+	publishHeartbeat(ctx, logger, info, kv, key, seqNo)
 
 	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
@@ -126,22 +85,22 @@ func (r *Runtime) runHeartbeat(ctx context.Context, kv nats.KeyValue) {
 			return
 		case <-ticker.C:
 			seqNo++
-			r.publishHeartbeat(ctx, kv, key, seqNo)
+			publishHeartbeat(ctx, logger, info, kv, key, seqNo)
 		}
 	}
 }
 
-func (r *Runtime) publishHeartbeat(ctx context.Context, kv nats.KeyValue, key string, seqNo uint64) {
+func publishHeartbeat(ctx context.Context, logger *slog.Logger, info node.Info, kv nats.KeyValue, key string, seqNo uint64) {
 	hb := &pb.NodeHeartbeat{
-		NodeId:         r.info.Identity.NodeID,
+		NodeId:         info.Identity.NodeID,
 		SeqNo:          seqNo,
-		BootId:         r.info.Snapshot.BootID,
+		BootId:         info.Snapshot.BootID,
 		SentAtUnixNano: time.Now().UnixNano(),
 	}
 
 	if _, err := nats.PutProtoKV(ctx, kv, key, hb); err != nil {
-		r.logger.Warn("heartbeat publish failed",
-			"node_id", r.info.Identity.NodeID,
+		logger.Warn("heartbeat publish failed",
+			"node_id", info.Identity.NodeID,
 			"error", err,
 		)
 	}

@@ -3,7 +3,7 @@
 //
 // The main daemon should not need to know how placement auctions, capacity
 // reservations, targeted launch commands, or local Firecracker execution are
-// wired together. Runtime owns those subsystem bindings and the periodic node
+// wired together. Start owns those subsystem bindings and the periodic node
 // heartbeat. The shape policy, capacity ledger, and bidder all live in this
 // file because they are tightly coupled: shape drives what the ledger can sell,
 // and the bidder is the only place that calls Reserve.
@@ -18,6 +18,7 @@ import (
 
 	"github.com/spacescale/core/shared/nats"
 	"github.com/spacescale/core/shared/pb/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 // reservationTTL defines the maximum time the node will hold physical resources
@@ -407,6 +408,13 @@ type Bidder struct {
 	region   string
 }
 
+// bidderPublisher abstracts only the auction-reply publish path used by the
+// bidder handler. Register still depends on the concrete NATS client for
+// subscription setup, while handle only needs reply publishing.
+type bidderPublisher interface {
+	PublishProto(subject string, message proto.Message) error
+}
+
 // NewBidder wires the NATS transport to the local capacity ledger.
 func NewBidder(logger *slog.Logger, c *Capacity, nodeID, bootID, region string) *Bidder {
 	return &Bidder{
@@ -432,7 +440,7 @@ func (b *Bidder) Register(ctx context.Context, client *nats.Client) (string, err
 	return subject, nil
 }
 
-func (b *Bidder) handle(_ context.Context, client *nats.Client, msg *nats.Msg) error {
+func (b *Bidder) handle(_ context.Context, publisher bidderPublisher, msg *nats.Msg) error {
 	if msg.Reply == "" {
 		return errors.New("auction request missing reply subject")
 	}
@@ -466,7 +474,7 @@ func (b *Bidder) handle(_ context.Context, client *nats.Client, msg *nats.Msg) e
 		BootId: b.bootID,
 	}
 
-	if err := client.PublishProto(msg.Reply, reply); err != nil {
+	if err := publisher.PublishProto(msg.Reply, reply); err != nil {
 		b.capacity.Release(req.GetMicrovmId())
 		return err
 	}

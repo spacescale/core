@@ -3,10 +3,9 @@
 // Package scaled starts the Linux edge daemon and wires startup subsystems.
 //
 // The package is a thin glue layer. It loads config, runs node.Collect to
-// resolve runtime paths and host facts, then hands a node.Info to the
-// workload Runtime. Runtime owns the internal bidding, launch, and heartbeat
-// machinery; scaled itself only orchestrates startup and forwards the process
-// context.
+// resolve runtime paths and host facts, then starts the workload subsystem.
+// workload owns the internal bidding, launch, and heartbeat machinery; scaled
+// itself only orchestrates startup and forwards the process context.
 package scaled
 
 import (
@@ -42,11 +41,9 @@ func runDaemon(ctx context.Context, log *slog.Logger, natsClient *nats.Client) e
 	if err != nil {
 		return fmt.Errorf("collect node info: %w", err)
 	}
-	runtime := workload.NewRuntime(log, info)
-	if err := runtime.Start(ctx, natsClient); err != nil {
-		return fmt.Errorf("start workload runtime: %w", err)
+	if err := workload.Start(ctx, log, info, natsClient); err != nil {
+		return fmt.Errorf("start workload: %w", err)
 	}
-	defer runtime.Stop()
 	log.Info("scaled ready", "node_id", info.Identity.NodeID, "region", info.Identity.Region)
 	<-ctx.Done()
 	log.Info("scaled stopped", "node_id", info.Identity.NodeID)

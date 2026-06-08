@@ -60,7 +60,7 @@ type RuntimePaths struct {
 	RootFSPath      string
 }
 
-// Info bundles everything the workload runtime and downstream components need
+// Info bundles everything the workload subsystem and downstream components need
 // about the host. Collected once at startup by Collect.
 type Info struct {
 	RuntimePaths   RuntimePaths
@@ -74,7 +74,7 @@ func identityPath() string {
 }
 
 // Collect gathers host facts, validates runtime paths, loads identity, and runs
-// node preflight. Call once at startup and pass the result to NewRuntime.
+// node preflight. Call once at startup and pass the result to workload.Start.
 func Collect(ctx context.Context, logger *slog.Logger) (Info, error) {
 	runtimePaths, err := validateRuntimePaths()
 	if err != nil {

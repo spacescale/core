@@ -1,13 +1,67 @@
 package workload
 
 import (
+	"errors"
+	"io"
+	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/spacescale/core/shared/nats"
 	pb "github.com/spacescale/core/shared/pb/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
+
+type publishedAuctionReply struct {
+	subject string
+	msg     proto.Message
+}
+
+type fakeBidderPublisher struct {
+	published []publishedAuctionReply
+	err       error
+}
+
+func (f *fakeBidderPublisher) PublishProto(subject string, message proto.Message) error {
+	f.published = append(f.published, publishedAuctionReply{
+		subject: subject,
+		msg:     message,
+	})
+
+	return f.err
+}
+
+func newTestBidder(t *testing.T) *Bidder {
+	t.Helper()
+
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	capacity := NewCapacity(65536, 8)
+
+	return NewBidder(log, capacity, "node-123", "boot-123", "us-east")
+}
+
+func auctionMsg(t *testing.T, reply string, req *pb.AuctionRequest) *nats.Msg {
+	t.Helper()
+
+	data, err := proto.Marshal(req)
+	require.NoError(t, err)
+
+	return &nats.Msg{
+		Reply: reply,
+		Data:  data,
+	}
+}
+
+func requireAuctionReply(t *testing.T, msg proto.Message) *pb.AuctionReply {
+	t.Helper()
+
+	reply, ok := msg.(*pb.AuctionReply)
+	require.True(t, ok)
+
+	return reply
+}
 
 func TestCapacityReserveSharedPoolLimit(t *testing.T) {
 	capacity := NewCapacity(131072, 8)
@@ -78,6 +132,142 @@ func TestCapacityFreeMathClampsAtZero(t *testing.T) {
 	assert.Zero(t, capacity.freeRAMMBLocked())
 	assert.Zero(t, capacity.freePinnedCoresLocked())
 	assert.Zero(t, capacity.freeSharedVCPULocked())
+}
+
+func TestBidderHandleRejectsMissingReplySubject(t *testing.T) {
+	bidder := newTestBidder(t)
+	publisher := &fakeBidderPublisher{}
+
+	msg := auctionMsg(t, "", &pb.AuctionRequest{
+		MicrovmId: "vm-1",
+		Shape: &pb.MicroVMShape{
+			Vcpu:    2,
+			RamMb:   2048,
+			CpuMode: pb.CpuMode_CPU_MODE_SHARED,
+		},
+	})
+
+	err := bidder.handle(t.Context(), publisher, msg)
+	require.ErrorContains(t, err, "missing reply subject")
+	require.Empty(t, publisher.published)
+}
+
+func TestBidderHandleRejectsInvalidProto(t *testing.T) {
+	bidder := newTestBidder(t)
+	publisher := &fakeBidderPublisher{}
+
+	msg := &nats.Msg{
+		Reply: "reply.subject",
+		Data:  []byte("not-proto"),
+	}
+
+	err := bidder.handle(t.Context(), publisher, msg)
+	require.ErrorContains(t, err, "unmarshal proto")
+	require.Empty(t, publisher.published)
+}
+
+func TestBidderHandleRejectsMissingMicroVMID(t *testing.T) {
+	bidder := newTestBidder(t)
+	publisher := &fakeBidderPublisher{}
+
+	msg := auctionMsg(t, "reply.subject", &pb.AuctionRequest{
+		Shape: &pb.MicroVMShape{
+			Vcpu:    2,
+			RamMb:   2048,
+			CpuMode: pb.CpuMode_CPU_MODE_SHARED,
+		},
+	})
+
+	err := bidder.handle(t.Context(), publisher, msg)
+	require.ErrorContains(t, err, "missing microvm id")
+	require.Empty(t, publisher.published)
+}
+
+func TestBidderHandleRejectsInvalidShape(t *testing.T) {
+	bidder := newTestBidder(t)
+	publisher := &fakeBidderPublisher{}
+
+	msg := auctionMsg(t, "reply.subject", &pb.AuctionRequest{
+		MicrovmId: "vm-1",
+		Shape: &pb.MicroVMShape{
+			Vcpu:  2,
+			RamMb: 2048,
+		},
+	})
+
+	err := bidder.handle(t.Context(), publisher, msg)
+	require.ErrorIs(t, err, ErrInvalidMicroVMShape)
+	require.Empty(t, publisher.published)
+}
+
+func TestBidderHandlePublishesBidAndCreatesReservation(t *testing.T) {
+	bidder := newTestBidder(t)
+	publisher := &fakeBidderPublisher{}
+
+	msg := auctionMsg(t, "reply.subject", &pb.AuctionRequest{
+		MicrovmId: "vm-1",
+		Shape: &pb.MicroVMShape{
+			Vcpu:    2,
+			RamMb:   2048,
+			CpuMode: pb.CpuMode_CPU_MODE_SHARED,
+		},
+	})
+
+	err := bidder.handle(t.Context(), publisher, msg)
+	require.NoError(t, err)
+	require.Len(t, publisher.published, 1)
+	require.Equal(t, "reply.subject", publisher.published[0].subject)
+
+	reply := requireAuctionReply(t, publisher.published[0].msg)
+	require.Equal(t, "node-123", reply.GetNodeId())
+	require.Equal(t, "boot-123", reply.GetBootId())
+
+	_, reserved := bidder.capacity.reservations["vm-1"]
+	require.True(t, reserved)
+	require.Equal(t, uint64(2048), bidder.capacity.reservedRAMMB)
+	require.Equal(t, uint32(2), bidder.capacity.reservedSharedVCPU)
+}
+
+func TestBidderHandleReturnsNilWhenCapacityCannotFit(t *testing.T) {
+	bidder := newTestBidder(t)
+	publisher := &fakeBidderPublisher{}
+	bidder.capacity.usedRAMMB = bidder.capacity.sellableRAMMB
+
+	msg := auctionMsg(t, "reply.subject", &pb.AuctionRequest{
+		MicrovmId: "vm-1",
+		Shape: &pb.MicroVMShape{
+			Vcpu:    2,
+			RamMb:   2048,
+			CpuMode: pb.CpuMode_CPU_MODE_SHARED,
+		},
+	})
+
+	err := bidder.handle(t.Context(), publisher, msg)
+	require.NoError(t, err)
+	require.Empty(t, publisher.published)
+	require.Empty(t, bidder.capacity.reservations)
+}
+
+func TestBidderHandleReleasesReservationWhenPublishFails(t *testing.T) {
+	publishErr := errors.New("publish failed")
+	bidder := newTestBidder(t)
+	publisher := &fakeBidderPublisher{err: publishErr}
+
+	msg := auctionMsg(t, "reply.subject", &pb.AuctionRequest{
+		MicrovmId: "vm-1",
+		Shape: &pb.MicroVMShape{
+			Vcpu:    2,
+			RamMb:   2048,
+			CpuMode: pb.CpuMode_CPU_MODE_SHARED,
+		},
+	})
+
+	err := bidder.handle(t.Context(), publisher, msg)
+	require.ErrorIs(t, err, publishErr)
+	require.Len(t, publisher.published, 1)
+	require.Empty(t, bidder.capacity.reservations)
+	require.Zero(t, bidder.capacity.reservedRAMMB)
+	require.Zero(t, bidder.capacity.reservedSharedVCPU)
 }
 
 func TestSpecFromShapeDoesNotRequireRootDisk(t *testing.T) {

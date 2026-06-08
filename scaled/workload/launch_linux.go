@@ -26,7 +26,7 @@ const (
 	microVMLaunchBootTimeout = 10 * time.Second
 )
 
-// launcher abstracts the microVM launch boundary used by executor.
+// launcher abstracts the microVM launch boundary used by the launch handler.
 // The concrete microvm.Launcher owns Linux, Firecracker, and KVM-specific
 // boot behavior that sits below workload orchestration.
 type launcher interface {
@@ -34,25 +34,26 @@ type launcher interface {
 	Stop(ctx context.Context, microvmID string) error
 }
 
-// replyPublisher abstracts only the launch-reply publish path used by executor.
+// replyPublisher abstracts only the launch-reply publish path used by the
+// launch handler.
 // register still depends on the concrete NATS client for subscription setup,
-// but handle only needs reply publishing, which keeps executor unit tests small
-// and avoids coupling them to the full NATS client surface.
+// but handle only needs reply publishing, which keeps launch handler unit tests
+// small and avoids coupling them to the full NATS client surface.
 type replyPublisher interface {
 	PublishProto(subject string, message proto.Message) error
 }
 
-// executor handles targeted microVM launch commands after placement wins.
-type executor struct {
+// launchHandler handles targeted microVM launch commands after placement wins.
+type launchHandler struct {
 	logger   *slog.Logger
 	capacity *Capacity
 	bootID   string
 	launcher launcher
 }
 
-// newExecutor constructs an executor for one node boot identity.
-func newExecutor(logger *slog.Logger, capacity *Capacity, bootID string, launcher launcher) *executor {
-	return &executor{
+// newLaunchHandler constructs a launch handler for one node boot identity.
+func newLaunchHandler(logger *slog.Logger, capacity *Capacity, bootID string, launcher launcher) *launchHandler {
+	return &launchHandler{
 		logger:   logger,
 		capacity: capacity,
 		bootID:   bootID,
@@ -60,13 +61,13 @@ func newExecutor(logger *slog.Logger, capacity *Capacity, bootID string, launche
 	}
 }
 
-// register connects the executor to the node's specific targeted inbox.
+// register connects the launch handler to the node's specific targeted inbox.
 // This subject includes the boot ID to guarantee that stale launch commands
 // from previous boot lifecycles are naturally dropped.
-func (e *executor) register(ctx context.Context, client *nats.Client) (string, error) {
-	subject := nats.NodeMicroVMLaunchSubject(e.bootID)
+func (h *launchHandler) register(ctx context.Context, client *nats.Client) (string, error) {
+	subject := nats.NodeMicroVMLaunchSubject(h.bootID)
 	_, err := client.Subscribe(subject, func(msg *nats.Msg) error {
-		return e.handle(ctx, client, msg)
+		return h.handle(ctx, client, msg)
 	})
 	if err != nil {
 		return "", err
@@ -74,7 +75,7 @@ func (e *executor) register(ctx context.Context, client *nats.Client) (string, e
 	return subject, nil
 }
 
-func (e *executor) handle(ctx context.Context, publisher replyPublisher, msg *nats.Msg) error {
+func (h *launchHandler) handle(ctx context.Context, publisher replyPublisher, msg *nats.Msg) error {
 	if msg.Reply == "" {
 		return errors.New("microvm launch request missing reply subject")
 	}
@@ -91,7 +92,7 @@ func (e *executor) handle(ctx context.Context, publisher replyPublisher, msg *na
 		return err
 	}
 
-	committedSpec, ok := e.capacity.Commit(req.GetMicrovmId())
+	committedSpec, ok := h.capacity.Commit(req.GetMicrovmId())
 	if !ok {
 		return publisher.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
 			Accepted:     false,
@@ -99,7 +100,7 @@ func (e *executor) handle(ctx context.Context, publisher replyPublisher, msg *na
 		})
 	}
 
-	e.logger.Info("won microvm placement auction",
+	h.logger.Info("won microvm placement auction",
 		"microvm_id", req.GetMicrovmId(),
 		"vcpu", committedSpec.VCPU,
 		"ram_mb", committedSpec.RAM,
@@ -110,13 +111,13 @@ func (e *executor) handle(ctx context.Context, publisher replyPublisher, msg *na
 	launchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), microVMLaunchBootTimeout)
 	defer cancel()
 
-	active, err := e.launcher.Launch(launchCtx, microvm.LaunchRequest{
+	active, err := h.launcher.Launch(launchCtx, microvm.LaunchRequest{
 		MicroVMID: req.GetMicrovmId(),
 		VCPU:      committedSpec.VCPU,
 		RAMMB:     committedSpec.RAM,
 	})
 	if err != nil {
-		e.capacity.Revert(committedSpec)
+		h.capacity.Revert(committedSpec)
 		publishErr := publisher.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
 			Accepted:     false,
 			ErrorMessage: err.Error(),
@@ -130,9 +131,9 @@ func (e *executor) handle(ctx context.Context, publisher replyPublisher, msg *na
 
 	if err := publisher.PublishProto(msg.Reply, reply); err != nil {
 		if active != nil {
-			err = errors.Join(err, e.launcher.Stop(context.WithoutCancel(ctx), active.MicroVMID))
+			err = errors.Join(err, h.launcher.Stop(context.WithoutCancel(ctx), active.MicroVMID))
 		}
-		e.capacity.Revert(committedSpec)
+		h.capacity.Revert(committedSpec)
 		return err
 	}
 

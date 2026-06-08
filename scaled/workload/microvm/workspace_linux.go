@@ -3,7 +3,7 @@
 //
 // The package prepares local host state, starts one jailed Firecracker VM, and
 // accepts launch only after guestd proves guest userspace is alive with a hello
-// frame over virtio-vsock. Startup, placement, and executor code validate
+// frame over virtio-vsock. Startup, placement, and launch-handler code validate
 // runtime assets, shape values, reservations, and duplicate launches before this
 // package is called. microvm intentionally avoids duplicating those checks so the
 // local lifecycle path stays simple.

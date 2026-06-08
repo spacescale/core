@@ -49,7 +49,7 @@ type ActiveVM struct {
 
 // Launcher owns local Firecracker process lifecycle for this scaled process.
 // Placement, duplicate launch prevention, and request validation are handled by
-// the executor before it calls Launch.
+// the workload launch handler before it calls Launch.
 type Launcher struct {
 	logger       *slog.Logger
 	runtimePaths node.RuntimePaths
