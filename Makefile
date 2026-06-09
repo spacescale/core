@@ -27,7 +27,7 @@ lint:
 
 
 test:
-	go test ./...
+	docker compose run --rm coverage /usr/local/go/bin/go test ./... -cover
 
 
 coverage:
