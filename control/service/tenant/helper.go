@@ -133,8 +133,7 @@ func randomSuffix(n int) (string, error) {
 // The result is used to trigger conflict retries and normalize expected
 // duplicate-write behavior across services.
 func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 		return pgErr.Code == "23505"
 	}
 	return false

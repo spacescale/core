@@ -44,7 +44,6 @@ func NewBootstrapService(queries *sqlc.Queries, pool *pgxpool.Pool) *BootstrapSe
 
 // Register records bootstrap facts for a provisioning node and returns its assigned identity.
 func (s *BootstrapService) Register(ctx context.Context, input BootstrapInput) (BootstrapResult, error) {
-	tokenHash := hashBootstrapToken(input.Token)
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return BootstrapResult{}, err
