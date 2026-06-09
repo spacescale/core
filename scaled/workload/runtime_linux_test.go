@@ -10,7 +10,7 @@ import (
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/spacescale/core/scaled/node"
 	"github.com/spacescale/core/shared/nats"
-	pb "github.com/spacescale/core/shared/pb/v1"
+	"github.com/spacescale/core/shared/pb/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
