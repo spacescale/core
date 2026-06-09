@@ -111,19 +111,13 @@ CREATE INDEX app_env_vars_cipher_claim_idx ON app_env_vars (cipher_key_id, creat
 
 -- nodes is the inventory of real schedulable hosts managed by the platform.
 -- This row becomes the durable runtime identity once scaled boots and joins the
--- system. Provider details still live here because this is the only host record.
+-- system. Only durable provider identity and region live here. Live state comes
+-- from NATS and heartbeat storage instead.
 CREATE TABLE nodes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    provider TEXT NOT NULL CHECK (provider IN ('ovh', 'colo')),
+    provider TEXT NOT NULL CHECK (provider IN ('ovh', 'colo', 'heztner')),
     provider_server_id TEXT NOT NULL,
-    primary_ipv4 TEXT UNIQUE NOT NULL,
-    primary_ipv6 TEXT UNIQUE,
     region TEXT NOT NULL,
-    provider_location TEXT NOT NULL,
-    total_cores INT NOT NULL DEFAULT 0 CHECK (total_cores >= 0),
-    total_ram_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_ram_mb >= 0),
-    total_disk_mb BIGINT NOT NULL DEFAULT 0 CHECK (total_disk_mb >= 0),
-    status TEXT NOT NULL DEFAULT 'provisioning' CHECK (status IN ('provisioning', 'active', 'retired', 'faulty', 'maintenance')),
     bootstrap_token_hash TEXT UNIQUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

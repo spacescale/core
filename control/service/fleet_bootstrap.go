@@ -19,10 +19,7 @@ var (
 
 // BootstrapInput contains the host facts sent during node bootstrap.
 type BootstrapInput struct {
-	Token       string
-	TotalCores  int32
-	TotalRAMMb  int64
-	TotalDiskMb int64
+	Token string
 }
 
 // BootstrapResult contains the durable node identity assigned at bootstrap.
@@ -52,12 +49,8 @@ func (s *BootstrapService) Register(ctx context.Context, input BootstrapInput) (
 		_ = tx.Rollback(ctx)
 	}()
 	qtx := s.queries.WithTx(tx)
-	node, err := qtx.UpdateProvisioningNodeFromBootstrap(ctx, sqlc.UpdateProvisioningNodeFromBootstrapParams{
-		TotalCores:         input.TotalCores,
-		TotalRamMb:         input.TotalRAMMb,
-		TotalDiskMb:        input.TotalDiskMb,
-		BootstrapTokenHash: new(hashBootstrapToken(input.Token)),
-	})
+	tokenHash := hashBootstrapToken(input.Token)
+	node, err := qtx.UpdateProvisioningNodeFromBootstrap(ctx, &tokenHash)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return BootstrapResult{}, ErrBootstrapRejected

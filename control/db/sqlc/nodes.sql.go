@@ -11,44 +11,20 @@ import (
 
 const updateProvisioningNodeFromBootstrap = `-- name: UpdateProvisioningNodeFromBootstrap :one
 UPDATE nodes
-SET total_cores = $1,
-    total_ram_mb = $2,
-    total_disk_mb = $3,
-    status = 'active',
-    bootstrap_token_hash = NULL,
+SET bootstrap_token_hash = NULL,
     updated_at = NOW()
-WHERE bootstrap_token_hash = $4
-  AND status = 'provisioning'
-RETURNING id, provider, provider_server_id, primary_ipv4, primary_ipv6, region, provider_location, total_cores, total_ram_mb, total_disk_mb, status, bootstrap_token_hash, created_at, updated_at
+WHERE bootstrap_token_hash = $1
+RETURNING id, provider, provider_server_id, region, bootstrap_token_hash, created_at, updated_at
 `
 
-type UpdateProvisioningNodeFromBootstrapParams struct {
-	TotalCores         int32
-	TotalRamMb         int64
-	TotalDiskMb        int64
-	BootstrapTokenHash *string
-}
-
-func (q *Queries) UpdateProvisioningNodeFromBootstrap(ctx context.Context, arg UpdateProvisioningNodeFromBootstrapParams) (Node, error) {
-	row := q.db.QueryRow(ctx, updateProvisioningNodeFromBootstrap,
-		arg.TotalCores,
-		arg.TotalRamMb,
-		arg.TotalDiskMb,
-		arg.BootstrapTokenHash,
-	)
+func (q *Queries) UpdateProvisioningNodeFromBootstrap(ctx context.Context, bootstrapTokenHash *string) (Node, error) {
+	row := q.db.QueryRow(ctx, updateProvisioningNodeFromBootstrap, bootstrapTokenHash)
 	var i Node
 	err := row.Scan(
 		&i.ID,
 		&i.Provider,
 		&i.ProviderServerID,
-		&i.PrimaryIpv4,
-		&i.PrimaryIpv6,
 		&i.Region,
-		&i.ProviderLocation,
-		&i.TotalCores,
-		&i.TotalRamMb,
-		&i.TotalDiskMb,
-		&i.Status,
 		&i.BootstrapTokenHash,
 		&i.CreatedAt,
 		&i.UpdatedAt,

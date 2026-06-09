@@ -90,14 +90,7 @@ type Node struct {
 	ID                 uuid.UUID
 	Provider           string
 	ProviderServerID   string
-	PrimaryIpv4        string
-	PrimaryIpv6        *string
 	Region             string
-	ProviderLocation   string
-	TotalCores         int32
-	TotalRamMb         int64
-	TotalDiskMb        int64
-	Status             string
 	BootstrapTokenHash *string
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
