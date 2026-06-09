@@ -1,5 +1,6 @@
 # Go
 *.out
+coverage.out
 coverage.*
 coverage.html
 *.coverprofile
