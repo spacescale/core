@@ -1,6 +1,7 @@
 # Go
 *.out
 coverage.*
+coverage.html
 *.coverprofile
 profile.cov
 go.work
