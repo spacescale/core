@@ -134,7 +134,7 @@ func TestFirecrackerConfigFromPlanBuildsSDKConfig(t *testing.T) {
 	require.Equal(t, plan.HostDevName, cfg.NetworkInterfaces[0].StaticConfiguration.HostDevName)
 	require.Equal(t, plan.MacAddress, cfg.NetworkInterfaces[0].StaticConfiguration.MacAddress)
 	require.Nil(t, cfg.NetworkInterfaces[0].StaticConfiguration.IPConfiguration)
-	require.Equal(t, plan.MMDSAddress.String(), cfg.MmdsAddress)
+	require.Equal(t, plan.MMDSAddress, cfg.MmdsAddress)
 	require.Equal(t, firecracker.MMDSv2, cfg.MmdsVersion)
 
 	require.Len(t, cfg.Drives, 1)

@@ -1,4 +1,4 @@
-.PHONY: compose-start controlp build-scaled clean-dist proto lint test stop ssh
+.PHONY: compose-start controlp build-scaled clean-dist proto lint test coverage stop ssh
 
 
 compose-start:
@@ -28,6 +28,12 @@ lint:
 
 test:
 	go test ./...
+
+
+coverage:
+	docker compose up coverage
+	go tool cover -html=coverage.out -o coverage.html
+	open coverage.html
 
 
 stop:

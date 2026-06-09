@@ -76,6 +76,18 @@ services:
       - run
       - ./cmd/controlp
 
+  coverage:
+    image: golang:1.26
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - gomodcache:/go/pkg/mod
+      - gobuildcache:/root/.cache/go-build
+    command:
+      - sh
+      - -lc
+      - env -i HOME=/root PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin GOPATH=/go GOCACHE=/root/.cache/go-build GOMODCACHE=/go/pkg/mod /usr/local/go/bin/go test ./... -coverprofile=coverage.out
+
 volumes:
   pgdata:
   natsdata:
