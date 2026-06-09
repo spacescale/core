@@ -16,7 +16,6 @@ import (
 	"github.com/spacescale/core/scaled/workload/microvm"
 	"github.com/spacescale/core/shared/nats"
 	"github.com/spacescale/core/shared/pb/v1"
-	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -32,15 +31,6 @@ const (
 type launcher interface {
 	Launch(ctx context.Context, request microvm.LaunchRequest) (*microvm.ActiveVM, error)
 	Stop(ctx context.Context, microvmID string) error
-}
-
-// replyPublisher abstracts only the launch-reply publish path used by the
-// launch handler.
-// register still depends on the concrete NATS client for subscription setup,
-// but handle only needs reply publishing, which keeps launch handler unit tests
-// small and avoids coupling them to the full NATS client surface.
-type replyPublisher interface {
-	PublishProto(subject string, message proto.Message) error
 }
 
 // launchHandler handles targeted microVM launch commands after placement wins.
@@ -75,7 +65,7 @@ func (h *launchHandler) register(ctx context.Context, client *nats.Client) (stri
 	return subject, nil
 }
 
-func (h *launchHandler) handle(ctx context.Context, publisher replyPublisher, msg *nats.Msg) error {
+func (h *launchHandler) handle(ctx context.Context, client *nats.Client, msg *nats.Msg) error {
 	if msg.Reply == "" {
 		return errors.New("microvm launch request missing reply subject")
 	}
@@ -94,7 +84,7 @@ func (h *launchHandler) handle(ctx context.Context, publisher replyPublisher, ms
 
 	committedSpec, ok := h.capacity.Commit(req.GetMicrovmId())
 	if !ok {
-		return publisher.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
+		return client.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
 			Accepted:     false,
 			ErrorMessage: "reservation expired or not found",
 		})
@@ -118,7 +108,7 @@ func (h *launchHandler) handle(ctx context.Context, publisher replyPublisher, ms
 	})
 	if err != nil {
 		h.capacity.Revert(committedSpec)
-		publishErr := publisher.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
+		publishErr := client.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
 			Accepted:     false,
 			ErrorMessage: err.Error(),
 		})
@@ -129,7 +119,7 @@ func (h *launchHandler) handle(ctx context.Context, publisher replyPublisher, ms
 		Accepted: true,
 	}
 
-	if err := publisher.PublishProto(msg.Reply, reply); err != nil {
+	if err := client.PublishProto(msg.Reply, reply); err != nil {
 		if active != nil {
 			err = errors.Join(err, h.launcher.Stop(context.WithoutCancel(ctx), active.MicroVMID))
 		}

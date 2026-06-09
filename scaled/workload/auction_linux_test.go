@@ -1,7 +1,6 @@
 package workload
 
 import (
-	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -13,25 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
-
-type publishedAuctionReply struct {
-	subject string
-	msg     proto.Message
-}
-
-type fakeBidderPublisher struct {
-	published []publishedAuctionReply
-	err       error
-}
-
-func (f *fakeBidderPublisher) PublishProto(subject string, message proto.Message) error {
-	f.published = append(f.published, publishedAuctionReply{
-		subject: subject,
-		msg:     message,
-	})
-
-	return f.err
-}
 
 func newTestBidder(t *testing.T) *Bidder {
 	t.Helper()
@@ -54,13 +34,13 @@ func auctionMsg(t *testing.T, reply string, req *pb.AuctionRequest) *nats.Msg {
 	}
 }
 
-func requireAuctionReply(t *testing.T, msg proto.Message) *pb.AuctionReply {
+func requireAuctionReply(t *testing.T, msg *nats.Msg) *pb.AuctionReply {
 	t.Helper()
 
-	reply, ok := msg.(*pb.AuctionReply)
-	require.True(t, ok)
+	var reply pb.AuctionReply
+	require.NoError(t, nats.UnmarshalProto(msg, &reply))
 
-	return reply
+	return &reply
 }
 
 func TestCapacityReserveSharedPoolLimit(t *testing.T) {
@@ -136,7 +116,6 @@ func TestCapacityFreeMathClampsAtZero(t *testing.T) {
 
 func TestBidderHandleRejectsMissingReplySubject(t *testing.T) {
 	bidder := newTestBidder(t)
-	publisher := &fakeBidderPublisher{}
 
 	msg := auctionMsg(t, "", &pb.AuctionRequest{
 		MicrovmId: "vm-1",
@@ -147,28 +126,24 @@ func TestBidderHandleRejectsMissingReplySubject(t *testing.T) {
 		},
 	})
 
-	err := bidder.handle(t.Context(), publisher, msg)
+	err := bidder.handle(t.Context(), newTestClient(t, startTestNATSServer(t)), msg)
 	require.ErrorContains(t, err, "missing reply subject")
-	require.Empty(t, publisher.published)
 }
 
 func TestBidderHandleRejectsInvalidProto(t *testing.T) {
 	bidder := newTestBidder(t)
-	publisher := &fakeBidderPublisher{}
 
 	msg := &nats.Msg{
 		Reply: "reply.subject",
 		Data:  []byte("not-proto"),
 	}
 
-	err := bidder.handle(t.Context(), publisher, msg)
+	err := bidder.handle(t.Context(), newTestClient(t, startTestNATSServer(t)), msg)
 	require.ErrorContains(t, err, "unmarshal proto")
-	require.Empty(t, publisher.published)
 }
 
 func TestBidderHandleRejectsMissingMicroVMID(t *testing.T) {
 	bidder := newTestBidder(t)
-	publisher := &fakeBidderPublisher{}
 
 	msg := auctionMsg(t, "reply.subject", &pb.AuctionRequest{
 		Shape: &pb.MicroVMShape{
@@ -178,14 +153,12 @@ func TestBidderHandleRejectsMissingMicroVMID(t *testing.T) {
 		},
 	})
 
-	err := bidder.handle(t.Context(), publisher, msg)
+	err := bidder.handle(t.Context(), newTestClient(t, startTestNATSServer(t)), msg)
 	require.ErrorContains(t, err, "missing microvm id")
-	require.Empty(t, publisher.published)
 }
 
 func TestBidderHandleRejectsInvalidShape(t *testing.T) {
 	bidder := newTestBidder(t)
-	publisher := &fakeBidderPublisher{}
 
 	msg := auctionMsg(t, "reply.subject", &pb.AuctionRequest{
 		MicrovmId: "vm-1",
@@ -195,14 +168,14 @@ func TestBidderHandleRejectsInvalidShape(t *testing.T) {
 		},
 	})
 
-	err := bidder.handle(t.Context(), publisher, msg)
+	err := bidder.handle(t.Context(), newTestClient(t, startTestNATSServer(t)), msg)
 	require.ErrorIs(t, err, ErrInvalidMicroVMShape)
-	require.Empty(t, publisher.published)
 }
 
 func TestBidderHandlePublishesBidAndCreatesReservation(t *testing.T) {
 	bidder := newTestBidder(t)
-	publisher := &fakeBidderPublisher{}
+	client := newTestClient(t, startTestNATSServer(t))
+	replies := capturePublishedMsg(t, client, "reply.subject")
 
 	msg := auctionMsg(t, "reply.subject", &pb.AuctionRequest{
 		MicrovmId: "vm-1",
@@ -213,12 +186,10 @@ func TestBidderHandlePublishesBidAndCreatesReservation(t *testing.T) {
 		},
 	})
 
-	err := bidder.handle(t.Context(), publisher, msg)
+	err := bidder.handle(t.Context(), client, msg)
 	require.NoError(t, err)
-	require.Len(t, publisher.published, 1)
-	require.Equal(t, "reply.subject", publisher.published[0].subject)
 
-	reply := requireAuctionReply(t, publisher.published[0].msg)
+	reply := requireAuctionReply(t, receivePublishedMsg(t, replies))
 	require.Equal(t, "node-123", reply.GetNodeId())
 	require.Equal(t, "boot-123", reply.GetBootId())
 
@@ -230,7 +201,6 @@ func TestBidderHandlePublishesBidAndCreatesReservation(t *testing.T) {
 
 func TestBidderHandleReturnsNilWhenCapacityCannotFit(t *testing.T) {
 	bidder := newTestBidder(t)
-	publisher := &fakeBidderPublisher{}
 	bidder.capacity.usedRAMMB = bidder.capacity.sellableRAMMB
 
 	msg := auctionMsg(t, "reply.subject", &pb.AuctionRequest{
@@ -242,16 +212,15 @@ func TestBidderHandleReturnsNilWhenCapacityCannotFit(t *testing.T) {
 		},
 	})
 
-	err := bidder.handle(t.Context(), publisher, msg)
+	err := bidder.handle(t.Context(), newTestClient(t, startTestNATSServer(t)), msg)
 	require.NoError(t, err)
-	require.Empty(t, publisher.published)
 	require.Empty(t, bidder.capacity.reservations)
 }
 
 func TestBidderHandleReleasesReservationWhenPublishFails(t *testing.T) {
-	publishErr := errors.New("publish failed")
 	bidder := newTestBidder(t)
-	publisher := &fakeBidderPublisher{err: publishErr}
+	client := newTestClient(t, startTestNATSServer(t))
+	client.Close()
 
 	msg := auctionMsg(t, "reply.subject", &pb.AuctionRequest{
 		MicrovmId: "vm-1",
@@ -262,9 +231,8 @@ func TestBidderHandleReleasesReservationWhenPublishFails(t *testing.T) {
 		},
 	})
 
-	err := bidder.handle(t.Context(), publisher, msg)
-	require.ErrorIs(t, err, publishErr)
-	require.Len(t, publisher.published, 1)
+	err := bidder.handle(t.Context(), client, msg)
+	require.Error(t, err)
 	require.Empty(t, bidder.capacity.reservations)
 	require.Zero(t, bidder.capacity.reservedRAMMB)
 	require.Zero(t, bidder.capacity.reservedSharedVCPU)

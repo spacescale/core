@@ -42,24 +42,6 @@ func (f *fakeLauncher) Stop(ctx context.Context, microvmID string) error {
 	return f.stopErr
 }
 
-type publishedReply struct {
-	subject string
-	msg     proto.Message
-}
-
-type fakePublisher struct {
-	published []publishedReply
-	err       error
-}
-
-func (f *fakePublisher) PublishProto(subject string, message proto.Message) error {
-	f.published = append(f.published, publishedReply{
-		subject: subject,
-		msg:     message,
-	})
-	return f.err
-}
-
 func newTestLaunchHandler(t *testing.T, launcher launcher) *launchHandler {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -70,7 +52,6 @@ func newTestLaunchHandler(t *testing.T, launcher launcher) *launchHandler {
 func TestLaunchHandlerHandleRejectedMissingReplySubject(t *testing.T) {
 	launcher := &fakeLauncher{}
 	handler := newTestLaunchHandler(t, launcher)
-	publisher := &fakePublisher{}
 
 	msg := launchMsg(t, "", &pb.MicroVMLaunchRequest{
 		MicrovmId: "vm-1",
@@ -80,32 +61,29 @@ func TestLaunchHandlerHandleRejectedMissingReplySubject(t *testing.T) {
 			CpuMode: pb.CpuMode_CPU_MODE_SHARED,
 		},
 	})
-	err := handler.handle(context.Background(), publisher, msg)
+
+	err := handler.handle(context.Background(), newTestClient(t, startTestNATSServer(t)), msg)
 	require.ErrorContains(t, err, "missing reply subject")
 	require.False(t, launcher.launchCalled)
-	require.Empty(t, publisher.published)
 }
 
 func TestLaunchHandlerHandleRejectsInvalidProto(t *testing.T) {
 	launcher := &fakeLauncher{}
 	handler := newTestLaunchHandler(t, launcher)
-	publisher := &fakePublisher{}
 
 	msg := &nats.Msg{
 		Reply: "reply.subject",
 		Data:  []byte("not-proto"),
 	}
 
-	err := handler.handle(context.Background(), publisher, msg)
+	err := handler.handle(context.Background(), newTestClient(t, startTestNATSServer(t)), msg)
 	require.ErrorContains(t, err, "unmarshal proto")
 	require.False(t, launcher.launchCalled)
-	require.Empty(t, publisher.published)
 }
 
 func TestLaunchHandlerHandleRejectsMissingMicroVMID(t *testing.T) {
 	launcher := &fakeLauncher{}
 	handler := newTestLaunchHandler(t, launcher)
-	publisher := &fakePublisher{}
 
 	msg := launchMsg(t, "reply.subject", &pb.MicroVMLaunchRequest{
 		Shape: &pb.MicroVMShape{
@@ -115,16 +93,14 @@ func TestLaunchHandlerHandleRejectsMissingMicroVMID(t *testing.T) {
 		},
 	})
 
-	err := handler.handle(context.Background(), publisher, msg)
+	err := handler.handle(context.Background(), newTestClient(t, startTestNATSServer(t)), msg)
 	require.ErrorContains(t, err, "missing microvm id")
 	require.False(t, launcher.launchCalled)
-	require.Empty(t, publisher.published)
 }
 
 func TestLaunchHandlerHandleRejectsInvalidShape(t *testing.T) {
 	launcher := &fakeLauncher{}
 	handler := newTestLaunchHandler(t, launcher)
-	publisher := &fakePublisher{}
 
 	msg := launchMsg(t, "reply.subject", &pb.MicroVMLaunchRequest{
 		MicrovmId: "vm-1",
@@ -134,16 +110,16 @@ func TestLaunchHandlerHandleRejectsInvalidShape(t *testing.T) {
 		},
 	})
 
-	err := handler.handle(context.Background(), publisher, msg)
+	err := handler.handle(context.Background(), newTestClient(t, startTestNATSServer(t)), msg)
 	require.ErrorIs(t, err, ErrInvalidMicroVMShape)
 	require.False(t, launcher.launchCalled)
-	require.Empty(t, publisher.published)
 }
 
 func TestLaunchHandlerHandleRejectsMissingReservation(t *testing.T) {
 	launcher := &fakeLauncher{}
 	handler := newTestLaunchHandler(t, launcher)
-	publisher := &fakePublisher{}
+	client := newTestClient(t, startTestNATSServer(t))
+	replies := capturePublishedMsg(t, client, "reply.subject")
 
 	msg := launchMsg(t, "reply.subject", &pb.MicroVMLaunchRequest{
 		MicrovmId: "vm-1",
@@ -154,14 +130,11 @@ func TestLaunchHandlerHandleRejectsMissingReservation(t *testing.T) {
 		},
 	})
 
-	err := handler.handle(context.Background(), publisher, msg)
+	err := handler.handle(context.Background(), client, msg)
 	require.NoError(t, err)
 	require.False(t, launcher.launchCalled)
-	require.Len(t, publisher.published, 1)
-	require.Equal(t, "reply.subject", publisher.published[0].subject)
 
-	reply, ok := publisher.published[0].msg.(*pb.MicroVMLaunchResponse)
-	require.True(t, ok)
+	reply := requireLaunchReply(t, receivePublishedMsg(t, replies))
 	require.False(t, reply.GetAccepted())
 	require.Equal(t, "reservation expired or not found", reply.GetErrorMessage())
 }
@@ -170,7 +143,8 @@ func TestLaunchHandlerHandleRevertsCapacityWhenLaunchFails(t *testing.T) {
 	launchErr := errors.New("launch failed")
 	launcher := &fakeLauncher{launchErr: launchErr}
 	handler := newTestLaunchHandler(t, launcher)
-	publisher := &fakePublisher{}
+	client := newTestClient(t, startTestNATSServer(t))
+	replies := capturePublishedMsg(t, client, "reply.subject")
 
 	_, ok := handler.capacity.Reserve("vm-1", HardwareSpec{
 		VCPU: 2,
@@ -187,7 +161,7 @@ func TestLaunchHandlerHandleRevertsCapacityWhenLaunchFails(t *testing.T) {
 		},
 	})
 
-	err := handler.handle(context.Background(), publisher, msg)
+	err := handler.handle(context.Background(), client, msg)
 	require.ErrorIs(t, err, launchErr)
 
 	require.True(t, launcher.launchCalled)
@@ -196,8 +170,7 @@ func TestLaunchHandlerHandleRevertsCapacityWhenLaunchFails(t *testing.T) {
 	require.Equal(t, uint64(2048), launcher.launchReq.RAMMB)
 	require.False(t, launcher.stopCalled)
 
-	require.Len(t, publisher.published, 1)
-	reply := requireLaunchReply(t, publisher.published[0].msg)
+	reply := requireLaunchReply(t, receivePublishedMsg(t, replies))
 	require.False(t, reply.GetAccepted())
 	require.Equal(t, "launch failed", reply.GetErrorMessage())
 
@@ -212,7 +185,8 @@ func TestLaunchHandlerHandlePublishesAcceptedAfterLaunch(t *testing.T) {
 		launchVM: &microvm.ActiveVM{MicroVMID: "vm-1"},
 	}
 	handler := newTestLaunchHandler(t, launcher)
-	publisher := &fakePublisher{}
+	client := newTestClient(t, startTestNATSServer(t))
+	replies := capturePublishedMsg(t, client, "reply.subject")
 
 	_, ok := handler.capacity.Reserve("vm-1", HardwareSpec{
 		VCPU: 2,
@@ -229,14 +203,13 @@ func TestLaunchHandlerHandlePublishesAcceptedAfterLaunch(t *testing.T) {
 		},
 	})
 
-	err := handler.handle(context.Background(), publisher, msg)
+	err := handler.handle(context.Background(), client, msg)
 	require.NoError(t, err)
 
 	require.True(t, launcher.launchCalled)
 	require.False(t, launcher.stopCalled)
 
-	require.Len(t, publisher.published, 1)
-	reply := requireLaunchReply(t, publisher.published[0].msg)
+	reply := requireLaunchReply(t, receivePublishedMsg(t, replies))
 	require.True(t, reply.GetAccepted())
 	require.Empty(t, reply.GetErrorMessage())
 
@@ -247,12 +220,12 @@ func TestLaunchHandlerHandlePublishesAcceptedAfterLaunch(t *testing.T) {
 }
 
 func TestLaunchHandlerHandleStopsVMAndRevertsCapacityWhenPublishFails(t *testing.T) {
-	publishErr := errors.New("publish failed")
 	launcher := &fakeLauncher{
 		launchVM: &microvm.ActiveVM{MicroVMID: "vm-1"},
 	}
 	handler := newTestLaunchHandler(t, launcher)
-	publisher := &fakePublisher{err: publishErr}
+	client := newTestClient(t, startTestNATSServer(t))
+	client.Close()
 
 	_, ok := handler.capacity.Reserve("vm-1", HardwareSpec{
 		VCPU: 2,
@@ -269,27 +242,25 @@ func TestLaunchHandlerHandleStopsVMAndRevertsCapacityWhenPublishFails(t *testing
 		},
 	})
 
-	err := handler.handle(context.Background(), publisher, msg)
-	require.ErrorIs(t, err, publishErr)
+	err := handler.handle(context.Background(), client, msg)
+	require.Error(t, err)
 
 	require.True(t, launcher.launchCalled)
 	require.True(t, launcher.stopCalled)
 	require.Equal(t, "vm-1", launcher.stopID)
-
-	require.Len(t, publisher.published, 1)
 	require.Zero(t, handler.capacity.usedRAMMB)
 	require.Zero(t, handler.capacity.usedSharedVCPU)
 	require.Zero(t, handler.capacity.reservedRAMMB)
 	require.Zero(t, handler.capacity.reservedSharedVCPU)
 }
 
-func requireLaunchReply(t *testing.T, msg proto.Message) *pb.MicroVMLaunchResponse {
+func requireLaunchReply(t *testing.T, msg *nats.Msg) *pb.MicroVMLaunchResponse {
 	t.Helper()
 
-	reply, ok := msg.(*pb.MicroVMLaunchResponse)
-	require.True(t, ok)
+	var reply pb.MicroVMLaunchResponse
+	require.NoError(t, nats.UnmarshalProto(msg, &reply))
 
-	return reply
+	return &reply
 }
 
 func launchMsg(t *testing.T, reply string, req *pb.MicroVMLaunchRequest) *nats.Msg {

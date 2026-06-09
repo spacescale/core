@@ -2,110 +2,18 @@ package workload
 
 import (
 	"context"
-	"errors"
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
-	"github.com/nats-io/nats.go/jetstream"
+	natsgo "github.com/nats-io/nats.go"
 	"github.com/spacescale/core/scaled/node"
 	"github.com/spacescale/core/shared/nats"
 	pb "github.com/spacescale/core/shared/pb/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
-
-type kvPutCall struct {
-	ctx   context.Context
-	key   string
-	value []byte
-}
-
-type fakeKeyValue struct {
-	puts    []kvPutCall
-	putErr  error
-	putHook func()
-}
-
-func (f *fakeKeyValue) Get(context.Context, string) (jetstream.KeyValueEntry, error) {
-	return nil, nil
-}
-
-func (f *fakeKeyValue) GetRevision(context.Context, string, uint64) (jetstream.KeyValueEntry, error) {
-	return nil, nil
-}
-
-func (f *fakeKeyValue) Put(ctx context.Context, key string, value []byte) (uint64, error) {
-	f.puts = append(f.puts, kvPutCall{ctx: ctx, key: key, value: append([]byte(nil), value...)})
-	if f.putHook != nil {
-		f.putHook()
-	}
-	if f.putErr != nil {
-		return 0, f.putErr
-	}
-
-	return uint64(len(f.puts)), nil
-}
-
-func (f *fakeKeyValue) PutString(context.Context, string, string) (uint64, error) {
-	return 0, nil
-}
-
-func (f *fakeKeyValue) Create(context.Context, string, []byte, ...jetstream.KVCreateOpt) (uint64, error) {
-	return 0, nil
-}
-
-func (f *fakeKeyValue) Update(context.Context, string, []byte, uint64) (uint64, error) {
-	return 0, nil
-}
-
-func (f *fakeKeyValue) Delete(context.Context, string, ...jetstream.KVDeleteOpt) error {
-	return nil
-}
-
-func (f *fakeKeyValue) Purge(context.Context, string, ...jetstream.KVDeleteOpt) error {
-	return nil
-}
-
-func (f *fakeKeyValue) Watch(context.Context, string, ...jetstream.WatchOpt) (jetstream.KeyWatcher, error) {
-	return nil, nil
-}
-
-func (f *fakeKeyValue) WatchAll(context.Context, ...jetstream.WatchOpt) (jetstream.KeyWatcher, error) {
-	return nil, nil
-}
-
-func (f *fakeKeyValue) WatchFiltered(context.Context, []string, ...jetstream.WatchOpt) (jetstream.KeyWatcher, error) {
-	return nil, nil
-}
-
-func (f *fakeKeyValue) Keys(context.Context, ...jetstream.WatchOpt) ([]string, error) {
-	return nil, nil
-}
-
-func (f *fakeKeyValue) ListKeys(context.Context, ...jetstream.WatchOpt) (jetstream.KeyLister, error) {
-	return nil, nil
-}
-
-func (f *fakeKeyValue) ListKeysFiltered(context.Context, ...string) (jetstream.KeyLister, error) {
-	return nil, nil
-}
-
-func (f *fakeKeyValue) History(context.Context, string, ...jetstream.WatchOpt) ([]jetstream.KeyValueEntry, error) {
-	return nil, nil
-}
-
-func (f *fakeKeyValue) Bucket() string {
-	return "test-bucket"
-}
-
-func (f *fakeKeyValue) PurgeDeletes(context.Context, ...jetstream.KVPurgeOpt) error {
-	return nil
-}
-
-func (f *fakeKeyValue) Status(context.Context) (jetstream.KeyValueStatus, error) {
-	return nil, nil
-}
 
 func newTestWorkloadLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -135,15 +43,18 @@ func requireNodeHeartbeat(t *testing.T, value []byte) *pb.NodeHeartbeat {
 }
 
 func TestPublishHeartbeatWritesNodeHeartbeat(t *testing.T) {
-	info := newTestNodeInfo()
-	kv := &fakeKeyValue{}
+	url := startTestNATSServer(t)
+	client := newTestClient(t, url)
+	kv, err := client.EnsureNodeHeartbeatKV(t.Context())
+	require.NoError(t, err)
 
+	info := newTestNodeInfo()
 	publishHeartbeat(t.Context(), newTestWorkloadLogger(), info, kv, nats.NodeHeartbeatKey(info.Identity.NodeID), 7)
 
-	require.Len(t, kv.puts, 1)
-	require.Equal(t, nats.NodeHeartbeatKey(info.Identity.NodeID), kv.puts[0].key)
+	entry, err := kv.Get(t.Context(), nats.NodeHeartbeatKey(info.Identity.NodeID))
+	require.NoError(t, err)
 
-	heartbeat := requireNodeHeartbeat(t, kv.puts[0].value)
+	heartbeat := requireNodeHeartbeat(t, entry.Value())
 	require.Equal(t, "node-123", heartbeat.GetNodeId())
 	require.Equal(t, uint64(7), heartbeat.GetSeqNo())
 	require.Equal(t, "boot-123", heartbeat.GetBootId())
@@ -151,25 +62,131 @@ func TestPublishHeartbeatWritesNodeHeartbeat(t *testing.T) {
 }
 
 func TestPublishHeartbeatSwallowsKVErrors(t *testing.T) {
+	url := startTestNATSServer(t)
+	client := newTestClient(t, url)
+	kv, err := client.EnsureNodeHeartbeatKV(t.Context())
+	require.NoError(t, err)
+	client.Close()
+
 	info := newTestNodeInfo()
-	kv := &fakeKeyValue{putErr: errors.New("kv put failed")}
-
-	publishHeartbeat(t.Context(), newTestWorkloadLogger(), info, kv, nats.NodeHeartbeatKey(info.Identity.NodeID), 1)
-
-	require.Len(t, kv.puts, 1)
+	require.NotPanics(t, func() {
+		publishHeartbeat(t.Context(), newTestWorkloadLogger(), info, kv, nats.NodeHeartbeatKey(info.Identity.NodeID), 1)
+	})
 }
 
 func TestRunHeartbeatPublishesInitialHeartbeatAndStopsOnCancel(t *testing.T) {
+	url := startTestNATSServer(t)
+	client := newTestClient(t, url)
+	kv, err := client.EnsureNodeHeartbeatKV(t.Context())
+	require.NoError(t, err)
+
 	info := newTestNodeInfo()
 	ctx, cancel := context.WithCancel(t.Context())
-	kv := &fakeKeyValue{
-		putHook: cancel,
-	}
+	t.Cleanup(cancel)
+
+	go func() {
+		for {
+			entry, err := kv.Get(ctx, nats.NodeHeartbeatKey(info.Identity.NodeID))
+			if err == nil && entry != nil {
+				cancel()
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
 
 	runHeartbeat(ctx, newTestWorkloadLogger(), info, kv)
 
-	require.Len(t, kv.puts, 1)
-	heartbeat := requireNodeHeartbeat(t, kv.puts[0].value)
+	entry, err := kv.Get(t.Context(), nats.NodeHeartbeatKey(info.Identity.NodeID))
+	require.NoError(t, err)
+	heartbeat := requireNodeHeartbeat(t, entry.Value())
 	require.Equal(t, uint64(1), heartbeat.GetSeqNo())
 	require.Equal(t, "node-123", heartbeat.GetNodeId())
+}
+
+func TestStartWiresHandlersAndHeartbeatWithRealNATS(t *testing.T) {
+	url := startTestNATSServer(t)
+	client := newTestClient(t, url)
+	rawConn, err := natsgo.Connect(url)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		rawConn.Close()
+	})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+
+	info := newTestNodeInfo()
+	info.RuntimePaths = node.RuntimePaths{
+		FirecrackerPath: "/bin/true",
+		JailerPath:      "/bin/true",
+		KernelPath:      "/bin/true",
+		RootFSPath:      "/bin/true",
+	}
+
+	require.NoError(t, Start(ctx, newTestWorkloadLogger(), info, client))
+
+	kv, err := client.EnsureNodeHeartbeatKV(ctx)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		entry, err := kv.Get(ctx, nats.NodeHeartbeatKey(info.Identity.NodeID))
+		return err == nil && entry != nil
+	}, time.Second, 10*time.Millisecond)
+
+	entry, err := kv.Get(ctx, nats.NodeHeartbeatKey(info.Identity.NodeID))
+	require.NoError(t, err)
+
+	var heartbeat pb.NodeHeartbeat
+	require.NoError(t, proto.Unmarshal(entry.Value(), &heartbeat))
+	require.Equal(t, info.Identity.NodeID, heartbeat.GetNodeId())
+	require.Equal(t, info.Snapshot.BootID, heartbeat.GetBootId())
+	require.Equal(t, uint64(1), heartbeat.GetSeqNo())
+	require.NotZero(t, heartbeat.GetSentAtUnixNano())
+
+	auctionReply := natsgo.NewInbox()
+	auctionSub, err := rawConn.SubscribeSync(auctionReply)
+	require.NoError(t, err)
+	require.NoError(t, rawConn.Flush())
+	require.NoError(t, rawConn.PublishRequest(nats.NodeAuctionSubject(info.Identity.Region), auctionReply, mustMarshalProto(t, &pb.AuctionRequest{
+		MicrovmId: "vm-auction",
+		Shape: &pb.MicroVMShape{
+			Vcpu:    2,
+			RamMb:   2048,
+			CpuMode: pb.CpuMode_CPU_MODE_SHARED,
+		},
+	})))
+	reply, err := auctionSub.NextMsg(2 * time.Second)
+	require.NoError(t, err)
+
+	var auctionResp pb.AuctionReply
+	require.NoError(t, proto.Unmarshal(reply.Data, &auctionResp))
+	require.Equal(t, info.Identity.NodeID, auctionResp.GetNodeId())
+	require.Equal(t, info.Snapshot.BootID, auctionResp.GetBootId())
+
+	launchReply := natsgo.NewInbox()
+	launchSub, err := rawConn.SubscribeSync(launchReply)
+	require.NoError(t, err)
+	require.NoError(t, rawConn.Flush())
+	require.NoError(t, rawConn.PublishRequest(nats.NodeMicroVMLaunchSubject(info.Snapshot.BootID), launchReply, mustMarshalProto(t, &pb.MicroVMLaunchRequest{
+		MicrovmId: "vm-launch",
+		Shape: &pb.MicroVMShape{
+			Vcpu:    2,
+			RamMb:   2048,
+			CpuMode: pb.CpuMode_CPU_MODE_SHARED,
+		},
+	})))
+	launchMsg, err := launchSub.NextMsg(2 * time.Second)
+	require.NoError(t, err)
+
+	var launchResp pb.MicroVMLaunchResponse
+	require.NoError(t, proto.Unmarshal(launchMsg.Data, &launchResp))
+	require.False(t, launchResp.GetAccepted())
+	require.Equal(t, "reservation expired or not found", launchResp.GetErrorMessage())
+}
+
+func mustMarshalProto(t *testing.T, msg proto.Message) []byte {
+	t.Helper()
+	data, err := proto.Marshal(msg)
+	require.NoError(t, err)
+	return data
 }
