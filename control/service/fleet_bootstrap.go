@@ -57,7 +57,7 @@ func (s *BootstrapService) Register(ctx context.Context, input BootstrapInput) (
 		TotalCores:         input.TotalCores,
 		TotalRamMb:         input.TotalRAMMb,
 		TotalDiskMb:        input.TotalDiskMb,
-		BootstrapTokenHash: &tokenHash,
+		BootstrapTokenHash: new(hashBootstrapToken(input.Token)),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
