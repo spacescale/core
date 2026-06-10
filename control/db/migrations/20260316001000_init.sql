@@ -49,7 +49,7 @@ CREATE INDEX projects_workspace_id_idx
 CREATE INDEX workspaces_owner_user_id_idx
     ON workspaces (owner_user_id);
 
--- apps are the long lived product object customers think about.
+-- apps are the long-lived product object customers think about.
 -- An app survives across many deployments and across many microvms over time.
 CREATE TABLE apps
 (
