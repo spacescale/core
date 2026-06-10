@@ -17,6 +17,7 @@ import (
 	"github.com/spacescale/core/control/api"
 	"github.com/spacescale/core/control/db/sqlc"
 	"github.com/spacescale/core/control/service"
+	"github.com/spacescale/core/control/service/tenant"
 	"github.com/spacescale/core/shared/config"
 	"github.com/stretchr/testify/require"
 )
@@ -25,7 +26,6 @@ const (
 	testJWTSecret          = "test-bff-secret"
 	testIssuer             = "spacescale-web-bff-test"
 	testAudience           = "spacescale-api-test"
-	testInternalAuthSecret = "test-internal-secret"
 	testEnvEncryptionKeyID = "test-key-v1"
 	testEnvEncryptionKey   = "0123456789abcdef0123456789abcdef"
 )
@@ -60,7 +60,7 @@ func newTestServer(t *testing.T) *testServer {
 		require.NoError(t, err)
 	}
 
-	authCfg := config.AuthConfig{JWTSecret: testJWTSecret, Issuer: testIssuer, Audience: testAudience}
+	authCfg := config.AuthConfig{Mode: config.AuthModeEnabled, JWTSecret: testJWTSecret, Issuer: testIssuer, Audience: testAudience}
 
 	queries := sqlc.New(pool)
 	svcs, err := service.NewServices(service.Deps{
@@ -77,44 +77,11 @@ func newTestServer(t *testing.T) *testServer {
 		Services: svcs,
 		DBPool:   pool,
 		Config: config.Control{
-			Auth:               authCfg,
-			InternalAuthSecret: testInternalAuthSecret,
+			Auth: authCfg,
 		},
 	})
 
 	return &testServer{server: httptest.NewServer(server.Router()), pool: pool}
-}
-
-func TestInternalAuthSyncHeaderValidation(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.close()
-
-	tests := []struct {
-		name       string
-		header     string
-		wantStatus int
-		wantErr    string
-	}{
-		{name: "missing header", header: "", wantStatus: http.StatusUnauthorized, wantErr: "unauthorized"},
-		{name: "wrong header", header: "wrong-secret", wantStatus: http.StatusUnauthorized, wantErr: "unauthorized"},
-		{name: "matching header after trim", header: "  " + testInternalAuthSecret + "  ", wantStatus: http.StatusBadRequest, wantErr: "invalid json"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			headers := map[string]string{"Content-Type": "application/json"}
-			if tc.header != "" {
-				headers["X-Internal-Auth"] = tc.header
-			}
-
-			resp, data := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", []byte("{"), headers)
-			require.Equal(t, tc.wantStatus, resp.StatusCode, string(data))
-
-			var out errorResponse
-			require.NoError(t, json.Unmarshal(data, &out))
-			require.Equal(t, tc.wantErr, out.Error)
-		})
-	}
 }
 
 func TestUnauthorizedRequestsStayUnauthorized(t *testing.T) {
@@ -136,16 +103,16 @@ func TestUnauthorizedRequestsStayUnauthorized(t *testing.T) {
 
 func syncAuthUserForTest(t *testing.T, ts *testServer, identityKey string) {
 	t.Helper()
-	body := []byte(fmt.Sprintf(
-		`{"identityKey":"%s","email":"dev@example.com","name":"Dev","avatarUrl":"https://example.com/avatar.png"}`,
-		identityKey,
-	))
+	queries := sqlc.New(ts.pool)
+	users := tenant.NewUserService(queries)
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v1/internal/auth-sync", body, map[string]string{
-		"X-Internal-Auth": testInternalAuthSecret,
-		"Content-Type":    "application/json",
+	_, err := users.SyncAuthUser(context.Background(), tenant.SyncAuthUserParams{
+		IdentityKey: identityKey,
+		Email:       "dev@example.com",
+		Name:        "Dev",
+		AvatarURL:   "https://example.com/avatar.png",
 	})
-	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
+	require.NoError(t, err)
 }
 
 func createWorkspaceForIdentity(t *testing.T, ts *testServer, identityKey, name string) string {
