@@ -119,7 +119,7 @@ func TestLaunchHandlerHandleRejectsMissingReservation(t *testing.T) {
 	launcher := &fakeLauncher{}
 	handler := newTestLaunchHandler(t, launcher)
 	client := newTestClient(t, startTestNATSServer(t))
-	replies := capturePublishedMsg(t, client, "reply.subject")
+	replies := capturePublishedMsg(t, client)
 
 	msg := launchMsg(t, "reply.subject", &pb.MicroVMLaunchRequest{
 		MicrovmId: "vm-1",
@@ -144,7 +144,7 @@ func TestLaunchHandlerHandleRevertsCapacityWhenLaunchFails(t *testing.T) {
 	launcher := &fakeLauncher{launchErr: launchErr}
 	handler := newTestLaunchHandler(t, launcher)
 	client := newTestClient(t, startTestNATSServer(t))
-	replies := capturePublishedMsg(t, client, "reply.subject")
+	replies := capturePublishedMsg(t, client)
 
 	_, ok := handler.capacity.Reserve("vm-1", HardwareSpec{
 		VCPU: 2,
@@ -186,7 +186,7 @@ func TestLaunchHandlerHandlePublishesAcceptedAfterLaunch(t *testing.T) {
 	}
 	handler := newTestLaunchHandler(t, launcher)
 	client := newTestClient(t, startTestNATSServer(t))
-	replies := capturePublishedMsg(t, client, "reply.subject")
+	replies := capturePublishedMsg(t, client)
 
 	_, ok := handler.capacity.Reserve("vm-1", HardwareSpec{
 		VCPU: 2,

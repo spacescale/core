@@ -175,7 +175,7 @@ func TestBidderHandleRejectsInvalidShape(t *testing.T) {
 func TestBidderHandlePublishesBidAndCreatesReservation(t *testing.T) {
 	bidder := newTestBidder(t)
 	client := newTestClient(t, startTestNATSServer(t))
-	replies := capturePublishedMsg(t, client, "reply.subject")
+	replies := capturePublishedMsg(t, client)
 
 	msg := auctionMsg(t, "reply.subject", &pb.AuctionRequest{
 		MicrovmId: "vm-1",

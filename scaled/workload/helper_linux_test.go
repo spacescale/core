@@ -50,11 +50,11 @@ func newTestClient(t *testing.T, url string) *nats.Client {
 	return client
 }
 
-func capturePublishedMsg(t *testing.T, client *nats.Client, subject string) <-chan *nats.Msg {
+func capturePublishedMsg(t *testing.T, client *nats.Client) <-chan *nats.Msg {
 	t.Helper()
 
 	replies := make(chan *nats.Msg, 1)
-	_, err := client.Subscribe(subject, func(msg *nats.Msg) error {
+	_, err := client.Subscribe("reply.subject", func(msg *nats.Msg) error {
 		replies <- msg
 		return nil
 	})
