@@ -10,7 +10,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/18/docker
-      - ./internal/scalecp/db/init:/docker-entrypoint-initdb.d:ro
+      - ./control/db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U spacescale -d postgres"]
       interval: 5s
@@ -18,12 +18,78 @@ services:
       retries: 20
 
   nats:
-    image: nats:2.12.5-alpine
+    image: nats:2.14-alpine
     command: [ "-js", "-m", "8222", "-sd", "/data" ]
     ports:
       - "4222:4222"
       - "8222:8222"
+    volumes:
+      - natsdata:/data
+
+  migrate:
+    image: golang:1.26
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - gomodcache:/go/pkg/mod
+      - gobuildcache:/root/.cache/go-build
+    environment:
+      DATABASE_URL: postgres://spacescale:spacescale@db:5432/spacescale?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - go run github.com/pressly/goose/v3/cmd/goose@v3.25.0 -dir control/db/migrations postgres "$$DATABASE_URL" up
+    restart: "no"
+
+  controlp:
+    image: golang:1.26
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - gomodcache:/go/pkg/mod
+      - gobuildcache:/root/.cache/go-build
+    environment:
+      APP_ENV: development
+      PORT: "8080"
+      NATS_URL: nats://nats:4222
+      DATABASE_URL: postgres://spacescale:spacescale@db:5432/spacescale?sslmode=disable
+      BFF_JWT_SECRET: dev-bff-jwt-secret
+      BFF_JWT_ISSUER: spacescale-web-bff
+      BFF_JWT_AUDIENCE: spacescale-api
+      INTERNAL_AUTH_SYNC_SECRET: dev-internal-auth-secret
+      API_ENV_ENCRYPTION_KEY_ID: dev-key
+      API_ENV_ENCRYPTION_KEY: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    command:
+      - go
+      - run
+      - ./cmd/controlp
+
+  coverage:
+    image: golang:1.26
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - gomodcache:/go/pkg/mod
+      - gobuildcache:/root/.cache/go-build
+    command:
+      - sh
+      - -lc
+      - env -i HOME=/root PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin GOPATH=/go GOCACHE=/root/.cache/go-build GOMODCACHE=/go/pkg/mod /usr/local/go/bin/go test ./... -coverprofile=coverage.out
 
 volumes:
   pgdata:
   natsdata:
+  gomodcache:
+  gobuildcache:

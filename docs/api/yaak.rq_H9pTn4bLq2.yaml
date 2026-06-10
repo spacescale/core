@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_H9pTn4bLq2
 createdAt: 2026-03-02T12:00:00
-updatedAt: 2026-04-30T18:17:30.095739
+updatedAt: 2026-05-03T02:05:26.548287
 workspaceId: wk_KJF6oyHis3
 folderId: fl_da6TvdABY7
 authentication: {}
@@ -10,9 +10,13 @@ authenticationType: null
 body:
   text: |-
     {
-      "name": "manual-e2e-6-d3331",
-      "imageRef": "ghcr.io/acme/spacescale-api:latest",
-      "planId": "web-starter",
+      "name": "manual-e2e-6-d3331-8887890787867",
+      "imageRef": "ghcr.io/acme/spacescale-api:latestjh",
+      "compute": {
+        "vcpu": 2,
+        "memoryMb": 2048,
+        "dedicated": false
+      },
       "primaryRegion": "${[ PRIMARY_REGION ]}",
       "runtimePort": 8080,
       "isPublic": false,
@@ -46,7 +50,7 @@ description: |-
 
   ### Body Contract
   - `imageRef` (required): OCI image reference
-  - `planId` (required): product plan id such as `web-starter` or `db-prod`
+  - `compute` (required): requested microVM shape with `vcpu`, `memoryMb`, and `dedicated`
   - `primaryRegion` (required): placement region and must match an active node region for end-to-end dispatch
   - `name` (optional): display name; when omitted service derives from image ref
   - `runtimePort` (optional): defaults to `8080`
@@ -61,7 +65,7 @@ description: |-
   ### Behavior Notes
   - create operation persists app, deployment, microvm, optional registry binding, and encrypted env vars atomically
   - new apps default to `targetReplicas = 1`, so create currently launches one microvm
-  - when dispatch is active, `scalecp` immediately runs auction + targeted launch after create
+  - when dispatch is active, `control` immediately runs auction + targeted launch after create
   - current manual node region is `eu-central`, so use `primaryRegion=eu-central` for the live end-to-end path
 
   ### Success Response
@@ -74,7 +78,6 @@ description: |-
     - `slug`
     - `subdomain`
     - `imageRef`
-    - `planId`
     - `targetReplicas`
     - `primaryRegion`
     - `runtimePort`
