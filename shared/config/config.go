@@ -60,7 +60,7 @@ type AuthConfig struct {
 }
 
 type controlEnv struct {
-	EnvironmentRaw     string `env:"ENVIRONMENT"`
+	Environment        string `env:"ENVIRONMENT"`
 	NATSURL            string `env:"NATS_URL" envDefault:"nats://127.0.0.1:4222"`
 	DatabaseURL        string `env:"DATABASE_URL"`
 	ListenAddr         string `env:"LISTEN_ADDR" envDefault:":8080"`
@@ -73,8 +73,8 @@ type controlEnv struct {
 }
 
 type scaledEnv struct {
-	EnvironmentRaw string `env:"ENVIRONMENT"`
-	NATSURL        string `env:"NATS_URL" envDefault:"nats://127.0.0.1:4222"`
+	Environment string `env:"ENVIRONMENT"`
+	NATSURL     string `env:"NATS_URL" envDefault:"nats://127.0.0.1:4222"`
 }
 
 // LoadControl reads and validates config required by the control plane.
@@ -85,7 +85,7 @@ func LoadControl() (Control, error) {
 	}
 
 	cfg := Control{
-		Environment: normalizeEnvironment(raw.EnvironmentRaw),
+		Environment: resolveEnvironment(raw.Environment),
 		NATSURL:     strings.TrimSpace(raw.NATSURL),
 		DatabaseURL: strings.TrimSpace(raw.DatabaseURL),
 		ListenAddr:  strings.TrimSpace(raw.ListenAddr),
@@ -98,7 +98,7 @@ func LoadControl() (Control, error) {
 		EnvEncryptionKeyID: strings.TrimSpace(raw.EnvEncryptionKeyID),
 	}
 
-	if err := cfg.finalize(strings.TrimSpace(raw.EnvEncryptionKey)); err != nil {
+	if err := cfg.normalizeAndValidate(strings.TrimSpace(raw.EnvEncryptionKey)); err != nil {
 		return Control{}, err
 	}
 
@@ -113,7 +113,7 @@ func LoadScaled() (Scaled, error) {
 	}
 
 	cfg := Scaled{
-		Environment: normalizeEnvironment(raw.EnvironmentRaw),
+		Environment: resolveEnvironment(raw.Environment),
 		NATSURL:     strings.TrimSpace(raw.NATSURL),
 	}
 	if cfg.NATSURL == "" {
@@ -123,7 +123,7 @@ func LoadScaled() (Scaled, error) {
 	return cfg, nil
 }
 
-func (c *Control) finalize(rawEncryptionKey string) error {
+func (c *Control) normalizeAndValidate(rawEncryptionKey string) error {
 	if c.NATSURL == "" {
 		c.NATSURL = defaultNATSURL
 	}
@@ -133,7 +133,7 @@ func (c *Control) finalize(rawEncryptionKey string) error {
 	if c.ListenAddr == "" {
 		c.ListenAddr = defaultListenAddr
 	}
-	if err := c.Auth.finalize(); err != nil {
+	if err := c.Auth.normalizeAndValidate(); err != nil {
 		return err
 	}
 	if c.EnvEncryptionKeyID == "" {
@@ -149,7 +149,7 @@ func (c *Control) finalize(rawEncryptionKey string) error {
 	return nil
 }
 
-func (a *AuthConfig) finalize() error {
+func (a *AuthConfig) normalizeAndValidate() error {
 	if a.Mode == "" {
 		a.Mode = defaultAuthMode
 	}
@@ -172,7 +172,7 @@ func (a *AuthConfig) finalize() error {
 	return nil
 }
 
-func normalizeEnvironment(raw string) string {
+func resolveEnvironment(raw string) string {
 	if strings.TrimSpace(raw) == "" {
 		return developmentEnvironment
 	}
