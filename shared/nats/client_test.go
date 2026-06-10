@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +23,25 @@ import (
 
 func newTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+type lockedBuffer struct {
+	mu sync.Mutex
+	bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.Buffer.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.Buffer.String()
 }
 
 // startTestNATSServer returns an embedded in-process NATS server.
@@ -287,8 +307,8 @@ func TestNewReturnsErrorForInvalidURL(t *testing.T) {
 }
 
 func TestNewLogsDisconnect(t *testing.T) {
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	buf := &lockedBuffer{}
+	logger := slog.New(slog.NewTextHandler(buf, nil))
 
 	srv, err := server.NewServer(&server.Options{Port: -1, JetStream: true})
 	require.NoError(t, err)
@@ -316,8 +336,8 @@ func TestNewLogsReconnect(t *testing.T) {
 	port := tcpAddr.Port
 	require.NoError(t, ln.Close())
 
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	buf := &lockedBuffer{}
+	logger := slog.New(slog.NewTextHandler(buf, nil))
 	startServer := func() *server.Server {
 		srv, err := server.NewServer(&server.Options{Host: "127.0.0.1", Port: port, JetStream: true})
 		require.NoError(t, err)
@@ -349,8 +369,8 @@ func TestNewLogsReconnect(t *testing.T) {
 }
 
 func TestNewLogsAsyncError(t *testing.T) {
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	buf := &lockedBuffer{}
+	logger := slog.New(slog.NewTextHandler(buf, nil))
 	url := startTestNATSServer(t)
 	client := newTestClientWithLogger(t, url, logger)
 	rawConn, err := natsgo.Connect(url)
@@ -589,8 +609,8 @@ func TestFlushWaitsForPendingOperations(t *testing.T) {
 }
 
 func TestDrainClosesConnection(t *testing.T) {
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	buf := &lockedBuffer{}
+	logger := slog.New(slog.NewTextHandler(buf, nil))
 	url := startTestNATSServer(t)
 	client := newTestClientWithLogger(t, url, logger)
 
@@ -602,8 +622,8 @@ func TestDrainClosesConnection(t *testing.T) {
 }
 
 func TestCloseClosesConnection(t *testing.T) {
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	buf := &lockedBuffer{}
+	logger := slog.New(slog.NewTextHandler(buf, nil))
 	url := startTestNATSServer(t)
 	client := newTestClientWithLogger(t, url, logger)
 
