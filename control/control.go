@@ -60,7 +60,7 @@ func Run(ctx context.Context) error {
 	group, groupCtx := errgroup.WithContext(ctx)
 
 	group.Go(func() error {
-		log.Info("controlp listening", "component", "controlp", "addr", cfg.ListenAddr())
+		log.Info("controlp listening", "component", "controlp", "addr", cfg.ListenAddr)
 
 		return apiServer.Start()
 	})

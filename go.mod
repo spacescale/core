@@ -3,6 +3,7 @@ module github.com/spacescale/core
 go 1.26.4
 
 require (
+	github.com/caarlos0/env/v11 v11.4.1
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.1-0.20251224190957-6fb280e993d4
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-chi/httprate v0.15.0

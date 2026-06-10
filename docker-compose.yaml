@@ -52,14 +52,14 @@ services:
       - gomodcache:/go/pkg/mod
       - gobuildcache:/root/.cache/go-build
     environment:
-      APP_ENV: development
-      PORT: "8080"
+      ENVIRONMENT: development
+      LISTEN_ADDR: ":8080"
       NATS_URL: nats://nats:4222
       DATABASE_URL: postgres://spacescale:spacescale@db:5432/spacescale?sslmode=disable
-      BFF_JWT_SECRET: dev-bff-jwt-secret
-      BFF_JWT_ISSUER: spacescale-web-bff
-      BFF_JWT_AUDIENCE: spacescale-api
-      INTERNAL_AUTH_SYNC_SECRET: dev-internal-auth-secret
+      AUTH_MODE: disabled
+      AUTH_JWT_SECRET: dev-auth-jwt-secret
+      AUTH_ISSUER: api.spacescale.io
+      AUTH_AUDIENCE: spacescale-api
       API_ENV_ENCRYPTION_KEY_ID: dev-key
       API_ENV_ENCRYPTION_KEY: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
     depends_on:

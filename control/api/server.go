@@ -39,15 +39,12 @@ type Server struct {
 }
 
 const (
-	internalGlobalLimiterKey        = "internal:global"
 	maxRequestBodyBytes             = 1 << 20
 	serverReadHeaderTimeout         = 5 * time.Second
 	serverWriteTimeout              = 30 * time.Second
 	serverIdleTimeout               = 120 * time.Second
 	userRateLimitRequests           = 200
 	userRateLimitWindow             = time.Minute
-	internalGlobalRateLimitRequests = 24000
-	internalGlobalRateLimitWindow   = time.Minute
 )
 
 // ServerDeps groups dependencies required to construct the API server.
@@ -80,7 +77,7 @@ func NewServer(deps ServerDeps) *Server {
 		server:     nil,
 	}
 	server := new(http.Server)
-	server.Addr = deps.Config.ListenAddr()
+	server.Addr = deps.Config.ListenAddr
 	server.Handler = http.MaxBytesHandler(apiServer.Router(), maxRequestBodyBytes)
 	server.ReadHeaderTimeout = serverReadHeaderTimeout
 	server.WriteTimeout = serverWriteTimeout
@@ -131,13 +128,6 @@ func (s *Server) Router() http.Handler {
 		}),
 	)
 
-	internalGlobalLimiter := httprate.NewRateLimiter(
-		internalGlobalRateLimitRequests,
-		internalGlobalRateLimitWindow,
-		httprate.WithKeyFuncs(httprate.Key(internalGlobalLimiterKey)),
-		httprate.WithLimitHandler(rateLimitExceeded),
-	)
-
 	// Health check route.
 	router.Get("/healthz", func(responseWriter http.ResponseWriter, r *http.Request) {
 		if err := s.dbPool.Ping(r.Context()); err != nil { // check database connectivity
@@ -146,14 +136,6 @@ func (s *Server) Router() http.Handler {
 			return
 		}
 		responseWriter.WriteHeader(http.StatusOK)
-	})
-
-	// Internal routes are intended for private-network service-to-service traffic.
-	// They apply both a global circuit breaker and per-identity guardrails.
-	router.Route("/v1/internal", func(r chi.Router) {
-		r.Use(internalGlobalLimiter.Handler)
-		r.Use(InternalAuthMiddleware(s.config.InternalAuthSecret))
-		r.Post("/auth-sync", SyncUserHandler(s.users, s.internalIdentityLimiter))
 	})
 
 	router.Route("/v1", func(apiRouter chi.Router) {

@@ -23,7 +23,10 @@ import (
 // Run starts the scaled edge daemon and blocks until the context is canceled
 // or a startup/runtime error occurs.
 func Run(ctx context.Context) error {
-	cfg := config.LoadScaled()
+	cfg, err := config.LoadScaled()
+	if err != nil {
+		return fmt.Errorf("load scaled config: %w", err)
+	}
 
 	log := logger.Init(cfg.Environment).With("component", "scaled")
 

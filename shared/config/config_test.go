@@ -8,56 +8,52 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLoadControl(t *testing.T) {
-	t.Run("reads explicit config", func(t *testing.T) {
-		key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
+func TestLoadControlReadsExplicitConfig(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
 
-		t.Setenv("APP_ENV", " prod ")
-		t.Setenv("NATS_URL", " nats://10.0.0.1:4222 ")
-		t.Setenv("DATABASE_URL", " postgres://user:pass@db/spacescale ")
-		t.Setenv("PORT", " 9090 ")
-		t.Setenv("BFF_JWT_SECRET", " secret ")
-		t.Setenv("BFF_JWT_ISSUER", " issuer ")
-		t.Setenv("BFF_JWT_AUDIENCE", " audience ")
-		t.Setenv("INTERNAL_AUTH_SYNC_SECRET", " internal-secret ")
-		t.Setenv("API_ENV_ENCRYPTION_KEY_ID", " key-v1 ")
-		t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+	t.Setenv("ENVIRONMENT", "production")
+	t.Setenv("NATS_URL", " nats://10.0.0.1:4222 ")
+	t.Setenv("DATABASE_URL", " postgres://user:pass@db/spacescale ")
+	t.Setenv("LISTEN_ADDR", " 127.0.0.1:9090 ")
+	t.Setenv("AUTH_MODE", string(AuthModeEnabled))
+	t.Setenv("AUTH_JWT_SECRET", " secret ")
+	t.Setenv("AUTH_ISSUER", " issuer ")
+	t.Setenv("AUTH_AUDIENCE", " audience ")
+	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", " key-v1 ")
+	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 
-		cfg, err := LoadControl()
-		require.NoError(t, err)
+	cfg, err := LoadControl()
+	require.NoError(t, err)
 
-		assert.Equal(t, "production", cfg.Environment)
-		assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
-		assert.Equal(t, "postgres://user:pass@db/spacescale", cfg.DatabaseURL)
-		assert.Equal(t, "9090", cfg.Port)
-		assert.Equal(t, "secret", cfg.Auth.JWTSecret)
-		assert.Equal(t, "issuer", cfg.Auth.Issuer)
-		assert.Equal(t, "audience", cfg.Auth.Audience)
-		assert.Equal(t, "internal-secret", cfg.InternalAuthSecret)
-		assert.Equal(t, "key-v1", cfg.EnvEncryptionKeyID)
-		assert.Len(t, cfg.EnvEncryptionKey, 32)
-	})
+	assert.Equal(t, productionEnvironment, cfg.Environment)
+	assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
+	assert.Equal(t, "postgres://user:pass@db/spacescale", cfg.DatabaseURL)
+	assert.Equal(t, "127.0.0.1:9090", cfg.ListenAddr)
+	assert.Equal(t, AuthModeEnabled, cfg.Auth.Mode)
+	assert.Equal(t, "secret", cfg.Auth.JWTSecret)
+	assert.Equal(t, "issuer", cfg.Auth.Issuer)
+	assert.Equal(t, "audience", cfg.Auth.Audience)
+	assert.Equal(t, "key-v1", cfg.EnvEncryptionKeyID)
+	assert.Len(t, cfg.EnvEncryptionKey, 32)
 }
 
 func TestLoadControlAppliesDefaults(t *testing.T) {
-	t.Run("fills optional defaults", func(t *testing.T) {
-		key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
+	key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
 
-		t.Setenv("DATABASE_URL", "postgres://db")
-		t.Setenv("BFF_JWT_SECRET", "secret")
-		t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
-		t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
-		t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+	t.Setenv("DATABASE_URL", "postgres://db")
+	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 
-		cfg, err := LoadControl()
-		require.NoError(t, err)
+	cfg, err := LoadControl()
+	require.NoError(t, err)
 
-		assert.Equal(t, defaultEnvironment, cfg.Environment)
-		assert.Equal(t, defaultNATSURL, cfg.NATSURL)
-		assert.Equal(t, defaultPort, cfg.Port)
-		assert.Equal(t, defaultAuthIssuer, cfg.Auth.Issuer)
-		assert.Equal(t, defaultAuthAudience, cfg.Auth.Audience)
-	})
+	assert.Equal(t, developmentEnvironment, cfg.Environment)
+	assert.Equal(t, defaultNATSURL, cfg.NATSURL)
+	assert.Equal(t, defaultListenAddr, cfg.ListenAddr)
+	assert.Equal(t, AuthModeDisabled, cfg.Auth.Mode)
+	assert.Equal(t, defaultAuthIssuer, cfg.Auth.Issuer)
+	assert.Equal(t, defaultAuthAudience, cfg.Auth.Audience)
+	assert.Empty(t, cfg.Auth.JWTSecret)
 }
 
 func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
@@ -72,42 +68,38 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 			name: "missing database url",
 			setenv: func(t *testing.T) {
 				t.Helper()
-				t.Setenv("BFF_JWT_SECRET", "secret")
-				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
 				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
 				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 			},
 			wantErrMsg: "missing required config DATABASE_URL",
 		},
 		{
-			name: "missing jwt secret",
+			name: "missing jwt secret when auth enabled",
 			setenv: func(t *testing.T) {
 				t.Helper()
 				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
+				t.Setenv("AUTH_MODE", string(AuthModeEnabled))
 				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
 				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 			},
-			wantErrMsg: "missing required config BFF_JWT_SECRET",
+			wantErrMsg: "missing required config AUTH_JWT_SECRET",
 		},
 		{
-			name: "missing internal auth secret",
+			name: "invalid auth mode",
 			setenv: func(t *testing.T) {
 				t.Helper()
 				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("BFF_JWT_SECRET", "secret")
+				t.Setenv("AUTH_MODE", "wrong")
 				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
 				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 			},
-			wantErrMsg: "missing required config INTERNAL_AUTH_SYNC_SECRET",
+			wantErrMsg: "invalid config AUTH_MODE: wrong",
 		},
 		{
 			name: "missing key id",
 			setenv: func(t *testing.T) {
 				t.Helper()
 				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("BFF_JWT_SECRET", "secret")
-				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
 				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 			},
 			wantErrMsg: "missing required config API_ENV_ENCRYPTION_KEY_ID",
@@ -117,8 +109,6 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 			setenv: func(t *testing.T) {
 				t.Helper()
 				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("BFF_JWT_SECRET", "secret")
-				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
 				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
 			},
 			wantErrMsg: "missing required config API_ENV_ENCRYPTION_KEY",
@@ -134,41 +124,21 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 	}
 }
 
-func TestLoadScaled(t *testing.T) {
-	t.Run("reads explicit config", func(t *testing.T) {
-		t.Setenv("ENVIRONMENT", " prod ")
-		t.Setenv("NATS_URL", " nats://10.0.0.1:4222 ")
+func TestLoadScaledReadsExplicitConfig(t *testing.T) {
+	t.Setenv("ENVIRONMENT", "production")
+	t.Setenv("NATS_URL", " nats://10.0.0.1:4222 ")
 
-		cfg := LoadScaled()
-		assert.Equal(t, "production", cfg.Environment)
-		assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
-	})
+	cfg, err := LoadScaled()
+	require.NoError(t, err)
+	assert.Equal(t, productionEnvironment, cfg.Environment)
+	assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
 }
 
 func TestLoadScaledAppliesDefaults(t *testing.T) {
-	t.Run("fills defaults", func(t *testing.T) {
-		cfg := LoadScaled()
-		assert.Equal(t, defaultEnvironment, cfg.Environment)
-		assert.Equal(t, defaultNATSURL, cfg.NATSURL)
-	})
-}
-
-func TestControlListenAddr(t *testing.T) {
-	tests := []struct {
-		name string
-		cfg  Control
-		want string
-	}{
-		{name: "bare port", cfg: Control{Port: "8081"}, want: ":8081"},
-		{name: "host and port", cfg: Control{Port: "127.0.0.1:8081"}, want: "127.0.0.1:8081"},
-		{name: "default port", cfg: Control{}, want: ":8080"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, tc.cfg.ListenAddr())
-		})
-	}
+	cfg, err := LoadScaled()
+	require.NoError(t, err)
+	assert.Equal(t, developmentEnvironment, cfg.Environment)
+	assert.Equal(t, defaultNATSURL, cfg.NATSURL)
 }
 
 func TestDecodeEnvEncryptionKey(t *testing.T) {
@@ -178,6 +148,12 @@ func TestDecodeEnvEncryptionKey(t *testing.T) {
 		wantErrMsg  string
 		wantKeySize int
 	}{
+		{
+			name:        "missing key",
+			raw:         "",
+			wantErrMsg:  "missing required config API_ENV_ENCRYPTION_KEY",
+			wantKeySize: 0,
+		},
 		{
 			name:        "invalid base64",
 			raw:         "%%%",
@@ -206,6 +182,7 @@ func TestDecodeEnvEncryptionKey(t *testing.T) {
 				assert.Len(t, key, tc.wantKeySize)
 				return
 			}
+
 			require.EqualError(t, err, tc.wantErrMsg)
 			assert.Nil(t, key)
 		})
