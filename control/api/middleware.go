@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -25,6 +26,11 @@ type Metadata struct {
 }
 
 type contextKey struct{}
+
+const (
+	maxUserAgentLogLen  = 255
+	maxPanicValueLogLen = 200
+)
 
 // MetadataFromContext returns mutable request log metadata when middleware installed it.
 func MetadataFromContext(ctx context.Context) (*Metadata, bool) {
@@ -179,4 +185,26 @@ func clientIP(remoteAddr string) string {
 		return remoteAddr
 	}
 	return host
+}
+
+func userAgentLogAttr(rawUserAgent string) (string, string, bool) {
+	ua := strings.TrimSpace(rawUserAgent)
+	if ua == "" {
+		return "", "", false
+	}
+	return "user_agent", truncateLogString(ua, maxUserAgentLogLen), true
+}
+
+func truncateLogString(input string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+	}
+	if len(input) <= maxLen {
+		return input
+	}
+	return input[:maxLen]
+}
+
+func panicValueLogValue(recovered any) string {
+	return truncateLogString(fmt.Sprint(recovered), maxPanicValueLogLen)
 }
