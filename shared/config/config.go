@@ -22,18 +22,6 @@ const (
 	defaultAuthAudience = "spacescale-api"
 )
 
-// AuthMode controls whether control-plane auth is enforced.
-type AuthMode string
-
-const (
-	// AuthModeDisabled bypasses auth for local development.
-	AuthModeDisabled AuthMode = "disabled"
-	// AuthModeEnabled requires configured auth credentials.
-	AuthModeEnabled  AuthMode = "enabled"
-
-	defaultAuthMode = AuthModeDisabled
-)
-
 // Control is the runtime configuration for the control plane.
 type Control struct {
 	Environment        string
@@ -53,7 +41,7 @@ type Scaled struct {
 
 // AuthConfig contains first-party control-plane auth settings.
 type AuthConfig struct {
-	Mode      AuthMode
+	Enabled   bool
 	JWTSecret string
 	Issuer    string
 	Audience  string
@@ -64,7 +52,7 @@ type controlEnv struct {
 	NATSURL            string `env:"NATS_URL" envDefault:"nats://127.0.0.1:4222"`
 	DatabaseURL        string `env:"DATABASE_URL"`
 	ListenAddr         string `env:"LISTEN_ADDR" envDefault:":8080"`
-	AuthMode           string `env:"AUTH_MODE" envDefault:"disabled"`
+	AuthEnabled        bool   `env:"AUTH_ENABLED" envDefault:"false"`
 	AuthJWTSecret      string `env:"AUTH_JWT_SECRET"`
 	AuthIssuer         string `env:"AUTH_ISSUER" envDefault:"api.spacescale.io"`
 	AuthAudience       string `env:"AUTH_AUDIENCE" envDefault:"spacescale-api"`
@@ -85,12 +73,12 @@ func LoadControl() (Control, error) {
 	}
 
 	cfg := Control{
-		Environment: resolveEnvironment(raw.Environment),
+		Environment: strings.TrimSpace(raw.Environment),
 		NATSURL:     strings.TrimSpace(raw.NATSURL),
 		DatabaseURL: strings.TrimSpace(raw.DatabaseURL),
 		ListenAddr:  strings.TrimSpace(raw.ListenAddr),
 		Auth: AuthConfig{
-			Mode:      AuthMode(strings.ToLower(strings.TrimSpace(raw.AuthMode))),
+			Enabled:   raw.AuthEnabled,
 			JWTSecret: strings.TrimSpace(raw.AuthJWTSecret),
 			Issuer:    strings.TrimSpace(raw.AuthIssuer),
 			Audience:  strings.TrimSpace(raw.AuthAudience),
@@ -113,17 +101,23 @@ func LoadScaled() (Scaled, error) {
 	}
 
 	cfg := Scaled{
-		Environment: resolveEnvironment(raw.Environment),
+		Environment: strings.TrimSpace(raw.Environment),
 		NATSURL:     strings.TrimSpace(raw.NATSURL),
 	}
 	if cfg.NATSURL == "" {
 		cfg.NATSURL = defaultNATSURL
+	}
+	if err := normalizeAndValidateEnvironment(&cfg.Environment); err != nil {
+		return Scaled{}, err
 	}
 
 	return cfg, nil
 }
 
 func (c *Control) normalizeAndValidate(rawEncryptionKey string) error {
+	if err := normalizeAndValidateEnvironment(&c.Environment); err != nil {
+		return err
+	}
 	if c.NATSURL == "" {
 		c.NATSURL = defaultNATSURL
 	}
@@ -150,33 +144,31 @@ func (c *Control) normalizeAndValidate(rawEncryptionKey string) error {
 }
 
 func (a *AuthConfig) normalizeAndValidate() error {
-	if a.Mode == "" {
-		a.Mode = defaultAuthMode
-	}
-	switch a.Mode {
-	case AuthModeDisabled, AuthModeEnabled:
-	default:
-		return fmt.Errorf("invalid config AUTH_MODE: %s", a.Mode)
-	}
-
 	if a.Issuer == "" {
 		a.Issuer = defaultAuthIssuer
 	}
 	if a.Audience == "" {
 		a.Audience = defaultAuthAudience
 	}
-	if a.Mode != AuthModeDisabled && a.JWTSecret == "" {
+	if a.Enabled && a.JWTSecret == "" {
 		return errors.New("missing required config AUTH_JWT_SECRET")
 	}
 
 	return nil
 }
 
-func resolveEnvironment(raw string) string {
-	if strings.TrimSpace(raw) == "" {
-		return developmentEnvironment
+func normalizeAndValidateEnvironment(environment *string) error {
+	trimmed := strings.TrimSpace(*environment)
+	if trimmed == "" {
+		*environment = developmentEnvironment
+		return nil
 	}
-	return productionEnvironment
+	if trimmed == productionEnvironment {
+		*environment = productionEnvironment
+		return nil
+	}
+
+	return errors.New("invalid config ENVIRONMENT")
 }
 
 func decodeEnvEncryptionKey(raw, envName string) ([]byte, error) {

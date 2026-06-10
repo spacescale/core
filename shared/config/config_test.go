@@ -15,7 +15,7 @@ func TestLoadControlReadsExplicitConfig(t *testing.T) {
 	t.Setenv("NATS_URL", " nats://10.0.0.1:4222 ")
 	t.Setenv("DATABASE_URL", " postgres://user:pass@db/spacescale ")
 	t.Setenv("LISTEN_ADDR", " 127.0.0.1:9090 ")
-	t.Setenv("AUTH_MODE", string(AuthModeEnabled))
+	t.Setenv("AUTH_ENABLED", "true")
 	t.Setenv("AUTH_JWT_SECRET", " secret ")
 	t.Setenv("AUTH_ISSUER", " issuer ")
 	t.Setenv("AUTH_AUDIENCE", " audience ")
@@ -29,7 +29,7 @@ func TestLoadControlReadsExplicitConfig(t *testing.T) {
 	assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
 	assert.Equal(t, "postgres://user:pass@db/spacescale", cfg.DatabaseURL)
 	assert.Equal(t, "127.0.0.1:9090", cfg.ListenAddr)
-	assert.Equal(t, AuthModeEnabled, cfg.Auth.Mode)
+	assert.True(t, cfg.Auth.Enabled)
 	assert.Equal(t, "secret", cfg.Auth.JWTSecret)
 	assert.Equal(t, "issuer", cfg.Auth.Issuer)
 	assert.Equal(t, "audience", cfg.Auth.Audience)
@@ -50,7 +50,7 @@ func TestLoadControlAppliesDefaults(t *testing.T) {
 	assert.Equal(t, developmentEnvironment, cfg.Environment)
 	assert.Equal(t, defaultNATSURL, cfg.NATSURL)
 	assert.Equal(t, defaultListenAddr, cfg.ListenAddr)
-	assert.Equal(t, AuthModeDisabled, cfg.Auth.Mode)
+	assert.False(t, cfg.Auth.Enabled)
 	assert.Equal(t, defaultAuthIssuer, cfg.Auth.Issuer)
 	assert.Equal(t, defaultAuthAudience, cfg.Auth.Audience)
 	assert.Empty(t, cfg.Auth.JWTSecret)
@@ -65,6 +65,17 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 		wantErrMsg string
 	}{
 		{
+			name: "invalid environment",
+			setenv: func(t *testing.T) {
+				t.Helper()
+				t.Setenv("ENVIRONMENT", "staging")
+				t.Setenv("DATABASE_URL", "postgres://db")
+				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+			},
+			wantErrMsg: "invalid config ENVIRONMENT",
+		},
+		{
 			name: "missing database url",
 			setenv: func(t *testing.T) {
 				t.Helper()
@@ -78,22 +89,11 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 			setenv: func(t *testing.T) {
 				t.Helper()
 				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("AUTH_MODE", string(AuthModeEnabled))
+				t.Setenv("AUTH_ENABLED", "true")
 				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
 				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 			},
 			wantErrMsg: "missing required config AUTH_JWT_SECRET",
-		},
-		{
-			name: "invalid auth mode",
-			setenv: func(t *testing.T) {
-				t.Helper()
-				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("AUTH_MODE", "wrong")
-				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
-				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
-			},
-			wantErrMsg: "invalid config AUTH_MODE: wrong",
 		},
 		{
 			name: "missing key id",
@@ -132,6 +132,13 @@ func TestLoadScaledReadsExplicitConfig(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, productionEnvironment, cfg.Environment)
 	assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
+}
+
+func TestLoadScaledRejectsInvalidEnvironment(t *testing.T) {
+	t.Setenv("ENVIRONMENT", "staging")
+
+	_, err := LoadScaled()
+	require.EqualError(t, err, "invalid config ENVIRONMENT")
 }
 
 func TestLoadScaledAppliesDefaults(t *testing.T) {

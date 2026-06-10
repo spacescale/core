@@ -60,7 +60,7 @@ func newTestServer(t *testing.T) *testServer {
 		require.NoError(t, err)
 	}
 
-	authCfg := config.AuthConfig{Mode: config.AuthModeEnabled, JWTSecret: testJWTSecret, Issuer: testIssuer, Audience: testAudience}
+	authCfg := config.AuthConfig{Enabled: true, JWTSecret: testJWTSecret, Issuer: testIssuer, Audience: testAudience}
 
 	queries := sqlc.New(pool)
 	svcs, err := service.NewServices(service.Deps{
