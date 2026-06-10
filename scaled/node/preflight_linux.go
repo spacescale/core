@@ -3,14 +3,12 @@ package node
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"os/user"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -21,6 +19,7 @@ const (
 	ksmRunPath     = "/sys/kernel/mm/ksm/run"
 	smtControlPath = "/sys/devices/system/cpu/smt/control"
 	procSwapsPath  = "/proc/swaps"
+	machineIDPath  = "/etc/machine-id"
 
 	// FirecrackerJailerAccountName is the dedicated Linux account used for
 	// jailed Firecracker VMM processes.
@@ -36,20 +35,15 @@ const (
 	defaultRootFSPath      = "/var/lib/spacescale/golden/rootfs.ext4"
 )
 
-const (
-	defaultStateDir  = "/var/lib/spacescale"
-	identityFileName = "identity.json"
-)
-
 var (
-	errIdentityNotFound = errors.New("node identity not found")
-	errInvalidIdentity  = errors.New("invalid node identity")
+	errMachineIDNotFound = errors.New("machine id not found")
+	errInvalidIdentity   = errors.New("invalid node identity")
 )
 
 // Identity is the persistent node identity provisioned during initial boot.
 type Identity struct {
-	NodeID string `json:"node_id"`
-	Region string `json:"region"`
+	NodeID string
+	Region string
 }
 
 // RuntimePaths are the host-local binaries and guest images baked into the node image.
@@ -69,10 +63,6 @@ type Info struct {
 	Identity       Identity
 }
 
-func identityPath() string {
-	return filepath.Join(defaultStateDir, identityFileName)
-}
-
 // Collect gathers host facts, validates runtime paths, loads identity, and runs
 // node preflight. Call once at startup and pass the result to workload.Start.
 func Collect(ctx context.Context, logger *slog.Logger) (Info, error) {
@@ -88,7 +78,7 @@ func Collect(ctx context.Context, logger *slog.Logger) (Info, error) {
 	if err != nil {
 		return Info{}, err
 	}
-	identity, err := loadIdentity(identityPath())
+	identity, err := loadIdentity(machineIDPath, os.Getenv("SPACESCALE_REGION"))
 	if err != nil {
 		return Info{}, err
 	}
@@ -101,18 +91,18 @@ func Collect(ctx context.Context, logger *slog.Logger) (Info, error) {
 	}, nil
 }
 
-func loadIdentity(path string) (Identity, error) {
-	raw, err := os.ReadFile(path)
+func loadIdentity(machineIDPath, region string) (Identity, error) {
+	raw, err := os.ReadFile(machineIDPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return Identity{}, errIdentityNotFound
+			return Identity{}, errMachineIDNotFound
 		}
 
-		return Identity{}, fmt.Errorf("read node identity: %w", err)
+		return Identity{}, fmt.Errorf("read machine id: %w", err)
 	}
-	var identity Identity
-	if err := json.Unmarshal(raw, &identity); err != nil {
-		return Identity{}, fmt.Errorf("decode node identity: %w", err)
+	identity := Identity{
+		NodeID: strings.TrimSpace(string(raw)),
+		Region: strings.TrimSpace(region),
 	}
 	if identity.NodeID == "" || identity.Region == "" {
 		return Identity{}, errInvalidIdentity

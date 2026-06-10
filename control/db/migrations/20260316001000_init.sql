@@ -118,7 +118,7 @@ CREATE TABLE nodes (
     provider TEXT NOT NULL CHECK (provider IN ('ovh', 'colo', 'heztner')),
     provider_server_id TEXT NOT NULL,
     region TEXT NOT NULL,
-    bootstrap_token_hash TEXT UNIQUE,
+    UNIQUE (provider, provider_server_id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

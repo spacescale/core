@@ -9,7 +9,6 @@ import (
 // Services groups domain services used by HTTP and control-fabric wiring.
 type Services struct {
 	Tenant TenantServices
-	Fleet  FleetServices
 }
 
 // Deps groups shared dependencies used to construct control-plane services.
@@ -29,11 +28,6 @@ type TenantServices struct {
 	Apps       *tenant.AppService
 }
 
-// FleetServices groups control plane business logic for managed edge fleet lifecycle.
-type FleetServices struct {
-	Bootstrap *BootstrapService
-}
-
 // NewServices builds all service dependencies from one shared dependency set.
 func NewServices(deps Deps) (*Services, error) {
 	envCipher, err := tenant.NewEnvValueCipher(deps.EnvEncryptionKeyID, deps.EnvEncryptionKey)
@@ -48,9 +42,6 @@ func NewServices(deps Deps) (*Services, error) {
 			Workspaces: tenant.NewWorkspaceService(deps.Queries),
 			Bootstrap:  tenant.NewBootstrapService(deps.Queries),
 			Apps:       tenant.NewAppService(deps.Queries, deps.DBPool, envCipher),
-		},
-		Fleet: FleetServices{
-			Bootstrap: NewBootstrapService(deps.Queries, deps.DBPool),
 		},
 	}, nil
 }

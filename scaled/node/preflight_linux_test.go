@@ -22,24 +22,26 @@ import (
 )
 
 func TestLoadIdentityReadsValidIdentity(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "identity.json")
-	require.NoError(t, os.WriteFile(path, []byte(`{"node_id":"node-1","region":"eu-central"}`), 0o600))
+	path := filepath.Join(t.TempDir(), "machine-id")
+	require.NoError(t, os.WriteFile(path, []byte("node-1\n"), 0o600))
+	t.Setenv("SPACESCALE_REGION", "eu-central")
 
-	identity, err := loadIdentity(path)
+	identity, err := loadIdentity(path, os.Getenv("SPACESCALE_REGION"))
 	require.NoError(t, err)
 	assert.Equal(t, Identity{NodeID: "node-1", Region: "eu-central"}, identity)
 }
 
 func TestLoadIdentityMissingFile(t *testing.T) {
-	_, err := loadIdentity(filepath.Join(t.TempDir(), "identity.json"))
-	require.ErrorIs(t, err, errIdentityNotFound)
+	t.Setenv("SPACESCALE_REGION", "eu-central")
+	_, err := loadIdentity(filepath.Join(t.TempDir(), "machine-id"), os.Getenv("SPACESCALE_REGION"))
+	require.ErrorIs(t, err, errMachineIDNotFound)
 }
 
 func TestLoadIdentityRejectsIncompleteIdentity(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "identity.json")
-	require.NoError(t, os.WriteFile(path, []byte(`{"node_id":"node-1"}`), 0o600))
+	path := filepath.Join(t.TempDir(), "machine-id")
+	require.NoError(t, os.WriteFile(path, []byte("node-1\n"), 0o600))
 
-	_, err := loadIdentity(path)
+	_, err := loadIdentity(path, "")
 	require.ErrorIs(t, err, errInvalidIdentity)
 }
 

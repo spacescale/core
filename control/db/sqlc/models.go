@@ -87,13 +87,12 @@ type NameWord struct {
 }
 
 type Node struct {
-	ID                 uuid.UUID
-	Provider           string
-	ProviderServerID   string
-	Region             string
-	BootstrapTokenHash *string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID               uuid.UUID
+	Provider         string
+	ProviderServerID string
+	Region           string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type Project struct {
