@@ -35,14 +35,13 @@ const (
 // The service layer keeps this type database-agnostic so handlers and callers
 // do not depend directly on SQLC-generated wrapper types.
 type User struct {
-	ID                  string
-	IdentityKey         string
-	Email               string
-	Name                string
-	AvatarURL           string
-	OnboardingCompleted bool
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ID          string
+	IdentityKey string
+	Email       string
+	Name        string
+	AvatarURL   string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // UserService provides user identity and profile persistence operations.
@@ -149,14 +148,13 @@ func (s *UserService) SyncAuthUser(ctx context.Context, p SyncAuthUserParams) (U
 // fields into plain service strings.
 func userFromRow(r sqlc.User) User {
 	return User{
-		ID:                  r.ID.String(),
-		IdentityKey:         r.IdentityKey,
-		Email:               stringValue(r.Email),
-		Name:                stringValue(r.Name),
-		AvatarURL:           stringValue(r.AvatarUrl),
-		OnboardingCompleted: r.OnboardingCompleted,
-		CreatedAt:           r.CreatedAt,
-		UpdatedAt:           r.UpdatedAt,
+		ID:          r.ID.String(),
+		IdentityKey: r.IdentityKey,
+		Email:       stringValue(r.Email),
+		Name:        stringValue(r.Name),
+		AvatarURL:   stringValue(r.AvatarUrl),
+		CreatedAt:   r.CreatedAt,
+		UpdatedAt:   r.UpdatedAt,
 	}
 }
 

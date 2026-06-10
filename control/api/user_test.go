@@ -14,8 +14,7 @@ import (
 )
 
 type syncAuthUserResponse struct {
-	ID                  string `json:"id"`
-	OnboardingCompleted bool   `json:"onboardingCompleted"`
+	ID string `json:"id"`
 }
 
 func TestSyncAuthUserInvalidJSON(t *testing.T) {
@@ -69,7 +68,6 @@ func TestSyncAuthUserSuccess(t *testing.T) {
 	var out syncAuthUserResponse
 	require.NoError(t, json.Unmarshal(data, &out))
 	require.NotEmpty(t, out.ID)
-	require.False(t, out.OnboardingCompleted)
 }
 
 func TestSyncAuthUserReturnsSameUserOnResync(t *testing.T) {
@@ -102,7 +100,6 @@ func TestSyncAuthUserReturnsSameUserOnResync(t *testing.T) {
 	var second syncAuthUserResponse
 	require.NoError(t, json.Unmarshal(secondData, &second))
 	require.Equal(t, first.ID, second.ID)
-	require.Equal(t, first.OnboardingCompleted, second.OnboardingCompleted)
 }
 
 func TestSyncAuthUserRejectsTooLongIdentity(t *testing.T) {

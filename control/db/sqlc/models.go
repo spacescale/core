@@ -117,14 +117,13 @@ type RegistryCredential struct {
 }
 
 type User struct {
-	ID                  uuid.UUID
-	IdentityKey         string
-	Email               *string
-	Name                *string
-	AvatarUrl           *string
-	OnboardingCompleted bool
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ID          uuid.UUID
+	IdentityKey string
+	Email       *string
+	Name        *string
+	AvatarUrl   *string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type Workspace struct {

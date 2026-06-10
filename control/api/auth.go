@@ -58,8 +58,7 @@ type syncUserRequest struct {
 }
 
 type syncUserResponse struct {
-	ID                  string `json:"id"`
-	OnboardingCompleted bool   `json:"onboardingCompleted"`
+	ID string `json:"id"`
 }
 
 type principalContextKey struct{}
@@ -193,8 +192,7 @@ func SyncUserHandler(users *tenant.UserService, limiter *httprate.RateLimiter) h
 		}
 
 		JSON(responseWriter, http.StatusOK, syncUserResponse{
-			ID:                  user.ID,
-			OnboardingCompleted: user.OnboardingCompleted,
+			ID: user.ID,
 		})
 	}
 }
@@ -291,14 +289,13 @@ func parseAndValidateClaims(tokenString string, cfg config.AuthConfig) (*bffClai
 
 func emptyTenantUser() tenant.User {
 	return tenant.User{
-		ID:                  "",
-		IdentityKey:         "",
-		Email:               "",
-		Name:                "",
-		AvatarURL:           "",
-		OnboardingCompleted: false,
-		CreatedAt:           time.Time{},
-		UpdatedAt:           time.Time{},
+		ID:          "",
+		IdentityKey: "",
+		Email:       "",
+		Name:        "",
+		AvatarURL:   "",
+		CreatedAt:   time.Time{},
+		UpdatedAt:   time.Time{},
 	}
 }
 

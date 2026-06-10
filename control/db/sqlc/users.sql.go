@@ -12,7 +12,7 @@ import (
 )
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, identity_key, email, name, avatar_url, onboarding_completed, created_at, updated_at
+SELECT id, identity_key, email, name, avatar_url, created_at, updated_at
 FROM users
 WHERE id = $1
 `
@@ -26,7 +26,6 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.Email,
 		&i.Name,
 		&i.AvatarUrl,
-		&i.OnboardingCompleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -34,7 +33,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 }
 
 const getUserByIdentityKey = `-- name: GetUserByIdentityKey :one
-SELECT id, identity_key, email, name, avatar_url, onboarding_completed, created_at, updated_at
+SELECT id, identity_key, email, name, avatar_url, created_at, updated_at
 FROM users
 WHERE identity_key = $1
 `
@@ -48,7 +47,6 @@ func (q *Queries) GetUserByIdentityKey(ctx context.Context, identityKey string) 
 		&i.Email,
 		&i.Name,
 		&i.AvatarUrl,
-		&i.OnboardingCompleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -63,7 +61,7 @@ UPDATE
     name = EXCLUDED.name,
     avatar_url = EXCLUDED.avatar_url,
     updated_at = now()
-    RETURNING id, identity_key, email, name, avatar_url, onboarding_completed, created_at, updated_at
+    RETURNING id, identity_key, email, name, avatar_url, created_at, updated_at
 `
 
 type UpsertUserByIdentityKeyParams struct {
@@ -87,7 +85,6 @@ func (q *Queries) UpsertUserByIdentityKey(ctx context.Context, arg UpsertUserByI
 		&i.Email,
 		&i.Name,
 		&i.AvatarUrl,
-		&i.OnboardingCompleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

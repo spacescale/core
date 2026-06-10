@@ -13,7 +13,6 @@ CREATE TABLE users
     email                TEXT CHECK (email IS NULL OR CHAR_LENGTH(email) <= 320),
     name                 TEXT CHECK (name IS NULL OR CHAR_LENGTH(name) <= 255),
     avatar_url           TEXT CHECK (avatar_url IS NULL OR CHAR_LENGTH(avatar_url) <= 2048),
-    onboarding_completed BOOLEAN     NOT NULL DEFAULT FALSE,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
