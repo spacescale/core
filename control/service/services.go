@@ -1,3 +1,4 @@
+// Package service wires control-plane business services.
 package service
 
 import (

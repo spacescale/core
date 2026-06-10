@@ -2,6 +2,7 @@ package nats
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -14,8 +15,8 @@ import (
 	natsgo "github.com/nats-io/nats.go"
 	"github.com/spacescale/core/shared/pb/v1"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/runtime/protoiface"
 )
 
@@ -79,21 +80,27 @@ func (failingProtoMessage) ProtoReflect() protoreflect.Message { return failingP
 func (failingProtoReflect) Descriptor() protoreflect.MessageDescriptor { return nil }
 func (failingProtoReflect) Type() protoreflect.MessageType             { return nil }
 func (failingProtoReflect) New() protoreflect.Message                  { return failingProtoReflect{} }
-func (failingProtoReflect) Interface() protoreflect.ProtoMessage      { return failingProtoMessage{} }
+func (failingProtoReflect) Interface() protoreflect.ProtoMessage       { return failingProtoMessage{} }
 func (failingProtoReflect) Range(func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
 }
-func (failingProtoReflect) Has(protoreflect.FieldDescriptor) bool                    { return false }
-func (failingProtoReflect) Clear(protoreflect.FieldDescriptor)                      {}
-func (failingProtoReflect) Get(protoreflect.FieldDescriptor) protoreflect.Value      { return protoreflect.Value{} }
-func (failingProtoReflect) Set(protoreflect.FieldDescriptor, protoreflect.Value)     {}
-func (failingProtoReflect) Mutable(protoreflect.FieldDescriptor) protoreflect.Value  { return protoreflect.Value{} }
-func (failingProtoReflect) NewField(protoreflect.FieldDescriptor) protoreflect.Value { return protoreflect.Value{} }
+func (failingProtoReflect) Has(protoreflect.FieldDescriptor) bool { return false }
+func (failingProtoReflect) Clear(protoreflect.FieldDescriptor)    {}
+func (failingProtoReflect) Get(protoreflect.FieldDescriptor) protoreflect.Value {
+	return protoreflect.Value{}
+}
+func (failingProtoReflect) Set(protoreflect.FieldDescriptor, protoreflect.Value) {}
+func (failingProtoReflect) Mutable(protoreflect.FieldDescriptor) protoreflect.Value {
+	return protoreflect.Value{}
+}
+func (failingProtoReflect) NewField(protoreflect.FieldDescriptor) protoreflect.Value {
+	return protoreflect.Value{}
+}
 func (failingProtoReflect) WhichOneof(protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	return nil
 }
 func (failingProtoReflect) GetUnknown() protoreflect.RawFields { return nil }
-func (failingProtoReflect) SetUnknown(protoreflect.RawFields)   {}
-func (failingProtoReflect) IsValid() bool                        { return true }
+func (failingProtoReflect) SetUnknown(protoreflect.RawFields)  {}
+func (failingProtoReflect) IsValid() bool                      { return true }
 func (failingProtoReflect) ProtoMethods() *protoiface.Methods {
 	return &protoiface.Methods{
 		Marshal: func(protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
@@ -301,9 +308,12 @@ func TestNewLogsDisconnect(t *testing.T) {
 }
 
 func TestNewLogsReconnect(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	var lc net.ListenConfig
+	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	port := ln.Addr().(*net.TCPAddr).Port
+	tcpAddr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	port := tcpAddr.Port
 	require.NoError(t, ln.Close())
 
 	var buf bytes.Buffer
@@ -356,7 +366,7 @@ func TestNewLogsAsyncError(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, sub.SetPendingLimits(1, 1))
 
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		require.NoError(t, rawConn.Publish("test.async.error", []byte("x")))
 	}
 	require.NoError(t, rawConn.Flush())
