@@ -1,49 +1,46 @@
-.PHONY: db cp provision-node scaled view-bootstrap-token view-identity proto mint yaak-refresh test stop
+.PHONY: compose-start controlp build-scaled clean-dist proto lint test coverage stop ssh
 
 
-db:
-	docker-compose up -d db nats
-	@bash -euo pipefail -c 'until docker-compose exec -T db psql -U spacescale -d spacescale -c "select 1" >/dev/null 2>&1 && docker-compose exec -T db psql -U spacescale -d spacescale_test -c "select 1" >/dev/null 2>&1; do sleep 1; done'
-	goose -dir internal/scalecp/db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale?sslmode=disable" up
-	goose -dir internal/scalecp/db/migrations postgres "postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" up
+compose-start:
+	docker compose up -d controlp
 
 
-cp: db
-	@echo "Starting scalecp..."
-	set -a && . ./.env.local && set +a && : "$${DATABASE_URL:?DATABASE_URL missing in .env.local}" && go run ./cmd/scalecp
+controlp:
+	docker compose up controlp
 
 
-provision-node: db
-	./scripts/dev/provision-manual-node.sh
+build-scaled:
+	mkdir -p dist
+	GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/scaled ./cmd/scaled
 
 
-scaled:
-	ssh root@65.109.67.102 'bash -lc /usr/local/bin/scaled'
-
-
-view-bootstrap-token:
-	ssh root@65.109.67.102 'cat /var/lib/spacescale/bootstrap_token'
-
-
-view-identity:
-	ssh root@65.109.67.102 'cat /var/lib/spacescale/identity.json'
+clean-dist:
+	rm -rf dist
 
 
 proto:
 	protoc --proto_path=. --go_out=. --go_opt=module=github.com/spacescale/core $$(find proto -type f -name '*.proto' | sort)
 
 
-mint:
-	./scripts/dev/mint-local-token.sh
+lint:
+	golangci-lint run ./...
 
 
-yaak-refresh:
-	./scripts/dev/mint-local-token.sh --update-yaak
+test:
+	docker compose run --rm coverage /usr/local/go/bin/go test ./... -cover
 
 
-test: db
-	TEST_DATABASE_URL="postgres://spacescale:spacescale@localhost:5432/spacescale_test?sslmode=disable" go test ./... -race
+coverage:
+	docker compose up coverage
+	go tool cover -html=coverage.out -o coverage.html
+	open coverage.html
 
 
 stop:
-	docker-compose down -v
+	docker compose down
+
+stop-with-volume:
+	docker 	compose down -v
+
+ssh:
+	ssh ubuntu@4.249.148.167

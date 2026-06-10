@@ -2,31 +2,12 @@ syntax = "proto3";
 
 package spacescale.v1;
 
-option go_package = "github.com/spacescale/core/internal/shared/pb/v1;pb";
-
-
-// NodeBootstrapRequest is sent by the 'scaled' daemon on first boot.
-// It reports the "Physical Truth" discovered by the hardware probe.
-message NodeBootstrapRequest {
-  string bootstrap_token = 1; // one time bootstrap secret baked onto the host
-  string boot_id = 3; // boot id to stores ths initial also, if system boots it changes
-  uint32 total_cores = 4;
-  uint64 total_ram_mb = 5;    // 262144 From /proc/meminfo
-  uint64 total_disk_mb = 6;  // Total NVMe space
-}
-
-
-// BootstrapResponse is returned by scalecp after bootstrap to assign identity.
-message NodeBootstrapResponse {
-  string node_id = 1; // permanent daemon identity used in heartbeats
-  string region = 2;  // region assigned by the control plane
-  string error = 3;   // optional human readable failure message
-}
-
+option go_package = "github.com/spacescale/core/shared/pb/v1;pb";
 
 message NodeHeartbeat {
   string node_id = 1;           // Who am I?
   uint64 seq_no = 2;            // Am I dropping packets?
   string boot_id = 3;           // Did I suddenly reboot?
   int64 sent_at_unix_nano = 4;  // Is there network lag?
+  string region = 5;            // Provisioned placement region for this node.
 }

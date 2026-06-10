@@ -5,7 +5,7 @@ createdAt: 2026-01-25T02:14:12.171064
 updatedAt: 2026-02-03T05:27:48.452410
 authentication: {}
 authenticationType: null
-description: "Use Yaak variable tokens via autocomplete: ${[ NAME ]}. Before using this workspace, start the local runtime and run `make yaak-refresh` from the repo root. That refresh step mints a local BFF token, syncs the dev user, resolves workspace/project ids, and rewrites the `LOCAL` Yaak environment for the current `/v1` API routes."
+description: "Use Yaak variable tokens via autocomplete: ${[ NAME ]}. Before using this workspace, start the local runtime and populate the `LOCAL` Yaak environment manually: sync the dev user via `POST /v1/internal/auth-sync`, call `POST /v1/bootstrap-defaults`, resolve the workspace and project ids via the `/v1` routes, and set `BFF_TOKEN` in the environment for the current `/v1` API routes."
 headers: []
 name: SpaceScale
 encryptionKeyChallenge: eUE0azNuQwHK95sPS4seaP9Z0gjatH1W3iePzyE1HmZT7ldj2BlfDB+PlkOYbxzPfEwNaR3f4JxUoi2mDgWnxzypwYKOCEmSkDCsJCx916MabrLrKuqfQ7ckWDnc0TyqLfs=

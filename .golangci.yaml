@@ -1,0 +1,55 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    # core Go correctness
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    # nil / err safety
+    - bodyclose
+    - contextcheck
+    - errchkjson
+    - errorlint
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - noctx
+    - rowserrcheck
+    - sqlclosecheck
+    # type / correctness
+    - copyloopvar
+    - exhaustive
+    - forcetypeassert
+    - intrange
+    - makezero
+    - protogetter
+    - unconvert
+    - unparam
+    - wastedassign
+    # hygiene
+    - dupword
+    - gocritic
+    - gomoddirectives
+    - gocheckcompilerdirectives
+    - gochecknoinits
+    - goprintffuncname
+    - misspell
+    - perfsprint
+    - predeclared
+    - reassign
+    - revive
+    - thelper
+    - usetesting
+    - usestdlibvars
+  exclusions:
+    paths:
+      - "^shared/pb/"
+      - "^control/db/sqlc/"
