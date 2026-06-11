@@ -76,9 +76,14 @@ func TestCreateWorkspaceConflict(t *testing.T) {
 	syncAuthUserForTest(t, ts, identityKey)
 
 	workspaceName := fmt.Sprintf("workspace-%d", time.Now().UnixNano())
-	_ = createWorkspaceViaAPI(t, ts, identityKey, workspaceName)
+	body := []byte(fmt.Sprintf(`{"name":"%s"}`, workspaceName))
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces", body, map[string]string{
+		"Cookie":       authCookieForIdentityKey(t, identityKey),
+		"Content-Type": "application/json",
+	})
+	require.Equal(t, http.StatusCreated, resp.StatusCode, string(data))
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces", []byte(fmt.Sprintf(`{"name":"%s"}`, workspaceName)), map[string]string{
+	resp, data = doRequest(t, ts, http.MethodPost, "/v1/workspaces", []byte(fmt.Sprintf(`{"name":"%s"}`, workspaceName)), map[string]string{
 		"Cookie":       authCookieForIdentityKey(t, identityKey),
 		"Content-Type": "application/json",
 	})
