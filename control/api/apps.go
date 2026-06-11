@@ -15,7 +15,7 @@ import (
 const createAppDispatchTimeout = 20 * time.Second
 
 type createAppEnvVarRequest struct {
-	Key      string `json:"key" validate:"required,notblank,max=128"`
+	Key      string `json:"key" validate:"required,notblank,envkey"`
 	Value    string `json:"value" validate:"max=8192"`
 	IsSecret bool   `json:"isSecret"`
 }

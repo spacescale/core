@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"math"
-	"regexp"
 	"strings"
 	"time"
 
@@ -30,11 +29,6 @@ const (
 	defaultAppRuntimePort  = 8080 // fallback when create input omits runtime port.
 	defaultTargetReplicas  = 1    // current create flow launches one microvm by default.
 	defaultRootDiskMB      = 5120 // persisted legacy metadata; not sent to scaled launch shape.
-)
-
-var (
-	appPrimaryRegionPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$`)
-	appEnvVarKeyPattern     = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,127}$`)
 )
 
 const microvmResourceTypeDeployment = "deployment"
@@ -136,23 +130,19 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 		return CreateAppResult{}, err
 	}
 
-	imageRef, ok := normalizeImageRef(params.ImageRef)
-	if !ok {
-		return CreateAppResult{}, ErrInvalidInput
-	}
 	shape, ok := normalizeAppCompute(params.Compute)
 	if !ok {
 		return CreateAppResult{}, ErrInvalidInput
 	}
 
 	primaryRegion := strings.ToLower(strings.TrimSpace(params.PrimaryRegion))
-	name, ok := normalizeOrDeriveAppName(params.Name, imageRef)
+	name, ok := normalizeOrDeriveAppName(params.Name, params.ImageRef)
 	if !ok {
 		return CreateAppResult{}, ErrInvalidInput
 	}
-	runtimePort, ok := normalizeRuntimePort(params.RuntimePort)
-	if !ok {
-		return CreateAppResult{}, ErrInvalidInput
+	runtimePort := defaultAppRuntimePort
+	if params.RuntimePort != nil {
+		runtimePort = *params.RuntimePort
 	}
 	isPublic := normalizeIsPublic(params.IsPublic)
 	envVars, ok := normalizeEnvVars(params.EnvVars)
@@ -190,9 +180,9 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 			ProjectID:             projectUUID,
 			Name:                  name,
 			Slug:                  slug,
-			ImageRef:              imageRef,
+			ImageRef:              params.ImageRef,
 			PrimaryRegion:         primaryRegion,
-			RuntimePort:           runtimePort,
+			RuntimePort:           int32(runtimePort),
 			IsPublic:              isPublic,
 			Shape:                 shape,
 			EnvVars:               envVars,
@@ -240,8 +230,8 @@ func (s *AppService) GetApp(ctx context.Context, ownerUserID, workspaceID, proje
 		return App{}, err
 	}
 
-	appUUID, ok := parseUUID(appID)
-	if !ok {
+	appUUID, err := uuid.Parse(strings.TrimSpace(appID))
+	if err != nil {
 		return App{}, ErrInvalidInput
 	}
 
@@ -469,20 +459,20 @@ func (s *AppService) createEnvVars(ctx context.Context, queries *sqlc.Queries, a
 // authorizeOwnedProject verifies that the owner can access the workspace and
 // project, and that the project belongs to that workspace.
 func (s *AppService) authorizeOwnedProject(ctx context.Context, ownerUserID, workspaceID, projectID string) (uuid.UUID, uuid.UUID, error) {
-	ownerUUID, ok := parseUUID(ownerUserID)
-	if !ok {
+	ownerUUID, err := uuid.Parse(strings.TrimSpace(ownerUserID))
+	if err != nil {
 		return uuid.Nil, uuid.Nil, ErrInvalidInput
 	}
-	workspaceUUID, ok := parseUUID(workspaceID)
-	if !ok {
+	workspaceUUID, err := uuid.Parse(strings.TrimSpace(workspaceID))
+	if err != nil {
 		return uuid.Nil, uuid.Nil, ErrInvalidInput
 	}
-	projectUUID, ok := parseUUID(projectID)
-	if !ok {
+	projectUUID, err := uuid.Parse(strings.TrimSpace(projectID))
+	if err != nil {
 		return uuid.Nil, uuid.Nil, ErrInvalidInput
 	}
 
-	_, err := s.queries.CheckProjectOwnership(ctx, sqlc.CheckProjectOwnershipParams{
+	_, err = s.queries.CheckProjectOwnership(ctx, sqlc.CheckProjectOwnershipParams{
 		ProjectID:   projectUUID,
 		WorkspaceID: workspaceUUID,
 		OwnerUserID: ownerUUID,
@@ -505,12 +495,12 @@ func (s *AppService) resolveRegistryCredential(ctx context.Context, projectID uu
 		return uuid.Nil, false, nil
 	}
 
-	credentialID, ok := parseUUID(rawCredentialID)
-	if !ok {
+	credentialID, err := uuid.Parse(strings.TrimSpace(rawCredentialID))
+	if err != nil {
 		return uuid.Nil, false, ErrInvalidInput
 	}
 
-	_, err := s.queries.GetRegistryCredentialByIDAndProjectID(ctx, sqlc.GetRegistryCredentialByIDAndProjectIDParams{
+	_, err = s.queries.GetRegistryCredentialByIDAndProjectID(ctx, sqlc.GetRegistryCredentialByIDAndProjectIDParams{
 		ID:        credentialID,
 		ProjectID: projectID,
 	})
@@ -523,12 +513,6 @@ func (s *AppService) resolveRegistryCredential(ctx context.Context, projectID uu
 	}
 
 	return credentialID, true, nil
-}
-
-// normalizeImageRef trims and validates image reference input.
-func normalizeImageRef(raw string) (string, bool) {
-	ref := strings.TrimSpace(raw)
-	return ref, ref != ""
 }
 
 func normalizeAppCompute(raw AppComputeInput) (*pb.MicroVMShape, bool) {
@@ -582,16 +566,6 @@ func deriveAppNameFromImageRef(imageRef string) (string, bool) {
 	return lastSegment, lastSegment != ""
 }
 
-// normalizeRuntimePort returns a validated runtime port.
-func normalizeRuntimePort(raw *int) (int32, bool) {
-	port := defaultAppRuntimePort
-	if raw != nil {
-		port = *raw
-	}
-
-	return int32(port), true
-}
-
 // normalizeIsPublic resolves optional public exposure input.
 func normalizeIsPublic(raw *bool) bool {
 	if raw == nil {
@@ -611,10 +585,7 @@ func normalizeEnvVars(raw []AppEnvVarInput) ([]AppEnvVarInput, bool) {
 	out := make([]AppEnvVarInput, 0, len(raw))
 	seen := make(map[string]struct{}, len(raw))
 	for _, item := range raw {
-		key, ok := normalizeEnvVarKey(item.Key)
-		if !ok {
-			return nil, false
-		}
+		key := strings.TrimSpace(item.Key)
 		if _, exists := seen[key]; exists {
 			return nil, false
 		}
@@ -627,17 +598,6 @@ func normalizeEnvVars(raw []AppEnvVarInput) ([]AppEnvVarInput, bool) {
 	}
 
 	return out, true
-}
-
-// normalizeEnvVarKey validates shell-style env var keys.
-// The API layer uppercases keys before service normalization.
-func normalizeEnvVarKey(raw string) (string, bool) {
-	key := strings.TrimSpace(raw)
-	if key == "" || !appEnvVarKeyPattern.MatchString(key) {
-		return "", false
-	}
-
-	return key, true
 }
 
 func isASCIIUpper(ch byte) bool {

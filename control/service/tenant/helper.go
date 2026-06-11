@@ -68,24 +68,6 @@ func slugifyProjectName(name string) string {
 	return strings.Trim(slug[:projectSlugMaxLength], "-")
 }
 
-// normalizeWorkspaceName trims the workspace display name.
-func normalizeWorkspaceName(raw string) (string, bool) {
-	name := strings.TrimSpace(raw)
-	if name == "" {
-		return "", false
-	}
-	return name, true
-}
-
-// normalizeProjectName trims the project display name.
-func normalizeProjectName(raw string) (string, bool) {
-	name := strings.TrimSpace(raw)
-	if name == "" {
-		return "", false
-	}
-	return name, true
-}
-
 // slugWithSuffix appends a random suffix while keeping total slug length bounded.
 func slugWithSuffix(baseSlug, suffix string) string {
 	maxBaseLen := projectSlugMaxLength - len(suffix) - 1

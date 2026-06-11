@@ -124,5 +124,22 @@ func newAPIValidator() *validator.Validate {
 		}
 		return strings.TrimSpace(field.String()) != ""
 	})
+	_ = v.RegisterValidation("envkey", func(fl validator.FieldLevel) bool {
+		field := strings.TrimSpace(fl.Field().String())
+		if field == "" || len(field) > 128 {
+			return false
+		}
+		first := field[0]
+		if !((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z') || first == '_') {
+			return false
+		}
+		for i := 1; i < len(field); i++ {
+			ch := field[i]
+			if !((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_') {
+				return false
+			}
+		}
+		return true
+	})
 	return v
 }

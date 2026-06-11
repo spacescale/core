@@ -49,12 +49,7 @@ func (s *WorkspaceService) CreateWorkspace(ctx context.Context, ownerUserID stri
 	if !ok {
 		return Workspace{}, ErrInvalidInput
 	}
-
-	name, ok := normalizeWorkspaceName(p.Name)
-	if !ok {
-		return Workspace{}, ErrInvalidInput
-	}
-	row, err := s.queries.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{OwnerUserID: ownerID, Name: name})
+	row, err := s.queries.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{OwnerUserID: ownerID, Name: p.Name})
 	if err != nil {
 		if isUniqueViolation(err) {
 			return Workspace{}, ErrConflict
@@ -117,14 +112,10 @@ func (s *WorkspaceService) UpdateWorkspace(ctx context.Context, ownerUserID, wor
 		return Workspace{}, ErrInvalidInput
 	}
 
-	name, ok := normalizeWorkspaceName(p.Name)
-	if !ok {
-		return Workspace{}, ErrInvalidInput
-	}
 	row, err := s.queries.UpdateWorkspaceByIDAndOwnerUserID(ctx, sqlc.UpdateWorkspaceByIDAndOwnerUserIDParams{
 		ID:          wsID,
 		OwnerUserID: ownerID,
-		Name:        name,
+		Name:        p.Name,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
