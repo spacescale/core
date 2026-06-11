@@ -26,7 +26,7 @@ const (
 	testEnvEncryptionKeyID = "test-key-v1"
 	testEnvEncryptionKey   = "0123456789abcdef0123456789abcdef"
 	testWorkOSAPIKey       = "workos-test-key"
-	testWorkOSClientID     = "workos-test-client"
+	testWorkOSClientID     = "client-test"
 	testWorkOSCookieName   = "spacescale_session"
 	testWorkOSCookieSecret = "12345678901234567890123456789012"
 )

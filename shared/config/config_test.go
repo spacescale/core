@@ -16,7 +16,7 @@ func setValidControlEnv(t *testing.T, key string) {
 	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
 	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 	t.Setenv("WORKOS_API_KEY", "workos-key")
-	t.Setenv("WORKOS_CLIENT_ID", "workos-client")
+	t.Setenv("WORKOS_CLIENT_ID", "client-test")
 	t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
 	t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
 	t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
@@ -32,7 +32,7 @@ func TestLoadControlReadsExplicitConfig(t *testing.T) {
 	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", " key-v1 ")
 	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 	t.Setenv("WORKOS_API_KEY", "workos-key")
-	t.Setenv("WORKOS_CLIENT_ID", "workos-client")
+	t.Setenv("WORKOS_CLIENT_ID", "client-test")
 	t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
 	t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
 	t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
@@ -48,7 +48,7 @@ func TestLoadControlReadsExplicitConfig(t *testing.T) {
 	assert.Equal(t, "key-v1", cfg.EnvEncryptionKeyID)
 	assert.Equal(t, key, cfg.EnvEncryptionKey)
 	assert.Equal(t, "workos-key", cfg.WorkOS.APIKey)
-	assert.Equal(t, "workos-client", cfg.WorkOS.ClientID)
+	assert.Equal(t, "client-test", cfg.WorkOS.ClientID)
 	assert.Equal(t, "12345678901234567890123456789012", cfg.WorkOS.CookiePassword)
 	assert.Equal(t, "https://example.com/workos/callback", cfg.WorkOS.RedirectURI)
 	assert.Equal(t, "https://example.com/app", cfg.WorkOS.PostLoginRedirectURI)
@@ -65,7 +65,7 @@ func TestLoadControlReadsTrimmedConfig(t *testing.T) {
 	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", " key-v1 ")
 	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 	t.Setenv("WORKOS_API_KEY", " workos-key ")
-	t.Setenv("WORKOS_CLIENT_ID", " workos-client ")
+	t.Setenv("WORKOS_CLIENT_ID", " client-test ")
 	t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
 	t.Setenv("WORKOS_REDIRECT_URI", " https://example.com/workos/callback ")
 	t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", " https://example.com/app ")
@@ -81,7 +81,7 @@ func TestLoadControlReadsTrimmedConfig(t *testing.T) {
 	assert.Equal(t, "key-v1", cfg.EnvEncryptionKeyID)
 	assert.Equal(t, key, cfg.EnvEncryptionKey)
 	assert.Equal(t, "workos-key", cfg.WorkOS.APIKey)
-	assert.Equal(t, "workos-client", cfg.WorkOS.ClientID)
+	assert.Equal(t, "client-test", cfg.WorkOS.ClientID)
 	assert.Equal(t, "12345678901234567890123456789012", cfg.WorkOS.CookiePassword)
 	assert.Equal(t, "https://example.com/workos/callback", cfg.WorkOS.RedirectURI)
 	assert.Equal(t, "https://example.com/app", cfg.WorkOS.PostLoginRedirectURI)
@@ -211,6 +211,7 @@ func TestLoadControlRejectsInvalidEnvEncryptionKey(t *testing.T) {
 		wantErrMsg string
 	}{
 		{name: "invalid base64", raw: "%%%", wantErrMsg: "Key: 'Control.EnvEncryptionKey' Error:Field validation for 'EnvEncryptionKey' failed on the 'base64' tag"},
+		{name: "short encoded key", raw: base64.StdEncoding.EncodeToString([]byte("short")), wantErrMsg: "Key: 'Control.EnvEncryptionKey' Error:Field validation for 'EnvEncryptionKey' failed on the 'min' tag"},
 	}
 
 	for _, tc := range tests {
@@ -221,7 +222,7 @@ func TestLoadControlRejectsInvalidEnvEncryptionKey(t *testing.T) {
 			t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
 			t.Setenv("API_ENV_ENCRYPTION_KEY", tc.raw)
 			t.Setenv("WORKOS_API_KEY", "workos-key")
-			t.Setenv("WORKOS_CLIENT_ID", "workos-client")
+			t.Setenv("WORKOS_CLIENT_ID", "client-test")
 			t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
 			t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
 			t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")

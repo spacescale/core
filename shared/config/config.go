@@ -14,13 +14,18 @@ const (
 	workOSCookieName  = "spacescale_session"
 )
 
-var configValidator = validator.New(validator.WithRequiredStructEnabled())
+var configValidator = newConfigValidator()
 
-func init() {
-	configValidator.RegisterValidation("base64", func(fl validator.FieldLevel) bool {
+func newConfigValidator() *validator.Validate {
+	v := validator.New(validator.WithRequiredStructEnabled())
+	if err := v.RegisterValidation("base64", func(fl validator.FieldLevel) bool {
 		_, err := base64.StdEncoding.DecodeString(fl.Field().String())
 		return err == nil
-	})
+	}); err != nil {
+		panic(err)
+	}
+
+	return v
 }
 
 // Control is the runtime configuration for the control plane.
@@ -31,7 +36,7 @@ type Control struct {
 	ListenAddr         string `validate:"required"`
 	WorkOS             WorkOSConfig
 	EnvEncryptionKeyID string `validate:"required"`
-	EnvEncryptionKey   string `validate:"required,base64"`
+	EnvEncryptionKey   string `validate:"required,base64,min=44,max=44"`
 }
 
 // Scaled is the runtime configuration for the edge daemon.
