@@ -260,7 +260,7 @@ func (s *Server) handleWorkOSLogin(w http.ResponseWriter, r *http.Request) {
 		&workos.UserManagementGetAuthorizationURLParams{
 			RedirectURI: s.config.WorkOS.RedirectURI,
 			State:       nonEmptyStringPtr(state),
-			Provider:    &provider,
+			Provider:    new(workos.UserManagementAuthenticationProviderAuthkit),
 		},
 	)
 
