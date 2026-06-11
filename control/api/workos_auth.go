@@ -1,8 +1,9 @@
-// Package api keeps the WorkOS browser auth flow next to the HTTP server it
-// serves.
+// Package api keeps the browser-based WorkOS login flow in the same package as
+// the HTTP server that uses it.
 //
-// This file isolates the auth-specific pieces from the rest of the control
-// API so the main server wiring stays easy to scan.
+// The auth flow here is intentionally separated from the rest of the routing
+// code so a new reader can find the login, callback, cookie, and session
+// refresh logic in one place without scanning the whole server file.
 package api
 
 import (
