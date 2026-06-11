@@ -3,7 +3,6 @@ package config
 
 import (
 	"encoding/base64"
-	"fmt"
 	"strings"
 
 	"github.com/caarlos0/env/v11"
@@ -11,12 +10,18 @@ import (
 )
 
 const (
-	envEncryptionKeyBytes = 32
-	defaultListenAddr     = ":8080"
-	workOSCookieName      = "spacescale_session"
+	defaultListenAddr = ":8080"
+	workOSCookieName  = "spacescale_session"
 )
 
 var configValidator = validator.New(validator.WithRequiredStructEnabled())
+
+func init() {
+	configValidator.RegisterValidation("base64", func(fl validator.FieldLevel) bool {
+		_, err := base64.StdEncoding.DecodeString(fl.Field().String())
+		return err == nil
+	})
+}
 
 // Control is the runtime configuration for the control plane.
 type Control struct {
@@ -26,7 +31,7 @@ type Control struct {
 	ListenAddr         string `validate:"required"`
 	WorkOS             WorkOSConfig
 	EnvEncryptionKeyID string `validate:"required"`
-	EnvEncryptionKey   []byte
+	EnvEncryptionKey   string `validate:"required,base64"`
 }
 
 // Scaled is the runtime configuration for the edge daemon.
@@ -87,17 +92,12 @@ func LoadControl() (Control, error) {
 			CookieName:           workOSCookieName,
 		},
 		EnvEncryptionKeyID: strings.TrimSpace(raw.EnvEncryptionKeyID),
+		EnvEncryptionKey:   strings.TrimSpace(raw.EnvEncryptionKey),
 	}
 	cfg.ListenAddr = defaultListenAddr
 	if err := configValidator.Struct(cfg); err != nil {
 		return Control{}, err
 	}
-
-	key, err := decodeEnvEncryptionKey(strings.TrimSpace(raw.EnvEncryptionKey), "API_ENV_ENCRYPTION_KEY")
-	if err != nil {
-		return Control{}, err
-	}
-	cfg.EnvEncryptionKey = key
 
 	return cfg, nil
 }
@@ -117,20 +117,4 @@ func LoadScaled() (Scaled, error) {
 		return Scaled{}, err
 	}
 	return cfg, nil
-}
-
-func decodeEnvEncryptionKey(raw, envName string) ([]byte, error) {
-	if raw == "" {
-		return nil, fmt.Errorf("missing required config %s", envName)
-	}
-
-	key, err := base64.StdEncoding.DecodeString(raw)
-	if err != nil {
-		return nil, fmt.Errorf("invalid config %s: must be base64-encoded 32-byte key", envName)
-	}
-	if len(key) != envEncryptionKeyBytes {
-		return nil, fmt.Errorf("invalid config %s: must decode to 32 bytes", envName)
-	}
-
-	return append([]byte(nil), key...), nil
 }

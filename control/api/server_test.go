@@ -62,7 +62,7 @@ func newTestServer(t *testing.T) *testServer {
 		Queries:            queries,
 		DBPool:             pool,
 		EnvEncryptionKeyID: testEnvEncryptionKeyID,
-		EnvEncryptionKey:   []byte(testEnvEncryptionKey),
+		EnvEncryptionKey:   testEnvEncryptionKey,
 	})
 	if err != nil {
 		pool.Close()

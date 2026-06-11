@@ -19,11 +19,10 @@ func (failingReader) Read(_ []byte) (int, error) {
 
 func TestNewCipher(t *testing.T) {
 	t.Run("trims key id and copies key", func(t *testing.T) {
-		key := bytes.Repeat([]byte{7}, 32)
+		key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))
 		box, err := NewBox("  prod-2026  ", key)
 		require.NoError(t, err)
 
-		key[0] = 9
 		encoded, err := box.Encrypt("hello")
 		require.NoError(t, err)
 		require.Contains(t, encoded, "v1:xchacha20poly1305:prod-2026:")
@@ -44,7 +43,7 @@ func TestNewCipher(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := NewBox(tc.keyID, bytes.Repeat([]byte{1}, tc.keyLen))
+			_, err := NewBox(tc.keyID, base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, tc.keyLen)))
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.wantErr)
 		})
@@ -52,7 +51,7 @@ func TestNewCipher(t *testing.T) {
 }
 
 func TestCipherEncryptDecryptRoundTrip(t *testing.T) {
-	box, err := NewBox("prod-1", bytes.Repeat([]byte{2}, 32))
+	box, err := NewBox("prod-1", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32)))
 	require.NoError(t, err)
 	box.randReader = bytes.NewReader(bytes.Repeat([]byte{3}, box.aead.NonceSize()))
 
@@ -71,7 +70,7 @@ func TestCipherEncryptDecryptRoundTrip(t *testing.T) {
 }
 
 func TestCipherEncryptRejectsNonceReadError(t *testing.T) {
-	box, err := NewBox("prod-1", bytes.Repeat([]byte{2}, 32))
+	box, err := NewBox("prod-1", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32)))
 	require.NoError(t, err)
 	box.randReader = failingReader{}
 
@@ -81,7 +80,7 @@ func TestCipherEncryptRejectsNonceReadError(t *testing.T) {
 }
 
 func TestCipherDecryptRejectsMalformedPayloads(t *testing.T) {
-	box, err := NewBox("prod-1", bytes.Repeat([]byte{2}, 32))
+	box, err := NewBox("prod-1", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32)))
 	require.NoError(t, err)
 	validNonce := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{3}, box.aead.NonceSize()))
 	validCiphertext := base64.RawURLEncoding.EncodeToString([]byte("ciphertext"))
@@ -108,7 +107,7 @@ func TestCipherDecryptRejectsMalformedPayloads(t *testing.T) {
 }
 
 func TestCipherDecryptRejectsTamperedCiphertext(t *testing.T) {
-	box, err := NewBox("prod-1", bytes.Repeat([]byte{2}, 32))
+	box, err := NewBox("prod-1", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32)))
 	require.NoError(t, err)
 	box.randReader = bytes.NewReader(bytes.Repeat([]byte{3}, box.aead.NonceSize()))
 
@@ -128,7 +127,7 @@ func TestCipherDecryptRejectsTamperedCiphertext(t *testing.T) {
 }
 
 func TestCipherEncryptAndDecryptEmptyPlaintext(t *testing.T) {
-	box, err := NewBox("prod-1", bytes.Repeat([]byte{2}, 32))
+	box, err := NewBox("prod-1", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32)))
 	require.NoError(t, err)
 	box.randReader = bytes.NewReader(bytes.Repeat([]byte{3}, box.aead.NonceSize()))
 
@@ -141,7 +140,7 @@ func TestCipherEncryptAndDecryptEmptyPlaintext(t *testing.T) {
 }
 
 func TestCipherDecryptUsesSameKeyID(t *testing.T) {
-	key := bytes.Repeat([]byte{2}, 32)
+	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32))
 	first, err := NewBox("prod-1", key)
 	require.NoError(t, err)
 	first.randReader = bytes.NewReader(bytes.Repeat([]byte{4}, first.aead.NonceSize()))

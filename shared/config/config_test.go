@@ -46,7 +46,7 @@ func TestLoadControlReadsExplicitConfig(t *testing.T) {
 	assert.Equal(t, "postgres://user:pass@db/spacescale", cfg.DatabaseURL)
 	assert.Equal(t, defaultListenAddr, cfg.ListenAddr)
 	assert.Equal(t, "key-v1", cfg.EnvEncryptionKeyID)
-	assert.Len(t, cfg.EnvEncryptionKey, 32)
+	assert.Equal(t, key, cfg.EnvEncryptionKey)
 	assert.Equal(t, "workos-key", cfg.WorkOS.APIKey)
 	assert.Equal(t, "workos-client", cfg.WorkOS.ClientID)
 	assert.Equal(t, "12345678901234567890123456789012", cfg.WorkOS.CookiePassword)
@@ -79,6 +79,7 @@ func TestLoadControlReadsTrimmedConfig(t *testing.T) {
 	assert.Equal(t, "postgres://db", cfg.DatabaseURL)
 	assert.Equal(t, defaultListenAddr, cfg.ListenAddr)
 	assert.Equal(t, "key-v1", cfg.EnvEncryptionKeyID)
+	assert.Equal(t, key, cfg.EnvEncryptionKey)
 	assert.Equal(t, "workos-key", cfg.WorkOS.APIKey)
 	assert.Equal(t, "workos-client", cfg.WorkOS.ClientID)
 	assert.Equal(t, "12345678901234567890123456789012", cfg.WorkOS.CookiePassword)
@@ -203,28 +204,31 @@ func TestLoadScaledRejectsInvalidEnvironment(t *testing.T) {
 	require.EqualError(t, err, "Key: 'Scaled.Environment' Error:Field validation for 'Environment' failed on the 'oneof' tag")
 }
 
-func TestDecodeEnvEncryptionKey(t *testing.T) {
+func TestLoadControlRejectsInvalidEnvEncryptionKey(t *testing.T) {
 	tests := []struct {
-		name        string
-		raw         string
-		wantErrMsg  string
-		wantKeySize int
+		name       string
+		raw        string
+		wantErrMsg string
 	}{
-		{name: "invalid base64", raw: "%%%", wantErrMsg: "invalid config API_ENV_ENCRYPTION_KEY: must be base64-encoded 32-byte key"},
-		{name: "wrong decoded size", raw: base64.StdEncoding.EncodeToString([]byte("short")), wantErrMsg: "invalid config API_ENV_ENCRYPTION_KEY: must decode to 32 bytes"},
-		{name: "valid key", raw: base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012")), wantKeySize: 32},
+		{name: "invalid base64", raw: "%%%", wantErrMsg: "Key: 'Control.EnvEncryptionKey' Error:Field validation for 'EnvEncryptionKey' failed on the 'base64' tag"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			key, err := decodeEnvEncryptionKey(tc.raw, "API_ENV_ENCRYPTION_KEY")
-			if tc.wantErrMsg == "" {
-				require.NoError(t, err)
-				assert.Len(t, key, tc.wantKeySize)
-				return
-			}
+			t.Setenv("ENVIRONMENT", "development")
+			t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
+			t.Setenv("DATABASE_URL", "postgres://db")
+			t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+			t.Setenv("API_ENV_ENCRYPTION_KEY", tc.raw)
+			t.Setenv("WORKOS_API_KEY", "workos-key")
+			t.Setenv("WORKOS_CLIENT_ID", "workos-client")
+			t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
+			t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
+			t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
+			t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
+
+			_, err := LoadControl()
 			require.EqualError(t, err, tc.wantErrMsg)
-			assert.Nil(t, key)
 		})
 	}
 }

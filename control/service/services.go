@@ -18,7 +18,7 @@ type Deps struct {
 	Queries            *sqlc.Queries
 	DBPool             *pgxpool.Pool
 	EnvEncryptionKeyID string
-	EnvEncryptionKey   []byte
+	EnvEncryptionKey   string
 }
 
 // TenantServices groups control plane business logic for user owned resources.

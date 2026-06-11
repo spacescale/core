@@ -38,12 +38,12 @@ type Box struct {
 	randReader io.Reader
 }
 
-// NewBox constructs a Box from a key ID and a 32-byte secret key.
+// NewBox constructs a Box from a key ID and a base64-encoded 32-byte secret key.
 //
 // The key ID is trimmed and validated so ciphertext headers stay predictable.
 // The key bytes are copied before use so callers can reuse or zero their input
 // slice after construction.
-func NewBox(keyID string, key []byte) (*Box, error) {
+func NewBox(keyID, encodedKey string) (*Box, error) {
 	trimmedKeyID := strings.TrimSpace(keyID)
 	if trimmedKeyID == "" {
 		return nil, errors.New("secret cipher requires non-empty key id")
@@ -51,8 +51,12 @@ func NewBox(keyID string, key []byte) (*Box, error) {
 	if !isValidKeyID(trimmedKeyID) {
 		return nil, errors.New("secret cipher key id is invalid")
 	}
+	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(encodedKey))
+	if err != nil {
+		return nil, errors.New("secret cipher requires base64-encoded 32-byte key")
+	}
 	if len(key) != chacha20poly1305.KeySize {
-		return nil, errors.New("secret cipher requires 32-byte key")
+		return nil, errors.New("secret cipher requires base64-encoded 32-byte key")
 	}
 
 	keyCopy := append([]byte(nil), key...)
