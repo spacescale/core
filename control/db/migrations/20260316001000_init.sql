@@ -104,7 +104,7 @@ CREATE TABLE app_env_vars
     UNIQUE (app_id, key)
 );
 
-CREATE INDEX app_env_vars_cipher_claim_idx ON app_env_vars (cipher_key_id, created_at) WHERE cipher_version = 'v1' AND cipher_algo = 'aesgcm';
+CREATE INDEX app_env_vars_cipher_claim_idx ON app_env_vars (cipher_key_id, created_at) WHERE cipher_version = 'v1' AND cipher_algo = 'xchacha20poly1305';
 
 
 

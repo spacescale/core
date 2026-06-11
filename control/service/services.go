@@ -5,6 +5,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/control/db/sqlc"
 	"github.com/spacescale/core/control/service/tenant"
+	"github.com/spacescale/core/shared/secret"
 )
 
 // Services groups domain services used by HTTP and control-fabric wiring.
@@ -31,7 +32,7 @@ type TenantServices struct {
 
 // NewServices builds all service dependencies from one shared dependency set.
 func NewServices(deps Deps) (*Services, error) {
-	envCipher, err := tenant.NewEnvValueCipher(deps.EnvEncryptionKeyID, deps.EnvEncryptionKey)
+	envCipher, err := secret.NewBox(deps.EnvEncryptionKeyID, deps.EnvEncryptionKey)
 	if err != nil {
 		return nil, err
 	}

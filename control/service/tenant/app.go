@@ -23,12 +23,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/control/db/sqlc"
 	pb "github.com/spacescale/core/shared/pb/v1"
+	"github.com/spacescale/core/shared/secret"
 )
 
 const (
-	defaultAppRuntimePort  = 8080 // fallback when create input omits runtime port.
-	defaultTargetReplicas  = 1    // current create flow launches one microvm by default.
-	defaultRootDiskMB      = 5120 // persisted legacy metadata; not sent to scaled launch shape.
+	defaultAppRuntimePort = 8080 // fallback when create input omits runtime port.
+	defaultTargetReplicas = 1    // current create flow launches one microvm by default.
+	defaultRootDiskMB     = 5120 // persisted legacy metadata; not sent to scaled launch shape.
 )
 
 const microvmResourceTypeDeployment = "deployment"
@@ -106,13 +107,13 @@ type CreateAppParams struct {
 
 // AppService owns app creation workflows.
 type AppService struct {
-	queries   *sqlc.Queries   // SQLC-backed persistence operations.
-	pool      *pgxpool.Pool   // transaction entrypoint for atomic create-app writes.
-	envCipher *EnvValueCipher // encrypts and decrypts stored app env vars.
+	queries   *sqlc.Queries // SQLC-backed persistence operations.
+	pool      *pgxpool.Pool // transaction entrypoint for atomic create-app writes.
+	envCipher *secret.Box   // encrypts stored app env vars.
 }
 
 // NewAppService constructs an AppService with shared query and crypto deps.
-func NewAppService(queries *sqlc.Queries, pool *pgxpool.Pool, envCipher *EnvValueCipher) *AppService {
+func NewAppService(queries *sqlc.Queries, pool *pgxpool.Pool, envCipher *secret.Box) *AppService {
 	return &AppService{queries: queries, pool: pool, envCipher: envCipher}
 }
 
@@ -427,10 +428,7 @@ func (s *AppService) createAppAttempt(ctx context.Context, params createAppAttem
 func (s *AppService) createEnvVars(ctx context.Context, queries *sqlc.Queries, appID uuid.UUID, envVars []AppEnvVarInput) error {
 	bulkEnvVars := make([]sqlc.CreateAppEnvVarsParams, 0, len(envVars))
 	for _, env := range envVars {
-		valueEncrypted, err := s.envCipher.EncryptForStorage(env.Value, EnvValueRowContext{
-			AppID: appID,
-			Key:   env.Key,
-		})
+		valueEncrypted, err := s.envCipher.Encrypt(env.Value)
 		if err != nil {
 			return err
 		}

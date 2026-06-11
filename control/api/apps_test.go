@@ -149,7 +149,7 @@ func TestCreateAppCreatesQueuedDeployment(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "DATABASE_URL", key)
 	require.NotEqual(t, "postgres://local", encryptedValue)
-	require.True(t, strings.HasPrefix(encryptedValue, "v1:aesgcm:"))
+	require.True(t, strings.HasPrefix(encryptedValue, "v1:xchacha20poly1305:"))
 }
 
 // TestCreateAppDefaultsQueuedRuntimePort verifies runtime defaults remain
