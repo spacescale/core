@@ -33,7 +33,7 @@ description: |-
 
   ### Current Route Prefixes
   - health: `/healthz`
-  - auth routes: `/auth/login`, `/auth/callback`
+  - auth routes: `/auth/login`, `/auth/callback`, `/auth/logout`
   - authenticated user routes: `/v1/...`
 
   ### Yaak Environment Notes
@@ -49,6 +49,7 @@ description: |-
   5. `List Projects In Workspace`
   6. `Create App`
   7. `List Apps`
+  8. `Open WorkOS Logout` when you want to clear the browser session
 
   ### Important For Create App
   - `compute` is required with `vcpu`, `memoryMb`, and `dedicated`

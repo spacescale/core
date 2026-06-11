@@ -17,6 +17,7 @@ import (
 	"github.com/spacescale/core/control/fabric"
 	"github.com/spacescale/core/control/tenant"
 	"github.com/spacescale/core/shared/config"
+	"github.com/workos/workos-go/v9"
 )
 
 const (
@@ -68,6 +69,7 @@ type ServerDeps struct {
 	DBPool     *pgxpool.Pool
 	Config     config.Control
 	Dispatcher *fabric.Dispatcher
+	WorkOSClient *workos.Client
 }
 
 // NewServer constructs a control API server from services and config.
@@ -81,7 +83,7 @@ func NewServer(deps ServerDeps) *Server {
 		bootstrap:  deps.Bootstrap,
 		workloads:  deps.Workloads,
 		dbPool:     deps.DBPool,
-		auth:       newWorkOSAuth(deps.Config, deps.Users),
+		auth:       newWorkOSAuth(deps.Config, deps.Users, deps.WorkOSClient),
 		dispatcher: deps.Dispatcher,
 	}
 	server := new(http.Server)

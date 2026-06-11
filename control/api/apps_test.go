@@ -3,7 +3,7 @@
 // Scope:
 // - Request/response contracts for workload create and list endpoints.
 // - Initial status behavior (queued).
-// - Persistence side effects in deployments, microvms, and app_env_vars tables.
+// - Persistence side effects in deployments, microvms, and workload_env_vars tables.
 //
 // These are DB-backed integration tests by design so transport + service + SQL
 // behavior are exercised together as one externally observable contract.
@@ -141,11 +141,11 @@ func TestCreateWorkloadCreatesQueuedDeployment(t *testing.T) {
 
 	var key string
 	var encryptedValue string
-	err = ts.pool.QueryRow(
-		context.Background(),
-		`SELECT key, value_encrypted FROM app_env_vars WHERE workload_id = $1 ORDER BY created_at DESC LIMIT 1`,
-		workloadID,
-	).Scan(&key, &encryptedValue)
+		err = ts.pool.QueryRow(
+			context.Background(),
+			`SELECT key, value_encrypted FROM workload_env_vars WHERE workload_id = $1 ORDER BY created_at DESC LIMIT 1`,
+			workloadID,
+		).Scan(&key, &encryptedValue)
 	require.NoError(t, err)
 	require.Equal(t, "DATABASE_URL", key)
 	require.NotEqual(t, "postgres://local", encryptedValue)

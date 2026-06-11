@@ -36,11 +36,16 @@ type workOSAuth struct {
 
 // newWorkOSAuth builds the WorkOS helper from workload config and the user service.
 //
-// If WorkOS is not configured, the helper still exists but its client stays nil
-// so the router can skip auth routes and treat API requests as unauthenticated.
-func newWorkOSAuth(cfg config.Control, users *tenant.UserService) *workOSAuth {
-	var client *workos.Client
-	if cfg.WorkOS.APIKey != "" {
+	// Normal runtime uses cfg.WorkOS to construct the WorkOS client.
+	// Tests can inject a preconfigured client (for example one pointed at an
+	// httptest server) so the full login/callback/logout flow can be exercised
+	// deterministically without talking to the real WorkOS API.
+	//
+	// If WorkOS is not configured, the helper still exists but its client stays
+	// nil so the router can skip auth routes and treat API requests as
+	// unauthenticated.
+func newWorkOSAuth(cfg config.Control, users *tenant.UserService, client *workos.Client) *workOSAuth {
+	if client == nil && cfg.WorkOS.APIKey != "" {
 		client = workos.NewClient(cfg.WorkOS.APIKey, workos.WithClientID(cfg.WorkOS.ClientID))
 	}
 
@@ -56,10 +61,23 @@ func (a *workOSAuth) registerRoutes(router chi.Router) {
 
 	router.Get("/auth/login", a.handleLogin)
 	router.Get("/auth/callback", a.handleCallback)
+	router.Get("/auth/logout", a.handleLogout)
 }
 
 // sessionMiddleware validates the long-lived WorkOS session cookie on /v1
 // requests and injects the authenticated principal into request context.
+//
+// This is the main request-time auth path:
+// 1. Read the sealed WorkOS session cookie we set during callback.
+// 2. Ask the WorkOS SDK to authenticate the sealed session locally.
+// 3. If the access token inside the sealed cookie is still valid, attach the
+//    authenticated principal to request context and continue.
+// 4. If the access token is expired but refreshable, refresh through WorkOS,
+//    reseal the session cookie, attach the refreshed principal, and continue.
+// 5. If anything fails, clear the local cookie and return unauthorized.
+//
+// The API trusts WorkOS for human-session lifecycle and only maps the resulting
+// authenticated user into Spacescale's local authorization model.
 func (a *workOSAuth) sessionMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -105,8 +123,17 @@ func (a *workOSAuth) sessionMiddleware() func(http.Handler) http.Handler {
 
 // handleLogin starts the browser login flow.
 //
-// It generates a random CSRF state, stores it in a short-lived cookie, and
-// redirects the browser to WorkOS's authorization URL.
+// This route does not authenticate the user itself. Its only job is to start
+// the provider-owned login flow safely.
+//
+// Flow:
+// 1. Generate a random state token for CSRF protection.
+// 2. Store that state in a short-lived HTTP-only cookie scoped to /auth.
+// 3. Build the WorkOS authorization URL.
+// 4. Redirect the browser to WorkOS AuthKit.
+//
+// Later, WorkOS sends the browser back to /auth/callback with the code and the
+// same state value so we can verify the redirect is one we initiated.
 func (a *workOSAuth) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if a.client == nil {
 		writeAuthUnavailable(w)
@@ -133,8 +160,17 @@ func (a *workOSAuth) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 // handleCallback completes the browser login flow after WorkOS redirects back.
 //
-// It checks the OAuth code and state, swaps the auth code for tokens, syncs the
-// user locally, seals a session cookie, and redirects back into the workload.
+// Flow:
+// 1. Validate the callback query parameters from WorkOS.
+// 2. Compare the returned state against the short-lived cookie from /auth/login.
+// 3. Exchange the authorization code with WorkOS for access/refresh tokens.
+// 4. Upsert a local Spacescale user row keyed by `workos:<user_id>` so our own
+//    authorization layer can reason about ownership in Postgres.
+// 5. Seal the WorkOS session into one HTTP-only cookie.
+// 6. Redirect the browser back to the configured post-login URL.
+//
+// The sealed cookie is the only browser credential we keep locally. We do not
+// mint our own human JWT here; we trust WorkOS for login and session lifecycle.
 func (a *workOSAuth) handleCallback(w http.ResponseWriter, r *http.Request) {
 	if a.client == nil {
 		writeAuthUnavailable(w)
@@ -204,8 +240,43 @@ func (a *workOSAuth) handleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, a.config.WorkOS.PostLoginRedirectURI, http.StatusSeeOther)
 }
 
+// handleLogout starts provider-backed logout for the current browser session.
+//
+// The goal here is to log the user out from both places that matter:
+// 1. Locally, by clearing the sealed `spacescale_session` cookie.
+// 2. Remotely, by sending the browser through WorkOS's session logout URL when
+//    we can still recover a valid WorkOS session ID from the sealed cookie.
+//
+// We intentionally make logout best-effort. Even if the local cookie is missing
+// or malformed, the handler still clears the cookie shape and redirects the user
+// to the configured post-logout URL so the browser is left in a logged-out
+// state from Spacescale's perspective.
+func (a *workOSAuth) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if a.client == nil {
+		writeAuthUnavailable(w)
+		return
+	}
+
+	logoutURL := a.config.WorkOS.LogoutRedirectURI
+	if sessionCookie, err := r.Cookie(a.config.WorkOS.CookieName); err == nil {
+		sealedSession := strings.TrimSpace(sessionCookie.Value)
+		if sealedSession != "" {
+			session := workos.NewSession(a.client, sealedSession, a.config.WorkOS.CookiePassword)
+			if workosLogoutURL, err := session.GetLogoutURL(r.Context(), a.config.WorkOS.LogoutRedirectURI); err == nil && workosLogoutURL != "" {
+				logoutURL = workosLogoutURL
+			}
+		}
+	}
+
+	a.setCookie(w, a.config.WorkOS.CookieName, "", "/", -1)
+	http.Redirect(w, r, logoutURL, http.StatusSeeOther)
+}
+
 // rejectSession clears the session cookie and returns the shared unauthorized
 // response used for invalid or missing WorkOS sessions.
+//
+// We aggressively clear the cookie on auth failures so the browser does not
+// keep retrying a broken sealed session on every /v1 request.
 func (a *workOSAuth) rejectSession(w http.ResponseWriter) {
 	a.setCookie(w, a.config.WorkOS.CookieName, "", "/", -1)
 	writeUnauthorized(w)

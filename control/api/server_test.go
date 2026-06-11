@@ -3,6 +3,7 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,13 +23,13 @@ import (
 	workos "github.com/workos/workos-go/v9"
 )
 
-const (
-	testEnvEncryptionKeyID = "test-key-v1"
-	testEnvEncryptionKey   = "0123456789abcdef0123456789abcdef"
-	testWorkOSAPIKey       = "workos-test-key"
-	testWorkOSClientID     = "client-test"
-	testWorkOSCookieName   = "spacescale_session"
-	testWorkOSCookieSecret = "12345678901234567890123456789012"
+	const (
+		testEnvEncryptionKeyID = "test-key-v1"
+		testEnvEncryptionKey   = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+		testWorkOSAPIKey       = "workos-test-key"
+		testWorkOSClientID     = "client-test"
+		testWorkOSCookieName   = "spacescale_session"
+		testWorkOSCookieSecret = "12345678901234567890123456789012"
 )
 
 type testServer struct {
@@ -42,6 +43,11 @@ type testResponse struct {
 }
 
 func newTestServer(t *testing.T) *testServer {
+	t.Helper()
+	return newTestServerWithWorkOSClient(t, nil)
+}
+
+func newTestServerWithWorkOSClient(t *testing.T, workosClient *workos.Client) *testServer {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
@@ -72,14 +78,17 @@ func newTestServer(t *testing.T) *testServer {
 		Bootstrap:  bootstrap,
 		Workloads:  workloads,
 		DBPool:     pool,
+		WorkOSClient: workosClient,
 		Config: config.Control{
+			Environment: "development",
+			ListenAddr:  ":8080",
 			WorkOS: config.WorkOSConfig{
 				APIKey:               testWorkOSAPIKey,
 				ClientID:             testWorkOSClientID,
 				CookiePassword:       testWorkOSCookieSecret,
 				RedirectURI:          "http://localhost:8080/auth/callback",
-				PostLoginRedirectURI: "http://localhost:3000",
-				LogoutRedirectURI:    "http://localhost:3000",
+				PostLoginRedirectURI: "http://localhost:8080/healthz",
+				LogoutRedirectURI:    "http://localhost:8080/healthz",
 				CookieName:           testWorkOSCookieName,
 			},
 		},
@@ -153,10 +162,44 @@ func doRequest(t *testing.T, ts *testServer, method, path string, body []byte, h
 	return testResponse{StatusCode: resp.StatusCode, Header: resp.Header}, data
 }
 
+func doRequestNoRedirect(t *testing.T, ts *testServer, method, path string, body []byte, headers map[string]string) (testResponse, []byte) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), method, ts.server.URL+path, bytes.NewReader(body))
+	require.NoError(t, err)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	client := &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	data, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	return testResponse{StatusCode: resp.StatusCode, Header: resp.Header}, data
+}
+
+func fakeJWT(sessionID string, expiresAt time.Time) string {
+	encode := func(v any) string {
+		payload, err := json.Marshal(v)
+		if err != nil {
+			panic(err)
+		}
+		return base64.RawURLEncoding.EncodeToString(payload)
+	}
+
+	header := encode(map[string]any{"alg": "none", "typ": "JWT"})
+	payload := encode(map[string]any{"sid": sessionID, "exp": expiresAt.Unix()})
+	return header + "." + payload + ".sig"
+}
+
 func authCookieForIdentityKey(t *testing.T, identityKey string) string {
 	t.Helper()
 	sealedSession, err := workos.SealSession(&workos.SessionData{
-		AccessToken:  "access-token",
+		AccessToken:  fakeJWT("sess_"+identityKey, time.Now().Add(time.Hour)),
 		RefreshToken: "refresh-token",
 		User: &workos.User{
 			ID:    identityKey,

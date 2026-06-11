@@ -25,7 +25,7 @@ description: |-
 
   ### Notes
   - `auth/callback` is handled by the browser redirect after WorkOS completes authentication
-  - if you need a fresh session, clear the cookie and re-run the browser flow
+  - if you need a fresh session, open `/auth/logout` in a browser or clear the cookie and re-run the browser flow
 headers: []
 method: GET
 name: WorkOS Login
