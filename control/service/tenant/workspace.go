@@ -7,7 +7,6 @@ package tenant
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -170,12 +169,4 @@ func workspaceFromRow(r sqlc.Workspace) Workspace {
 		CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
 	}
-}
-
-func normalizeWorkspaceName(raw string) (string, bool) {
-	name := strings.TrimSpace(raw)
-	if name == "" {
-		return "", false
-	}
-	return name, true
 }

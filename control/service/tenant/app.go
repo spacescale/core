@@ -629,10 +629,10 @@ func normalizeEnvVars(raw []AppEnvVarInput) ([]AppEnvVarInput, bool) {
 	return out, true
 }
 
-// normalizeEnvVarKey validates shell-style env var keys and normalizes to
-// uppercase. The first character must be an uppercase letter or underscore.
+// normalizeEnvVarKey validates shell-style env var keys.
+// The API layer uppercases keys before service normalization.
 func normalizeEnvVarKey(raw string) (string, bool) {
-	key := strings.ToUpper(strings.TrimSpace(raw))
+	key := strings.TrimSpace(raw)
 	if key == "" || !appEnvVarKeyPattern.MatchString(key) {
 		return "", false
 	}

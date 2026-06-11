@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/spacescale/core/control/fabric"
@@ -106,7 +107,7 @@ func (s *Server) handleCreateApp(responseWriter http.ResponseWriter, request *ht
 	envVars := make([]tenant.AppEnvVarInput, 0, len(req.EnvVars))
 	for _, item := range req.EnvVars {
 		envVars = append(envVars, tenant.AppEnvVarInput{
-			Key:      item.Key,
+			Key:      strings.ToUpper(strings.TrimSpace(item.Key)),
 			Value:    item.Value,
 			IsSecret: item.IsSecret,
 		})

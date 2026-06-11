@@ -22,7 +22,7 @@ const (
 
 // parseUUID parses UUID strings used by service workflows.
 func parseUUID(raw string) (uuid.UUID, bool) {
-	id, err := uuid.Parse(raw)
+	id, err := uuid.Parse(strings.TrimSpace(raw))
 	if err != nil {
 		return uuid.Nil, false
 	}
@@ -66,6 +66,15 @@ func slugifyProjectName(name string) string {
 	}
 
 	return strings.Trim(slug[:projectSlugMaxLength], "-")
+}
+
+// normalizeWorkspaceName trims the workspace display name.
+func normalizeWorkspaceName(raw string) (string, bool) {
+	name := strings.TrimSpace(raw)
+	if name == "" {
+		return "", false
+	}
+	return name, true
 }
 
 // normalizeProjectName trims the project display name.
