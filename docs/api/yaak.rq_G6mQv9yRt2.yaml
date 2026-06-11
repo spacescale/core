@@ -35,7 +35,7 @@ description: |-
   - empty response body
 
   ### Notes
-  - this route is outside `/v1` and does not require bearer auth
+  - this route is outside `/v1` and does not require auth
   - use this first when debugging local startup
 headers: []
 method: GET

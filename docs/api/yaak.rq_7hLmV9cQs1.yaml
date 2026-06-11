@@ -43,7 +43,7 @@ description: |-
   ```
 
   ### Error Responses
-  - `401 Unauthorized`: missing/invalid bearer token
+  - `401 Unauthorized`: missing/invalid session cookie
   - `429 Too Many Requests`: per-user API rate limit exceeded
   - `500 Internal Server Error`: unexpected runtime error
 headers:
