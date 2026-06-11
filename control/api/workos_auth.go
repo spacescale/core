@@ -181,8 +181,8 @@ func (a *workOSAuth) handleCallback(w http.ResponseWriter, r *http.Request) {
 	if _, err := a.users.SyncAuthUser(r.Context(), tenant.SyncAuthUserParams{
 		IdentityKey: "workos:" + authResponse.User.ID,
 		Email:       authResponse.User.Email,
-		Name:        "",
-		AvatarURL:   "",
+		Name:        workOSDisplayName(authResponse.User),
+		AvatarURL:   workOSProfilePictureURL(authResponse.User),
 	}); err != nil {
 		writeInternalError(w)
 		return
