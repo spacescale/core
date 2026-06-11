@@ -32,20 +32,22 @@ func TestNewCipher(t *testing.T) {
 		name    string
 		keyID   string
 		keyLen  int
-		wantErr string
+		wantErr error
 	}{
-		{name: "empty key id", keyID: "", keyLen: 32, wantErr: "non-empty key id"},
-		{name: "key id with colon", keyID: "prod:1", keyLen: 32, wantErr: "key id is invalid"},
-		{name: "key id with space", keyID: "prod key", keyLen: 32, wantErr: "key id is invalid"},
-		{name: "short key", keyID: "prod", keyLen: 31, wantErr: "32-byte key"},
-		{name: "long key", keyID: "prod", keyLen: 33, wantErr: "32-byte key"},
+		{name: "empty key id", keyID: "", keyLen: 32, wantErr: ErrInvalidBoxConfig},
+		{name: "key id with colon", keyID: "prod:1", keyLen: 32, wantErr: ErrInvalidBoxConfig},
+		{name: "key id with space", keyID: "prod key", keyLen: 32, wantErr: ErrInvalidBoxConfig},
+		{name: "key id with slash", keyID: "prod/key", keyLen: 32, wantErr: ErrInvalidBoxConfig},
+		{name: "key id too long", keyID: strings.Repeat("a", 65), keyLen: 32, wantErr: ErrInvalidBoxConfig},
+		{name: "short key", keyID: "prod", keyLen: 31, wantErr: ErrInvalidBoxConfig},
+		{name: "long key", keyID: "prod", keyLen: 33, wantErr: ErrInvalidBoxConfig},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := NewBox(tc.keyID, base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, tc.keyLen)))
 			require.Error(t, err)
-			require.Contains(t, err.Error(), tc.wantErr)
+			require.ErrorIs(t, err, tc.wantErr)
 		})
 	}
 }

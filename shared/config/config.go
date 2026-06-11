@@ -2,7 +2,6 @@
 package config
 
 import (
-	"encoding/base64"
 	"strings"
 
 	"github.com/caarlos0/env/v11"
@@ -14,19 +13,7 @@ const (
 	workOSCookieName  = "spacescale_session"
 )
 
-var configValidator = newConfigValidator()
-
-func newConfigValidator() *validator.Validate {
-	v := validator.New(validator.WithRequiredStructEnabled())
-	if err := v.RegisterValidation("base64", func(fl validator.FieldLevel) bool {
-		_, err := base64.StdEncoding.DecodeString(fl.Field().String())
-		return err == nil
-	}); err != nil {
-		panic(err)
-	}
-
-	return v
-}
+var configValidator = validator.New(validator.WithRequiredStructEnabled())
 
 // Control is the runtime configuration for the control plane.
 type Control struct {

@@ -16,6 +16,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/go-playground/validator/v10"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
@@ -29,7 +30,16 @@ var (
 	// unexpected version or algorithm, has the wrong key ID, or fails AEAD
 	// authentication.
 	ErrInvalidBox = errors.New("invalid secret ciphertext")
+	// ErrInvalidBoxConfig means the caller provided an invalid key ID or key.
+	ErrInvalidBoxConfig = errors.New("invalid secret box config")
+
+	boxValidator = validator.New(validator.WithRequiredStructEnabled())
 )
+
+type boxConfig struct {
+	KeyID      string `validate:"required,max=64,printascii,excludesall=:/\\ "`
+	EncodedKey string `validate:"required,base64,min=44,max=44"`
+}
 
 // Box encrypts and decrypts string secrets for one logical key ID.
 type Box struct {
@@ -44,19 +54,17 @@ type Box struct {
 // The key bytes are copied before use so callers can reuse or zero their input
 // slice after construction.
 func NewBox(keyID, encodedKey string) (*Box, error) {
-	trimmedKeyID := strings.TrimSpace(keyID)
-	if trimmedKeyID == "" {
-		return nil, errors.New("secret cipher requires non-empty key id")
+	cfg := boxConfig{KeyID: strings.TrimSpace(keyID), EncodedKey: strings.TrimSpace(encodedKey)}
+	if err := boxValidator.Struct(cfg); err != nil {
+		return nil, ErrInvalidBoxConfig
 	}
-	if !isValidKeyID(trimmedKeyID) {
-		return nil, errors.New("secret cipher key id is invalid")
-	}
-	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(encodedKey))
+
+	key, err := base64.StdEncoding.DecodeString(cfg.EncodedKey)
 	if err != nil {
-		return nil, errors.New("secret cipher requires base64-encoded 32-byte key")
+		return nil, ErrInvalidBoxConfig
 	}
 	if len(key) != chacha20poly1305.KeySize {
-		return nil, errors.New("secret cipher requires base64-encoded 32-byte key")
+		return nil, ErrInvalidBoxConfig
 	}
 
 	keyCopy := append([]byte(nil), key...)
@@ -65,7 +73,7 @@ func NewBox(keyID, encodedKey string) (*Box, error) {
 		return nil, fmt.Errorf("build xchacha20poly1305: %w", err)
 	}
 
-	return &Box{keyID: trimmedKeyID, aead: aead, randReader: rand.Reader}, nil
+	return &Box{keyID: cfg.KeyID, aead: aead, randReader: rand.Reader}, nil
 }
 
 // Encrypt seals plaintext and returns a text payload that can be stored as-is.
@@ -122,20 +130,9 @@ func parseCiphertext(encoded string) ([]string, error) {
 	if len(parts) != 5 {
 		return nil, ErrInvalidBox
 	}
-	if parts[0] != cipherFormatVersionV1 || parts[1] != cipherFormatAlgorithmXChaCha || !isValidKeyID(parts[2]) {
+	if parts[0] != cipherFormatVersionV1 || parts[1] != cipherFormatAlgorithmXChaCha {
 		return nil, ErrInvalidBox
 	}
 
 	return parts, nil
-}
-
-func isValidKeyID(keyID string) bool {
-	if keyID == "" || strings.Contains(keyID, ":") {
-		return false
-	}
-	if strings.ContainsAny(keyID, " \t\r\n") {
-		return false
-	}
-
-	return true
 }
