@@ -76,9 +76,6 @@ func Middleware() func(http.Handler) http.Handler {
 			if route == "-" {
 				attrs = append(attrs, "path", req.URL.Path)
 			}
-			if includeVerboseAccessFields(status) {
-				_ = ww
-			}
 
 			if metadata.UserID != "" {
 				attrs = append(attrs, "user_id", metadata.UserID)
@@ -138,7 +135,8 @@ func Recoverer() func(http.Handler) http.Handler {
 				}
 
 				slog.Error("panic recovered", attrs...)
-				if responseWriterStatus(w) != 0 {
+				type statusProvider interface{ Status() int }
+				if statusAwareWriter, ok := w.(statusProvider); ok && statusAwareWriter.Status() != 0 {
 					return
 				}
 				Error(w, http.StatusInternalServerError, "internal error")
@@ -156,20 +154,6 @@ func accessLogLevel(status int) slog.Level {
 		return slog.LevelWarn
 	}
 	return slog.LevelInfo
-}
-
-func includeVerboseAccessFields(status int) bool { return status >= http.StatusBadRequest }
-
-func responseWriterStatus(w http.ResponseWriter) int {
-	type statusProvider interface {
-		Status() int
-	}
-
-	statusAwareWriter, ok := w.(statusProvider)
-	if !ok {
-		return 0
-	}
-	return statusAwareWriter.Status()
 }
 
 func routePatternFromContext(ctx context.Context) string {

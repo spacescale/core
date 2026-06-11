@@ -65,25 +65,20 @@ func ReadJSON(r *http.Request, dst any) error {
 	return errors.New("multiple json values")
 }
 
-// ValidateStruct validates a decoded API request payload.
-func ValidateStruct(v any) error {
-	return apiValidator.Struct(v)
-}
-
 // ReadAndValidateJSON decodes one JSON value and validates the result.
 // When allowEmpty is true, an empty body is treated as a zero-value payload.
 func ReadAndValidateJSON(r *http.Request, dst any, allowEmpty bool) error {
 	err := ReadJSON(r, dst)
 	if errors.Is(err, io.EOF) {
 		if allowEmpty {
-			return ValidateStruct(dst)
+			return apiValidator.Struct(dst)
 		}
 		return err
 	}
 	if err != nil {
 		return err
 	}
-	return ValidateStruct(dst)
+	return apiValidator.Struct(dst)
 }
 
 // WriteJSONError maps request decoding and validation errors to API responses.
@@ -91,7 +86,10 @@ func WriteJSONError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrRequestBodyTooLarge):
 		Error(w, http.StatusRequestEntityTooLarge, "request body too large")
-	case isValidationError(err):
+	case func() bool {
+		var validationErrs validator.ValidationErrors
+		return errors.As(err, &validationErrs)
+	}():
 		Error(w, http.StatusBadRequest, "invalid input")
 	default:
 		Error(w, http.StatusBadRequest, "invalid json")
@@ -127,9 +125,4 @@ func newAPIValidator() *validator.Validate {
 		return strings.TrimSpace(field.String()) != ""
 	})
 	return v
-}
-
-func isValidationError(err error) bool {
-	var validationErrs validator.ValidationErrors
-	return errors.As(err, &validationErrs)
 }

@@ -206,7 +206,7 @@ func RequireCallerUser(responseWriter http.ResponseWriter, request *http.Request
 	principal, ok := PrincipalFromContext(request.Context())
 	if !ok {
 		Error(responseWriter, http.StatusUnauthorized, "unauthorized")
-		return emptyTenantUser(), false
+		return tenant.User{}, false
 	}
 
 	user, err := users.GetUserByIdentityKey(request.Context(), principal.IdentityKey)
@@ -220,7 +220,7 @@ func RequireCallerUser(responseWriter http.ResponseWriter, request *http.Request
 			Error(responseWriter, http.StatusInternalServerError, "internal error")
 		}
 
-		return emptyTenantUser(), false
+		return tenant.User{}, false
 	}
 
 	return user, true
@@ -240,22 +240,6 @@ func KeyByIdentityKey(r *http.Request) (string, error) {
 func PrincipalFromContext(ctx context.Context) (Principal, bool) {
 	p, ok := ctx.Value(principalContextKey{}).(Principal)
 	return p, ok
-}
-
-func withPrincipal(ctx context.Context, p Principal) context.Context {
-	return context.WithValue(ctx, principalContextKey{}, p)
-}
-
-func emptyTenantUser() tenant.User {
-	return tenant.User{
-		ID:          "",
-		IdentityKey: "",
-		Email:       "",
-		Name:        "",
-		AvatarURL:   "",
-		CreatedAt:   time.Time{},
-		UpdatedAt:   time.Time{},
-	}
 }
 
 func (s *Server) handleWorkOSLogin(w http.ResponseWriter, r *http.Request) {
@@ -408,7 +392,7 @@ func (s *Server) workOSSessionMiddleware() func(http.Handler) http.Handler {
 
 			if authn != nil && authn.Authenticated && authn.User != nil {
 				principal := workOSPrincipalFromUser(authn.User)
-				ctx := withPrincipal(r.Context(), principal)
+				ctx := context.WithValue(r.Context(), principalContextKey{}, principal)
 				if lc, ok := MetadataFromContext(ctx); ok {
 					lc.UserID = principal.IdentityKey
 				}
@@ -422,7 +406,7 @@ func (s *Server) workOSSessionMiddleware() func(http.Handler) http.Handler {
 					s.setWorkOSSessionCookie(w, refreshed.SealedSession)
 
 					principal := workOSPrincipalFromUser(refreshed.Session.User)
-					ctx := withPrincipal(r.Context(), principal)
+					ctx := context.WithValue(r.Context(), principalContextKey{}, principal)
 					if lc, ok := MetadataFromContext(ctx); ok {
 						lc.UserID = principal.IdentityKey
 					}
