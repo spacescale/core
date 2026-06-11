@@ -1,8 +1,6 @@
-// Package api configures and runs the primary HTTP control plane server.
-// It sets up route routing, rate limiting, and middleware chains like CORS and recoverers.
-// It binds core multi-tenant business services to their corresponding HTTP handlers.
-// It also initializes session authentication using work OS Client Libary.
-// The package keeps lifecycle operations clean, structured, and easy to orchestrate.
+// Package api owns the control-plane HTTP surface.
+// It wires routing, middleware, rate limiting, tenant services, and WorkOS
+// authentication into the server that handles API requests.
 package api
 
 import (
@@ -27,7 +25,18 @@ import (
 	"github.com/workos/workos-go/v9"
 )
 
-// Server wires HTTP handlers to service dependencies and auth configuration.
+const (
+	maxRequestBodyBytes     = 1 << 20
+	serverReadHeaderTimeout = 5 * time.Second
+	serverWriteTimeout      = 30 * time.Second
+	serverIdleTimeout       = 120 * time.Second
+	userRateLimitRequests   = 200
+	userRateLimitWindow     = time.Minute
+	workOSStateCookieName   = "spacescale_workos_state"
+	workOSStateTTL          = 10 * time.Minute
+)
+
+// Server wires HTTP handlers to tenant services, database access, and auth state.
 type Server struct {
 
 	// multi tenant service layer
@@ -47,8 +56,8 @@ type Server struct {
 	dispatcher *fabric.Dispatcher
 }
 
-// Principal is the authenticated identity attached to the request context.
-// It is the single app-level auth shape used by handlers.
+// Principal is the authenticated identity stored in request context.
+// Handlers use it instead of reading WorkOS state directly.
 type Principal struct {
 	Subject     string
 	IdentityKey string
@@ -59,20 +68,10 @@ type Principal struct {
 
 type principalContextKey struct{}
 
-const (
-	maxRequestBodyBytes     = 1 << 20
-	serverReadHeaderTimeout = 5 * time.Second
-	serverWriteTimeout      = 30 * time.Second
-	serverIdleTimeout       = 120 * time.Second
-	userRateLimitRequests   = 200
-	userRateLimitWindow     = time.Minute
-	workOSStateCookieName   = "spacescale_workos_state"
-	workOSStateTTL          = 10 * time.Minute
-)
 
-// ServerDeps groups dependencies required to construct the API server.
-// It keeps startup and test wiring concise while making required inputs
-// explicit at one call site.
+
+// ServerDeps groups the dependencies required to construct the API server.
+// It keeps startup and test wiring explicit at one call site.
 type ServerDeps struct {
 	Services *service.Services
 	DBPool   *pgxpool.Pool
@@ -82,7 +81,9 @@ type ServerDeps struct {
 	Dispatcher *fabric.Dispatcher
 }
 
-// NewServer constructs a control API server from service dependencies.
+// NewServer constructs a control API server from services, config, and NATS.
+// It also preconfigures the underlying http.Server with body limits and
+// timeout settings.
 func NewServer(deps ServerDeps) *Server {
 	var workosClient *workos.Client
 	if deps.Config.WorkOS.APIKey != "" {
@@ -115,7 +116,7 @@ func NewServer(deps ServerDeps) *Server {
 	return apiServer
 }
 
-// Start listens for HTTP requests until the server is shut down.
+// Start listens for HTTP requests until the server stops or fails.
 func (s *Server) Start() error {
 	if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("http serve failed: %w", err)
@@ -124,7 +125,7 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// Shutdown gracefully stops the HTTP server.
+// Shutdown stops the HTTP server using the provided context.
 func (s *Server) Shutdown(ctx context.Context) error {
 	if err := s.server.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("http shutdown failed: %w", err)
@@ -133,9 +134,10 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// Router initializes and returns the complete HTTP handler for the API.
-// It sets up core middlewares, rate limiters, and maps handlers to all API endpoints.
-// Callers should use the returned handler to serve incoming client requests.
+// Router builds the full HTTP handler tree for the control plane.
+// It installs request IDs, client IP capture, access logging, panic recovery,
+// WorkOS session handling, and route-level rate limiting before registering
+// the endpoint handlers.
 func (s *Server) Router() http.Handler {
 	router := chi.NewRouter()
 
@@ -178,7 +180,7 @@ func (s *Server) Router() http.Handler {
 	return router
 }
 
-// registerV1Routes registers the authenticated v1 routes on router.
+// registerV1Routes registers the authenticated v1 API routes.
 func (s *Server) registerV1Routes(router chi.Router) {
 	router.Post("/workspaces", s.handleCreateWorkspace)
 	router.Get("/workspaces", s.handleListWorkspaces)
@@ -196,12 +198,14 @@ func (s *Server) registerV1Routes(router chi.Router) {
 	router.Post("/workspaces/{workspaceId}/projects/{projectId}/apps", s.handleCreateApp)
 }
 
-// rateLimitExceeded keeps 429 responses consistent across route groups.
+// rateLimitExceeded writes the shared 429 response used by route limiters.
 func rateLimitExceeded(w http.ResponseWriter, _ *http.Request) {
 	Error(w, http.StatusTooManyRequests, "rate limit exceeded")
 }
 
-// RequireCallerUser resolves the authenticated principal into a persisted user row.
+// RequireCallerUser resolves the authenticated principal into a stored user row.
+// If the request is unauthenticated or the lookup fails, it writes the
+// canonical API error and returns false.
 func RequireCallerUser(responseWriter http.ResponseWriter, request *http.Request, users *tenant.UserService) (tenant.User, bool) {
 	principal, ok := PrincipalFromContext(request.Context())
 	if !ok {
@@ -226,7 +230,8 @@ func RequireCallerUser(responseWriter http.ResponseWriter, request *http.Request
 	return user, true
 }
 
-// KeyByIdentityKey returns the rate-limit key for the authenticated caller.
+// KeyByIdentityKey returns the rate-limit key for the current principal.
+// Unauthenticated requests fall back to a shared key.
 func KeyByIdentityKey(r *http.Request) (string, error) {
 	p, ok := PrincipalFromContext(r.Context())
 	if !ok || p.IdentityKey == "" {
@@ -236,12 +241,15 @@ func KeyByIdentityKey(r *http.Request) (string, error) {
 	return "identity:" + p.IdentityKey, nil
 }
 
-// PrincipalFromContext reads Principal from context.
+// PrincipalFromContext reads the authenticated principal from context.
 func PrincipalFromContext(ctx context.Context) (Principal, bool) {
 	p, ok := ctx.Value(principalContextKey{}).(Principal)
 	return p, ok
 }
 
+// handleWorkOSLogin starts the WorkOS login flow.
+// It creates a short-lived CSRF state token, stores it in a cookie, and then
+// redirects the browser to WorkOS for authentication.
 func (s *Server) handleWorkOSLogin(w http.ResponseWriter, r *http.Request) {
 	if s.workosClient == nil {
 		writeAuthUnavailable(w)
@@ -255,7 +263,6 @@ func (s *Server) handleWorkOSLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.setWorkOSCookie(w, workOSStateCookieName, state, "/auth", int(workOSStateTTL.Seconds()))
-	provider := workos.UserManagementAuthenticationProviderAuthkit
 	authorizationURL := s.workosClient.UserManagement().GetAuthorizationURL(
 		&workos.UserManagementGetAuthorizationURLParams{
 			RedirectURI: s.config.WorkOS.RedirectURI,
@@ -267,6 +274,9 @@ func (s *Server) handleWorkOSLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, authorizationURL, http.StatusFound)
 }
 
+// handleWorkOSCallback completes the WorkOS login flow.
+// It validates the callback state, exchanges the authorization code, syncs the
+// user into the local database, seals the WorkOS session, and stores it.
 func (s *Server) handleWorkOSCallback(w http.ResponseWriter, r *http.Request) {
 	if s.workosClient == nil {
 		writeAuthUnavailable(w)
@@ -342,6 +352,9 @@ func (s *Server) handleWorkOSCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, s.config.WorkOS.PostLoginRedirectURI, http.StatusSeeOther)
 }
 
+// workOSSessionMiddleware validates the WorkOS session cookie for API requests.
+// When the session is valid it attaches a Principal to request context; when it
+// is missing or invalid it clears the cookie and returns unauthorized.
 func (s *Server) workOSSessionMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -388,6 +401,7 @@ func (s *Server) workOSSessionMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
+// serveWithPrincipal attaches a Principal to the request context and continues.
 func (s *Server) serveWithPrincipal(next http.Handler, w http.ResponseWriter, r *http.Request, principal Principal) {
 	ctx := context.WithValue(r.Context(), principalContextKey{}, principal)
 	if lc, ok := MetadataFromContext(ctx); ok {
@@ -396,12 +410,15 @@ func (s *Server) serveWithPrincipal(next http.Handler, w http.ResponseWriter, r 
 	next.ServeHTTP(w, r.WithContext(ctx))
 }
 
+// rejectWorkOSSession records why WorkOS auth failed, clears the session cookie,
+// and returns the shared unauthorized response.
 func (s *Server) rejectWorkOSSession(w http.ResponseWriter, r *http.Request, reason string) {
 	s.setWorkOSCookie(w, s.config.WorkOS.CookieName, "", "/", -1)
 	SetAuthFailure(r, reason)
 	writeUnauthorized(w)
 }
 
+// setWorkOSCookie writes the common cookie shape used by the WorkOS flow.
 func (s *Server) setWorkOSCookie(w http.ResponseWriter, name, value, path string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     name,
@@ -414,18 +431,22 @@ func (s *Server) setWorkOSCookie(w http.ResponseWriter, name, value, path string
 	})
 }
 
+// writeAuthUnavailable returns the response used when WorkOS is disabled.
 func writeAuthUnavailable(w http.ResponseWriter) {
 	Error(w, http.StatusServiceUnavailable, "auth unavailable")
 }
 
+// writeUnauthorized returns the shared unauthorized API response.
 func writeUnauthorized(w http.ResponseWriter) {
 	Error(w, http.StatusUnauthorized, "unauthorized")
 }
 
+// writeInternalError returns the shared internal-error API response.
 func writeInternalError(w http.ResponseWriter) {
 	Error(w, http.StatusInternalServerError, "internal error")
 }
 
+// workOSPrincipalFromUser converts a WorkOS user into the API Principal shape.
 func workOSPrincipalFromUser(user *workos.User) Principal {
 	identityKey := "workos:" + user.ID
 	return Principal{
@@ -437,6 +458,7 @@ func workOSPrincipalFromUser(user *workos.User) Principal {
 	}
 }
 
+// workOSDisplayName joins the WorkOS first and last name fields when present.
 func workOSDisplayName(user *workos.User) string {
 	parts := make([]string, 0, 2)
 	if user.FirstName != nil {
@@ -455,6 +477,7 @@ func workOSDisplayName(user *workos.User) string {
 	return strings.TrimSpace(strings.Join(parts, " "))
 }
 
+// workOSProfilePictureURL returns the trimmed WorkOS profile image URL.
 func workOSProfilePictureURL(user *workos.User) string {
 	if user.ProfilePictureURL == nil {
 		return ""
@@ -463,6 +486,7 @@ func workOSProfilePictureURL(user *workos.User) string {
 	return strings.TrimSpace(*user.ProfilePictureURL)
 }
 
+// generateWorkOSState creates a random URL-safe state token for CSRF protection.
 func generateWorkOSState() (string, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
@@ -472,6 +496,7 @@ func generateWorkOSState() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
+// nonEmptyStringPtr returns nil for blank strings so WorkOS omits empty values.
 func nonEmptyStringPtr(v string) *string {
 	trimmed := strings.TrimSpace(v)
 	if trimmed == "" {
@@ -481,6 +506,7 @@ func nonEmptyStringPtr(v string) *string {
 	return &trimmed
 }
 
+// workOSCookieSecure enables the Secure cookie flag only in production.
 func workOSCookieSecure(environment string) bool {
 	return strings.TrimSpace(environment) == "production"
 }
