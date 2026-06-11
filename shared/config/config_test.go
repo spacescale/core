@@ -10,6 +10,7 @@ import (
 
 func TestLoadControlReadsExplicitConfig(t *testing.T) {
 	key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
+	workOSCookiePassword := "12345678901234567890123456789012"
 
 	t.Setenv("ENVIRONMENT", "production")
 	t.Setenv("NATS_URL", " nats://10.0.0.1:4222 ")
@@ -21,6 +22,12 @@ func TestLoadControlReadsExplicitConfig(t *testing.T) {
 	t.Setenv("AUTH_AUDIENCE", " audience ")
 	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", " key-v1 ")
 	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+	t.Setenv("WORKOS_API_KEY", " workos-key ")
+	t.Setenv("WORKOS_CLIENT_ID", " workos-client ")
+	t.Setenv("WORKOS_COOKIE_PASSWORD", workOSCookiePassword)
+	t.Setenv("WORKOS_REDIRECT_URI", " https://example.com/workos/callback ")
+	t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", " https://example.com/app ")
+	t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", " https://example.com/logout ")
 
 	cfg, err := LoadControl()
 	require.NoError(t, err)
@@ -35,6 +42,13 @@ func TestLoadControlReadsExplicitConfig(t *testing.T) {
 	assert.Equal(t, "audience", cfg.Auth.Audience)
 	assert.Equal(t, "key-v1", cfg.EnvEncryptionKeyID)
 	assert.Len(t, cfg.EnvEncryptionKey, 32)
+	assert.Equal(t, "workos-key", cfg.WorkOS.APIKey)
+	assert.Equal(t, "workos-client", cfg.WorkOS.ClientID)
+	assert.Equal(t, workOSCookiePassword, cfg.WorkOS.CookiePassword)
+	assert.Equal(t, "https://example.com/workos/callback", cfg.WorkOS.RedirectURI)
+	assert.Equal(t, "https://example.com/app", cfg.WorkOS.PostLoginRedirectURI)
+	assert.Equal(t, "https://example.com/logout", cfg.WorkOS.LogoutRedirectURI)
+	assert.Equal(t, defaultWorkOSCookieName, cfg.WorkOS.CookieName)
 }
 
 func TestLoadControlAppliesDefaults(t *testing.T) {
@@ -54,6 +68,7 @@ func TestLoadControlAppliesDefaults(t *testing.T) {
 	assert.Equal(t, defaultAuthIssuer, cfg.Auth.Issuer)
 	assert.Equal(t, defaultAuthAudience, cfg.Auth.Audience)
 	assert.Empty(t, cfg.Auth.JWTSecret)
+	assert.Equal(t, WorkOSConfig{CookieName: defaultWorkOSCookieName}, cfg.WorkOS)
 }
 
 func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
@@ -96,6 +111,93 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 			wantErrMsg: "missing required config AUTH_JWT_SECRET",
 		},
 		{
+			name: "missing workos api key when workos is enabled",
+			setenv: func(t *testing.T) {
+				t.Helper()
+				t.Setenv("DATABASE_URL", "postgres://db")
+				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
+				t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
+				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
+				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
+				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
+			},
+			wantErrMsg: "missing required config WORKOS_API_KEY",
+		},
+		{
+			name: "missing workos client id when workos is enabled",
+			setenv: func(t *testing.T) {
+				t.Helper()
+				t.Setenv("DATABASE_URL", "postgres://db")
+				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+				t.Setenv("WORKOS_API_KEY", "workos-key")
+				t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
+				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
+				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
+				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
+			},
+			wantErrMsg: "missing required config WORKOS_CLIENT_ID",
+		},
+		{
+			name: "missing workos cookie password when workos is enabled",
+			setenv: func(t *testing.T) {
+				t.Helper()
+				t.Setenv("DATABASE_URL", "postgres://db")
+				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+				t.Setenv("WORKOS_API_KEY", "workos-key")
+				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
+			},
+			wantErrMsg: "missing required config WORKOS_COOKIE_PASSWORD",
+		},
+		{
+			name: "missing workos redirect uri when workos is enabled",
+			setenv: func(t *testing.T) {
+				t.Helper()
+				t.Setenv("DATABASE_URL", "postgres://db")
+				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+				t.Setenv("WORKOS_API_KEY", "workos-key")
+				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
+				t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
+				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
+				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
+			},
+			wantErrMsg: "missing required config WORKOS_REDIRECT_URI",
+		},
+		{
+			name: "missing workos post login redirect uri when workos is enabled",
+			setenv: func(t *testing.T) {
+				t.Helper()
+				t.Setenv("DATABASE_URL", "postgres://db")
+				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+				t.Setenv("WORKOS_API_KEY", "workos-key")
+				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
+				t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
+				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
+				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
+			},
+			wantErrMsg: "missing required config WORKOS_POST_LOGIN_REDIRECT_URI",
+		},
+		{
+			name: "missing workos logout redirect uri when workos is enabled",
+			setenv: func(t *testing.T) {
+				t.Helper()
+				t.Setenv("DATABASE_URL", "postgres://db")
+				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+				t.Setenv("WORKOS_API_KEY", "workos-key")
+				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
+				t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
+				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
+				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
+			},
+			wantErrMsg: "missing required config WORKOS_LOGOUT_REDIRECT_URI",
+		},
+		{
 			name: "missing key id",
 			setenv: func(t *testing.T) {
 				t.Helper()
@@ -112,6 +214,22 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
 			},
 			wantErrMsg: "missing required config API_ENV_ENCRYPTION_KEY",
+		},
+		{
+			name: "short workos cookie password",
+			setenv: func(t *testing.T) {
+				t.Helper()
+				t.Setenv("DATABASE_URL", "postgres://db")
+				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+				t.Setenv("WORKOS_API_KEY", "workos-key")
+				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
+				t.Setenv("WORKOS_COOKIE_PASSWORD", "too-short")
+				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
+				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
+				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
+			},
+			wantErrMsg: "invalid config WORKOS_COOKIE_PASSWORD: must be at least 32 characters",
 		},
 	}
 
