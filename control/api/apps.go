@@ -5,10 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/spacescale/core/control/fabric"
 	"github.com/spacescale/core/control/service/tenant"
 )
@@ -64,9 +62,8 @@ func (s *Server) handleListApps(responseWriter http.ResponseWriter, request *htt
 		return
 	}
 
-	workspaceID := strings.TrimSpace(chi.URLParam(request, "workspaceId"))
-	projectID := strings.TrimSpace(chi.URLParam(request, "projectId"))
-	if workspaceID == "" || projectID == "" {
+	workspaceID, projectID, ok := workspaceAndProjectIDFromRequest(request)
+	if !ok {
 		Error(responseWriter, http.StatusBadRequest, "invalid input")
 
 		return
@@ -74,14 +71,7 @@ func (s *Server) handleListApps(responseWriter http.ResponseWriter, request *htt
 
 	apps, err := s.apps.ListApps(request.Context(), user.ID, workspaceID, projectID)
 	if err != nil {
-		switch {
-		case errors.Is(err, tenant.ErrInvalidInput):
-			Error(responseWriter, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, tenant.ErrUnauthorized):
-			Error(responseWriter, http.StatusUnauthorized, "unauthorized")
-		default:
-			Error(responseWriter, http.StatusInternalServerError, "internal error")
-		}
+		WriteTenantError(responseWriter, err)
 
 		return
 	}
@@ -99,27 +89,17 @@ func (s *Server) handleCreateApp(responseWriter http.ResponseWriter, request *ht
 		return
 	}
 
-	workspaceID := strings.TrimSpace(chi.URLParam(request, "workspaceId"))
-	projectID := strings.TrimSpace(chi.URLParam(request, "projectId"))
-	if workspaceID == "" || projectID == "" {
+	workspaceID, projectID, ok := workspaceAndProjectIDFromRequest(request)
+	if !ok {
 		Error(responseWriter, http.StatusBadRequest, "invalid input")
 
 		return
 	}
 
 	var req createAppRequest
-	if err := ReadJSON(request, &req); err != nil {
-		switch {
-		case errors.Is(err, ErrRequestBodyTooLarge):
-			Error(responseWriter, http.StatusRequestEntityTooLarge, "request body too large")
-		default:
-			Error(responseWriter, http.StatusBadRequest, "invalid json")
-		}
+	if err := ReadAndValidateJSON(request, &req, false); err != nil {
+		WriteJSONError(responseWriter, err)
 
-		return
-	}
-	if err := ValidateStruct(req); err != nil {
-		Error(responseWriter, http.StatusBadRequest, "invalid input")
 		return
 	}
 
@@ -147,16 +127,7 @@ func (s *Server) handleCreateApp(responseWriter http.ResponseWriter, request *ht
 		EnvVars:              envVars,
 	})
 	if err != nil {
-		switch {
-		case errors.Is(err, tenant.ErrInvalidInput):
-			Error(responseWriter, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, tenant.ErrUnauthorized):
-			Error(responseWriter, http.StatusUnauthorized, "unauthorized")
-		case errors.Is(err, tenant.ErrConflict):
-			Error(responseWriter, http.StatusConflict, "conflict")
-		default:
-			Error(responseWriter, http.StatusInternalServerError, "internal error")
-		}
+		WriteTenantError(responseWriter, err)
 
 		return
 	}

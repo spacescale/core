@@ -1,8 +1,6 @@
 package api
 
 import (
-	"errors"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -40,26 +38,14 @@ func (s *Server) handleCreateProject(responseWriter http.ResponseWriter, request
 	}
 
 	var req createProjectRequest
-	if err := ReadJSON(request, &req); err != nil {
-		switch {
-		case errors.Is(err, io.EOF):
-		case errors.Is(err, ErrRequestBodyTooLarge):
-			Error(responseWriter, http.StatusRequestEntityTooLarge, "request body too large")
+	if err := ReadAndValidateJSON(request, &req, true); err != nil {
+		WriteJSONError(responseWriter, err)
 
-			return
-		default:
-			Error(responseWriter, http.StatusBadRequest, "invalid json")
-
-			return
-		}
-	}
-	if err := ValidateStruct(req); err != nil {
-		Error(responseWriter, http.StatusBadRequest, "invalid input")
 		return
 	}
 
-	workspaceID := strings.TrimSpace(chi.URLParam(request, "workspaceId"))
-	if workspaceID == "" {
+	workspaceID, ok := workspaceIDFromRequest(request)
+	if !ok {
 		Error(responseWriter, http.StatusBadRequest, "invalid input")
 
 		return
@@ -67,24 +53,9 @@ func (s *Server) handleCreateProject(responseWriter http.ResponseWriter, request
 
 	project, err := s.projects.CreateProject(request.Context(), user.ID, workspaceID, tenant.CreateProjectParams{Name: req.Name})
 	if err != nil {
-		switch {
-		case errors.Is(err, tenant.ErrInvalidInput):
-			Error(responseWriter, http.StatusBadRequest, "invalid input")
+		WriteTenantError(responseWriter, err)
 
-			return
-		case errors.Is(err, tenant.ErrUnauthorized):
-			Error(responseWriter, http.StatusUnauthorized, "unauthorized")
-
-			return
-		case errors.Is(err, tenant.ErrConflict):
-			Error(responseWriter, http.StatusConflict, "conflict")
-
-			return
-		default:
-			Error(responseWriter, http.StatusInternalServerError, "internal error")
-
-			return
-		}
+		return
 	}
 
 	if lc, ok := MetadataFromContext(request.Context()); ok {
@@ -104,8 +75,8 @@ func (s *Server) handleListProjects(responseWriter http.ResponseWriter, request 
 		return
 	}
 
-	workspaceID := strings.TrimSpace(chi.URLParam(request, "workspaceId"))
-	if workspaceID == "" {
+	workspaceID, ok := workspaceIDFromRequest(request)
+	if !ok {
 		Error(responseWriter, http.StatusBadRequest, "invalid input")
 
 		return
@@ -113,20 +84,9 @@ func (s *Server) handleListProjects(responseWriter http.ResponseWriter, request 
 
 	projects, err := s.projects.ListProjects(request.Context(), user.ID, workspaceID)
 	if err != nil {
-		switch {
-		case errors.Is(err, tenant.ErrInvalidInput):
-			Error(responseWriter, http.StatusBadRequest, "invalid input")
+		WriteTenantError(responseWriter, err)
 
-			return
-		case errors.Is(err, tenant.ErrUnauthorized):
-			Error(responseWriter, http.StatusUnauthorized, "unauthorized")
-
-			return
-		default:
-			Error(responseWriter, http.StatusInternalServerError, "internal error")
-
-			return
-		}
+		return
 	}
 
 	items := make([]projectResponse, 0, len(projects))
@@ -142,9 +102,8 @@ func (s *Server) handleGetProject(responseWriter http.ResponseWriter, request *h
 		return
 	}
 
-	workspaceID := strings.TrimSpace(chi.URLParam(request, "workspaceId"))
-	projectID := strings.TrimSpace(chi.URLParam(request, "projectId"))
-	if workspaceID == "" || projectID == "" {
+	workspaceID, projectID, ok := workspaceAndProjectIDFromRequest(request)
+	if !ok {
 		Error(responseWriter, http.StatusBadRequest, "invalid input")
 
 		return
@@ -152,20 +111,9 @@ func (s *Server) handleGetProject(responseWriter http.ResponseWriter, request *h
 
 	project, err := s.projects.GetProject(request.Context(), user.ID, workspaceID, projectID)
 	if err != nil {
-		switch {
-		case errors.Is(err, tenant.ErrInvalidInput):
-			Error(responseWriter, http.StatusBadRequest, "invalid input")
+		WriteTenantError(responseWriter, err)
 
-			return
-		case errors.Is(err, tenant.ErrUnauthorized):
-			Error(responseWriter, http.StatusUnauthorized, "unauthorized")
-
-			return
-		default:
-			Error(responseWriter, http.StatusInternalServerError, "internal error")
-
-			return
-		}
+		return
 	}
 
 	if lc, ok := MetadataFromContext(request.Context()); ok {
@@ -180,52 +128,25 @@ func (s *Server) handleUpdateProject(responseWriter http.ResponseWriter, request
 		return
 	}
 
-	workspaceID := strings.TrimSpace(chi.URLParam(request, "workspaceId"))
-	projectID := strings.TrimSpace(chi.URLParam(request, "projectId"))
-	if workspaceID == "" || projectID == "" {
+	workspaceID, projectID, ok := workspaceAndProjectIDFromRequest(request)
+	if !ok {
 		Error(responseWriter, http.StatusBadRequest, "invalid input")
 
 		return
 	}
 
 	var req updateProjectRequest
-	if err := ReadJSON(request, &req); err != nil {
-		switch {
-		case errors.Is(err, ErrRequestBodyTooLarge):
-			Error(responseWriter, http.StatusRequestEntityTooLarge, "request body too large")
+	if err := ReadAndValidateJSON(request, &req, false); err != nil {
+		WriteJSONError(responseWriter, err)
 
-			return
-		default:
-			Error(responseWriter, http.StatusBadRequest, "invalid json")
-
-			return
-		}
-	}
-	if err := ValidateStruct(req); err != nil {
-		Error(responseWriter, http.StatusBadRequest, "invalid input")
 		return
 	}
 
 	project, err := s.projects.UpdateProject(request.Context(), user.ID, workspaceID, projectID, tenant.UpdateProjectParams{Name: req.Name})
 	if err != nil {
-		switch {
-		case errors.Is(err, tenant.ErrInvalidInput):
-			Error(responseWriter, http.StatusBadRequest, "invalid input")
+		WriteTenantError(responseWriter, err)
 
-			return
-		case errors.Is(err, tenant.ErrUnauthorized):
-			Error(responseWriter, http.StatusUnauthorized, "unauthorized")
-
-			return
-		case errors.Is(err, tenant.ErrConflict):
-			Error(responseWriter, http.StatusConflict, "conflict")
-
-			return
-		default:
-			Error(responseWriter, http.StatusInternalServerError, "internal error")
-
-			return
-		}
+		return
 	}
 
 	if lc, ok := MetadataFromContext(request.Context()); ok {
@@ -240,9 +161,8 @@ func (s *Server) handleDeleteProject(responseWriter http.ResponseWriter, request
 		return
 	}
 
-	workspaceID := strings.TrimSpace(chi.URLParam(request, "workspaceId"))
-	projectID := strings.TrimSpace(chi.URLParam(request, "projectId"))
-	if workspaceID == "" || projectID == "" {
+	workspaceID, projectID, ok := workspaceAndProjectIDFromRequest(request)
+	if !ok {
 		Error(responseWriter, http.StatusBadRequest, "invalid input")
 
 		return
@@ -250,20 +170,9 @@ func (s *Server) handleDeleteProject(responseWriter http.ResponseWriter, request
 
 	err := s.projects.DeleteProject(request.Context(), user.ID, workspaceID, projectID)
 	if err != nil {
-		switch {
-		case errors.Is(err, tenant.ErrInvalidInput):
-			Error(responseWriter, http.StatusBadRequest, "invalid input")
+		WriteTenantError(responseWriter, err)
 
-			return
-		case errors.Is(err, tenant.ErrUnauthorized):
-			Error(responseWriter, http.StatusUnauthorized, "unauthorized")
-
-			return
-		default:
-			Error(responseWriter, http.StatusInternalServerError, "internal error")
-
-			return
-		}
+		return
 	}
 
 	if lc, ok := MetadataFromContext(request.Context()); ok {
@@ -281,4 +190,14 @@ func projectResponseFromModel(project tenant.Project) projectResponse {
 		CreatedAt:   project.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:   project.UpdatedAt.Format(time.RFC3339),
 	}
+}
+
+func workspaceAndProjectIDFromRequest(request *http.Request) (string, string, bool) {
+	workspaceID := strings.TrimSpace(chi.URLParam(request, "workspaceId"))
+	projectID := strings.TrimSpace(chi.URLParam(request, "projectId"))
+	if workspaceID == "" || projectID == "" {
+		return "", "", false
+	}
+
+	return workspaceID, projectID, true
 }

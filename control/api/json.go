@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/spacescale/core/control/service/tenant"
 )
 
 // ErrRequestBodyTooLarge is returned when request decoding hits net/http's body-size limit.
@@ -69,6 +70,48 @@ func ValidateStruct(v any) error {
 	return apiValidator.Struct(v)
 }
 
+// ReadAndValidateJSON decodes one JSON value and validates the result.
+// When allowEmpty is true, an empty body is treated as a zero-value payload.
+func ReadAndValidateJSON(r *http.Request, dst any, allowEmpty bool) error {
+	err := ReadJSON(r, dst)
+	if errors.Is(err, io.EOF) {
+		if allowEmpty {
+			return ValidateStruct(dst)
+		}
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	return ValidateStruct(dst)
+}
+
+// WriteJSONError maps request decoding and validation errors to API responses.
+func WriteJSONError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ErrRequestBodyTooLarge):
+		Error(w, http.StatusRequestEntityTooLarge, "request body too large")
+	case isValidationError(err):
+		Error(w, http.StatusBadRequest, "invalid input")
+	default:
+		Error(w, http.StatusBadRequest, "invalid json")
+	}
+}
+
+// WriteTenantError maps service-layer errors to API responses.
+func WriteTenantError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, tenant.ErrInvalidInput):
+		Error(w, http.StatusBadRequest, "invalid input")
+	case errors.Is(err, tenant.ErrUnauthorized):
+		Error(w, http.StatusUnauthorized, "unauthorized")
+	case errors.Is(err, tenant.ErrConflict):
+		Error(w, http.StatusConflict, "conflict")
+	default:
+		Error(w, http.StatusInternalServerError, "internal error")
+	}
+}
+
 func isRequestBodyTooLarge(err error) bool {
 	_, ok := errors.AsType[*http.MaxBytesError](err)
 	return ok
@@ -84,4 +127,9 @@ func newAPIValidator() *validator.Validate {
 		return strings.TrimSpace(field.String()) != ""
 	})
 	return v
+}
+
+func isValidationError(err error) bool {
+	var validationErrs validator.ValidationErrors
+	return errors.As(err, &validationErrs)
 }

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -37,24 +36,14 @@ func (s *Server) handleCreateWorkspace(responseWriter http.ResponseWriter, reque
 	}
 
 	var req createWorkspaceRequest
-	if err := ReadJSON(request, &req); err != nil {
-		switch {
-		case errors.Is(err, ErrRequestBodyTooLarge):
-			Error(responseWriter, http.StatusRequestEntityTooLarge, "request body too large")
-		default:
-			Error(responseWriter, http.StatusBadRequest, "invalid json")
-		}
-
-		return
-	}
-	if err := ValidateStruct(req); err != nil {
-		Error(responseWriter, http.StatusBadRequest, "invalid input")
+	if err := ReadAndValidateJSON(request, &req, false); err != nil {
+		WriteJSONError(responseWriter, err)
 		return
 	}
 
 	out, err := s.workspaces.CreateWorkspace(request.Context(), user.ID, tenant.CreateWorkspaceParams{Name: req.Name})
 	if err != nil {
-		writeTenantError(responseWriter, err)
+		WriteTenantError(responseWriter, err)
 
 		return
 	}
@@ -76,7 +65,7 @@ func (s *Server) handleListWorkspaces(responseWriter http.ResponseWriter, reques
 
 	workspaces, err := s.workspaces.ListWorkspaces(request.Context(), user.ID)
 	if err != nil {
-		writeTenantError(responseWriter, err)
+		WriteTenantError(responseWriter, err)
 
 		return
 	}
@@ -108,7 +97,7 @@ func (s *Server) handleGetWorkspace(responseWriter http.ResponseWriter, request 
 
 	workspace, err := s.workspaces.GetWorkspace(request.Context(), user.ID, workspaceID)
 	if err != nil {
-		writeTenantError(responseWriter, err)
+		WriteTenantError(responseWriter, err)
 
 		return
 	}
@@ -135,24 +124,14 @@ func (s *Server) handleUpdateWorkspace(responseWriter http.ResponseWriter, reque
 	}
 
 	var req updateWorkspaceRequest
-	if err := ReadJSON(request, &req); err != nil {
-		switch {
-		case errors.Is(err, ErrRequestBodyTooLarge):
-			Error(responseWriter, http.StatusRequestEntityTooLarge, "request body too large")
-		default:
-			Error(responseWriter, http.StatusBadRequest, "invalid json")
-		}
-
-		return
-	}
-	if err := ValidateStruct(req); err != nil {
-		Error(responseWriter, http.StatusBadRequest, "invalid input")
+	if err := ReadAndValidateJSON(request, &req, false); err != nil {
+		WriteJSONError(responseWriter, err)
 		return
 	}
 
 	workspace, err := s.workspaces.UpdateWorkspace(request.Context(), user.ID, workspaceID, tenant.UpdateWorkspaceParams{Name: req.Name})
 	if err != nil {
-		writeTenantError(responseWriter, err)
+		WriteTenantError(responseWriter, err)
 
 		return
 	}
@@ -179,24 +158,11 @@ func (s *Server) handleDeleteWorkspace(responseWriter http.ResponseWriter, reque
 	}
 
 	if err := s.workspaces.DeleteWorkspace(request.Context(), user.ID, workspaceID); err != nil {
-		writeTenantError(responseWriter, err)
+		WriteTenantError(responseWriter, err)
 
 		return
 	}
 	responseWriter.WriteHeader(http.StatusNoContent)
-}
-
-func writeTenantError(responseWriter http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, tenant.ErrInvalidInput):
-		Error(responseWriter, http.StatusBadRequest, "invalid input")
-	case errors.Is(err, tenant.ErrUnauthorized):
-		Error(responseWriter, http.StatusUnauthorized, "unauthorized")
-	case errors.Is(err, tenant.ErrConflict):
-		Error(responseWriter, http.StatusConflict, "conflict")
-	default:
-		Error(responseWriter, http.StatusInternalServerError, "internal error")
-	}
 }
 
 func workspaceIDFromRequest(request *http.Request) (string, bool) {
