@@ -22,13 +22,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/control/db/sqlc"
-	pb "github.com/spacescale/core/shared/pb/v1"
+	"github.com/spacescale/core/shared/pb/v1"
 	"github.com/spacescale/core/shared/secret"
 )
 
 const (
 	defaultAppRuntimePort = 8080 // fallback when create input omits runtime port.
-	defaultTargetReplicas = 1    // current create flow launches one microvm by default.
 	defaultRootDiskMB     = 5120 // persisted legacy metadata; not sent to scaled launch shape.
 )
 
@@ -145,7 +144,7 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 	if params.RuntimePort != nil {
 		runtimePort = *params.RuntimePort
 	}
-	isPublic := normalizeIsPublic(params.IsPublic)
+	isPublic := params.IsPublic != nil && *params.IsPublic
 	envVars, ok := normalizeEnvVars(params.EnvVars)
 	if !ok {
 		return CreateAppResult{}, ErrInvalidInput
@@ -341,7 +340,7 @@ func (s *AppService) createAppAttempt(ctx context.Context, params createAppAttem
 	if !ok {
 		return CreateAppResult{}, ErrInvalidInput
 	}
-	if _, ok := runtimePortForDispatch(params.RuntimePort); !ok {
+	if params.RuntimePort < 0 {
 		return CreateAppResult{}, ErrInvalidInput
 	}
 
@@ -565,14 +564,6 @@ func deriveAppNameFromImageRef(imageRef string) (string, bool) {
 }
 
 // normalizeIsPublic resolves optional public exposure input.
-func normalizeIsPublic(raw *bool) bool {
-	if raw == nil {
-		return false
-	}
-
-	return *raw
-}
-
 // normalizeEnvVars validates env var entries, rejects duplicate keys, and
 // returns a normalized copy ready for persistence.
 func normalizeEnvVars(raw []AppEnvVarInput) ([]AppEnvVarInput, bool) {
@@ -596,14 +587,6 @@ func normalizeEnvVars(raw []AppEnvVarInput) ([]AppEnvVarInput, bool) {
 	}
 
 	return out, true
-}
-
-func isASCIIUpper(ch byte) bool {
-	return ch >= 'A' && ch <= 'Z'
-}
-
-func isASCIIDigit(ch byte) bool {
-	return ch >= '0' && ch <= '9'
 }
 
 // appFromRow maps a SQLC app row into the service App model.
@@ -639,14 +622,6 @@ func microVMShapeDBValues(shape *pb.MicroVMShape) (int32, int64, int64, bool) {
 	}
 
 	return int32(shape.GetVcpu()), int64(shape.GetRamMb()), int64(shape.GetVolumeMb()), true //nolint:gosec // Bounds checked above before DB-width casts.
-}
-
-func runtimePortForDispatch(port int32) (uint32, bool) {
-	if port < 0 {
-		return 0, false
-	}
-
-	return uint32(port), true
 }
 
 func cloneMicroVMShape(shape *pb.MicroVMShape) *pb.MicroVMShape {
