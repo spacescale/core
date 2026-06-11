@@ -38,15 +38,26 @@ type Server struct {
 	apps       *tenant.AppService
 
 	// dependencies
-	dbPool                  *pgxpool.Pool
-	config                  config.Control
-	internalIdentityLimiter *httprate.RateLimiter
-	server                  *http.Server
-	workosClient            *workos.Client
+	dbPool       *pgxpool.Pool
+	config       config.Control
+	server       *http.Server
+	workosClient *workos.Client
 
 	// fabric dependencies
 	dispatcher *fabric.Dispatcher
 }
+
+// Principal is the authenticated identity attached to the request context.
+// It is the single app-level auth shape used by handlers.
+type Principal struct {
+	Subject     string
+	IdentityKey string
+	Email       string
+	Name        string
+	AvatarURL   string
+}
+
+type principalContextKey struct{}
 
 const (
 	maxRequestBodyBytes     = 1 << 20
@@ -80,14 +91,13 @@ func NewServer(deps ServerDeps) *Server {
 
 	tenantServices := deps.Services.Tenant
 	apiServer := &Server{
-		users:                   tenantServices.Users,
-		projects:                tenantServices.Projects,
-		workspaces:              tenantServices.Workspaces,
-		bootstrap:               tenantServices.Bootstrap,
-		apps:                    tenantServices.Apps,
-		dbPool:                  deps.DBPool,
-		config:                  deps.Config,
-		internalIdentityLimiter: NewSyncIdentityLimiter(),
+		users:      tenantServices.Users,
+		projects:   tenantServices.Projects,
+		workspaces: tenantServices.Workspaces,
+		bootstrap:  tenantServices.Bootstrap,
+		apps:       tenantServices.Apps,
+		dbPool:     deps.DBPool,
+		config:     deps.Config,
 
 		// fabric dependencies
 		dispatcher:   deps.Dispatcher,
@@ -157,7 +167,7 @@ func (s *Server) Router() http.Handler {
 	})
 
 	router.Route("/v1", func(apiRouter chi.Router) {
-		apiRouter.Use(AuthMiddleware(s.config.Auth))
+		apiRouter.Use(s.workOSSessionMiddleware())
 		apiRouter.Use(userLimiter)
 
 		apiRouter.Post("/bootstrap-defaults", s.handleBootstrapDefaults)
@@ -191,6 +201,63 @@ func rateLimitExceeded(w http.ResponseWriter, _ *http.Request) {
 	Error(w, http.StatusTooManyRequests, "rate limit exceeded")
 }
 
+// RequireCallerUser resolves the authenticated principal into a persisted user row.
+func RequireCallerUser(responseWriter http.ResponseWriter, request *http.Request, users *tenant.UserService) (tenant.User, bool) {
+	principal, ok := PrincipalFromContext(request.Context())
+	if !ok {
+		Error(responseWriter, http.StatusUnauthorized, "unauthorized")
+		return emptyTenantUser(), false
+	}
+
+	user, err := users.GetUserByIdentityKey(request.Context(), principal.IdentityKey)
+	if err != nil {
+		switch {
+		case errors.Is(err, tenant.ErrInvalidInput):
+			Error(responseWriter, http.StatusBadRequest, "invalid input")
+		case errors.Is(err, tenant.ErrUnauthorized):
+			Error(responseWriter, http.StatusUnauthorized, "unauthorized")
+		default:
+			Error(responseWriter, http.StatusInternalServerError, "internal error")
+		}
+
+		return emptyTenantUser(), false
+	}
+
+	return user, true
+}
+
+// KeyByIdentityKey returns the rate-limit key for the authenticated caller.
+func KeyByIdentityKey(r *http.Request) (string, error) {
+	p, ok := PrincipalFromContext(r.Context())
+	if !ok || p.IdentityKey == "" {
+		return "identity:unknown", nil
+	}
+
+	return "identity:" + p.IdentityKey, nil
+}
+
+// PrincipalFromContext reads Principal from context.
+func PrincipalFromContext(ctx context.Context) (Principal, bool) {
+	p, ok := ctx.Value(principalContextKey{}).(Principal)
+	return p, ok
+}
+
+func withPrincipal(ctx context.Context, p Principal) context.Context {
+	return context.WithValue(ctx, principalContextKey{}, p)
+}
+
+func emptyTenantUser() tenant.User {
+	return tenant.User{
+		ID:          "",
+		IdentityKey: "",
+		Email:       "",
+		Name:        "",
+		AvatarURL:   "",
+		CreatedAt:   time.Time{},
+		UpdatedAt:   time.Time{},
+	}
+}
+
 func (s *Server) handleWorkOSLogin(w http.ResponseWriter, r *http.Request) {
 	if s.workosClient == nil {
 		Error(w, http.StatusServiceUnavailable, "auth unavailable")
@@ -212,11 +279,12 @@ func (s *Server) handleWorkOSLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(workOSStateTTL.Seconds()),
 	})
+	provider := workos.UserManagementAuthenticationProviderAuthkit
 	authorizationURL := s.workosClient.UserManagement().GetAuthorizationURL(
 		&workos.UserManagementGetAuthorizationURLParams{
 			RedirectURI: s.config.WorkOS.RedirectURI,
 			State:       nonEmptyStringPtr(state),
-			Provider:    new(workos.UserManagementAuthenticationProviderAuthkit),
+			Provider:    &provider,
 		},
 	)
 
@@ -311,6 +379,128 @@ func (s *Server) handleWorkOSCallback(w http.ResponseWriter, r *http.Request) {
 	})
 
 	http.Redirect(w, r, s.config.WorkOS.PostLoginRedirectURI, http.StatusSeeOther)
+}
+
+func (s *Server) workOSSessionMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if s.workosClient == nil {
+				SetAuthFailure(r, "workos_unconfigured")
+				Error(w, http.StatusServiceUnavailable, "auth unavailable")
+				return
+			}
+
+			sessionCookie, err := r.Cookie(s.config.WorkOS.CookieName)
+			if err != nil {
+				SetAuthFailure(r, "missing_session_cookie")
+				Error(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+
+			session := workos.NewSession(s.workosClient, sessionCookie.Value, s.config.WorkOS.CookiePassword)
+			authn, err := session.Authenticate()
+			if err != nil {
+				s.clearWorkOSSessionCookie(w)
+				SetAuthFailure(r, "invalid_session")
+				Error(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+
+			if authn != nil && authn.Authenticated && authn.User != nil {
+				principal := workOSPrincipalFromUser(authn.User)
+				ctx := withPrincipal(r.Context(), principal)
+				if lc, ok := MetadataFromContext(ctx); ok {
+					lc.UserID = principal.IdentityKey
+				}
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
+			if authn != nil && authn.NeedsRefresh {
+				refreshed, err := session.Refresh(r.Context())
+				if err == nil && refreshed != nil && refreshed.Authenticated && refreshed.Session != nil && refreshed.Session.User != nil {
+					s.setWorkOSSessionCookie(w, refreshed.SealedSession)
+
+					principal := workOSPrincipalFromUser(refreshed.Session.User)
+					ctx := withPrincipal(r.Context(), principal)
+					if lc, ok := MetadataFromContext(ctx); ok {
+						lc.UserID = principal.IdentityKey
+					}
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
+
+				s.clearWorkOSSessionCookie(w)
+				SetAuthFailure(r, "session_refresh_failed")
+				Error(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+
+			s.clearWorkOSSessionCookie(w)
+			SetAuthFailure(r, "invalid_session")
+			Error(w, http.StatusUnauthorized, "unauthorized")
+		})
+	}
+}
+
+func (s *Server) setWorkOSSessionCookie(w http.ResponseWriter, sealedSession string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     s.config.WorkOS.CookieName,
+		Value:    sealedSession,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   workOSCookieSecure(s.config.Environment),
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func (s *Server) clearWorkOSSessionCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     s.config.WorkOS.CookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   workOSCookieSecure(s.config.Environment),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+}
+
+func workOSPrincipalFromUser(user *workos.User) Principal {
+	identityKey := "workos:" + user.ID
+	return Principal{
+		Subject:     identityKey,
+		IdentityKey: identityKey,
+		Email:       strings.TrimSpace(user.Email),
+		Name:        workOSDisplayName(user),
+		AvatarURL:   workOSProfilePictureURL(user),
+	}
+}
+
+func workOSDisplayName(user *workos.User) string {
+	parts := make([]string, 0, 2)
+	if user.FirstName != nil {
+		first := strings.TrimSpace(*user.FirstName)
+		if first != "" {
+			parts = append(parts, first)
+		}
+	}
+	if user.LastName != nil {
+		last := strings.TrimSpace(*user.LastName)
+		if last != "" {
+			parts = append(parts, last)
+		}
+	}
+
+	return strings.TrimSpace(strings.Join(parts, " "))
+}
+
+func workOSProfilePictureURL(user *workos.User) string {
+	if user.ProfilePictureURL == nil {
+		return ""
+	}
+
+	return strings.TrimSpace(*user.ProfilePictureURL)
 }
 
 func generateWorkOSState() (string, error) {

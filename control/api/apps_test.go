@@ -63,8 +63,8 @@ func TestCreateAppCreatesQueuedDeployment(t *testing.T) {
 		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, project.ID),
 		body,
 		map[string]string{
-			"Authorization": authHeaderForIdentityKey(t, identityKey),
-			"Content-Type":  "application/json",
+			"Cookie":       authCookieForIdentityKey(t, identityKey),
+			"Content-Type": "application/json",
 		},
 	)
 
@@ -172,8 +172,8 @@ func TestCreateAppDefaultsQueuedRuntimePort(t *testing.T) {
 		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, project.ID),
 		body,
 		map[string]string{
-			"Authorization": authHeaderForIdentityKey(t, identityKey),
-			"Content-Type":  "application/json",
+			"Cookie":       authCookieForIdentityKey(t, identityKey),
+			"Content-Type": "application/json",
 		},
 	)
 
@@ -225,8 +225,8 @@ func TestCreateAppRejectsTooManyEnvVars(t *testing.T) {
 		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, project.ID),
 		body,
 		map[string]string{
-			"Authorization": authHeaderForIdentityKey(t, identityKey),
-			"Content-Type":  "application/json",
+			"Cookie":       authCookieForIdentityKey(t, identityKey),
+			"Content-Type": "application/json",
 		},
 	)
 
@@ -254,8 +254,8 @@ func TestCreateAppRequiresComputeAndPrimaryRegion(t *testing.T) {
 		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, project.ID),
 		body,
 		map[string]string{
-			"Authorization": authHeaderForIdentityKey(t, identityKey),
-			"Content-Type":  "application/json",
+			"Cookie":       authCookieForIdentityKey(t, identityKey),
+			"Content-Type": "application/json",
 		},
 	)
 
@@ -287,7 +287,7 @@ func TestListApps(t *testing.T) {
 		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, projectA.ID),
 		nil,
 		map[string]string{
-			"Authorization": authHeaderForIdentityKey(t, identityKey),
+			"Cookie": authCookieForIdentityKey(t, identityKey),
 		},
 	)
 
@@ -328,7 +328,7 @@ func TestListAppsRequiresOwnership(t *testing.T) {
 		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, project.ID),
 		nil,
 		map[string]string{
-			"Authorization": authHeaderForIdentityKey(t, otherIdentityKey),
+			"Cookie": authCookieForIdentityKey(t, otherIdentityKey),
 		},
 	)
 
@@ -348,8 +348,8 @@ func createAppViaAPI(t *testing.T, ts *testServer, identityKey, workspaceID, pro
 		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, projectID),
 		[]byte(body),
 		map[string]string{
-			"Authorization": authHeaderForIdentityKey(t, identityKey),
-			"Content-Type":  "application/json",
+			"Cookie":       authCookieForIdentityKey(t, identityKey),
+			"Content-Type": "application/json",
 		},
 	)
 

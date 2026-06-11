@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/control/api"
 	"github.com/spacescale/core/control/db/sqlc"
@@ -20,23 +19,21 @@ import (
 	"github.com/spacescale/core/control/service/tenant"
 	"github.com/spacescale/core/shared/config"
 	"github.com/stretchr/testify/require"
+	workos "github.com/workos/workos-go/v9"
 )
 
 const (
-	testJWTSecret          = "test-bff-secret"
-	testIssuer             = "spacescale-web-bff-test"
-	testAudience           = "spacescale-api-test"
 	testEnvEncryptionKeyID = "test-key-v1"
 	testEnvEncryptionKey   = "0123456789abcdef0123456789abcdef"
+	testWorkOSAPIKey       = "workos-test-key"
+	testWorkOSClientID     = "workos-test-client"
+	testWorkOSCookieName   = "spacescale_session"
+	testWorkOSCookieSecret = "12345678901234567890123456789012"
 )
 
 type testServer struct {
 	server *httptest.Server
 	pool   *pgxpool.Pool
-}
-
-type testJWTClaims struct {
-	jwt.RegisteredClaims
 }
 
 type testResponse struct {
@@ -60,8 +57,6 @@ func newTestServer(t *testing.T) *testServer {
 		require.NoError(t, err)
 	}
 
-	authCfg := config.AuthConfig{Enabled: true, JWTSecret: testJWTSecret, Issuer: testIssuer, Audience: testAudience}
-
 	queries := sqlc.New(pool)
 	svcs, err := service.NewServices(service.Deps{
 		Queries:            queries,
@@ -77,7 +72,15 @@ func newTestServer(t *testing.T) *testServer {
 		Services: svcs,
 		DBPool:   pool,
 		Config: config.Control{
-			Auth: authCfg,
+			WorkOS: config.WorkOSConfig{
+				APIKey:               testWorkOSAPIKey,
+				ClientID:             testWorkOSClientID,
+				CookiePassword:       testWorkOSCookieSecret,
+				RedirectURI:          "http://localhost:8080/auth/callback",
+				PostLoginRedirectURI: "http://localhost:3000",
+				LogoutRedirectURI:    "http://localhost:3000",
+				CookieName:           testWorkOSCookieName,
+			},
 		},
 	})
 
@@ -107,7 +110,7 @@ func syncAuthUserForTest(t *testing.T, ts *testServer, identityKey string) {
 	users := tenant.NewUserService(queries)
 
 	_, err := users.SyncAuthUser(context.Background(), tenant.SyncAuthUserParams{
-		IdentityKey: identityKey,
+		IdentityKey: workOSIdentityKey(identityKey),
 		Email:       "dev@example.com",
 		Name:        "Dev",
 		AvatarURL:   "https://example.com/avatar.png",
@@ -118,7 +121,7 @@ func syncAuthUserForTest(t *testing.T, ts *testServer, identityKey string) {
 func createWorkspaceForIdentity(t *testing.T, ts *testServer, identityKey, name string) string {
 	t.Helper()
 	queries := sqlc.New(ts.pool)
-	user, err := queries.GetUserByIdentityKey(context.Background(), identityKey)
+	user, err := queries.GetUserByIdentityKey(context.Background(), workOSIdentityKey(identityKey))
 	require.NoError(t, err)
 
 	workspace, err := queries.CreateWorkspace(context.Background(), sqlc.CreateWorkspaceParams{
@@ -149,21 +152,23 @@ func doRequest(t *testing.T, ts *testServer, method, path string, body []byte, h
 	return testResponse{StatusCode: resp.StatusCode, Header: resp.Header}, data
 }
 
-func authHeaderForIdentityKey(t *testing.T, identityKey string) string {
+func authCookieForIdentityKey(t *testing.T, identityKey string) string {
 	t.Helper()
-	claims := testJWTClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    testIssuer,
-			Subject:   "github:" + identityKey,
-			Audience:  jwt.ClaimStrings{testAudience},
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(10 * time.Minute)),
-			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-1 * time.Minute)),
+	sealedSession, err := workos.SealSession(&workos.SessionData{
+		AccessToken:  "access-token",
+		RefreshToken: "refresh-token",
+		User: &workos.User{
+			ID:    identityKey,
+			Email: "dev@example.com",
 		},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	raw, err := token.SignedString([]byte(testJWTSecret))
+	}, testWorkOSCookieSecret)
 	require.NoError(t, err)
-	return "Bearer " + raw
+
+	return testWorkOSCookieName + "=" + sealedSession
+}
+
+func workOSIdentityKey(identityKey string) string {
+	return "workos:" + identityKey
 }
 
 func uniqueIdentityKey(t *testing.T) string {
