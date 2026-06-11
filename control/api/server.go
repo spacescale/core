@@ -244,25 +244,17 @@ func PrincipalFromContext(ctx context.Context) (Principal, bool) {
 
 func (s *Server) handleWorkOSLogin(w http.ResponseWriter, r *http.Request) {
 	if s.workosClient == nil {
-		Error(w, http.StatusServiceUnavailable, "auth unavailable")
+		writeAuthUnavailable(w)
 		return
 	}
 
 	state, err := generateWorkOSState()
 	if err != nil {
-		Error(w, http.StatusInternalServerError, "internal error")
+		writeInternalError(w)
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     workOSStateCookieName,
-		Value:    state,
-		Path:     "/auth",
-		HttpOnly: true,
-		Secure:   workOSCookieSecure(s.config.Environment),
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(workOSStateTTL.Seconds()),
-	})
+	s.setWorkOSCookie(w, workOSStateCookieName, state, "/auth", int(workOSStateTTL.Seconds()))
 	provider := workos.UserManagementAuthenticationProviderAuthkit
 	authorizationURL := s.workosClient.UserManagement().GetAuthorizationURL(
 		&workos.UserManagementGetAuthorizationURLParams{
@@ -277,7 +269,7 @@ func (s *Server) handleWorkOSLogin(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleWorkOSCallback(w http.ResponseWriter, r *http.Request) {
 	if s.workosClient == nil {
-		Error(w, http.StatusServiceUnavailable, "auth unavailable")
+		writeAuthUnavailable(w)
 		return
 	}
 
@@ -295,23 +287,15 @@ func (s *Server) handleWorkOSCallback(w http.ResponseWriter, r *http.Request) {
 
 	stateCookie, err := r.Cookie(workOSStateCookieName)
 	if err != nil {
-		Error(w, http.StatusUnauthorized, "unauthorized")
+		writeUnauthorized(w)
 		return
 	}
 	if subtle.ConstantTimeCompare([]byte(stateCookie.Value), []byte(state)) != 1 {
-		Error(w, http.StatusUnauthorized, "unauthorized")
+		writeUnauthorized(w)
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     workOSStateCookieName,
-		Value:    "",
-		Path:     "/auth",
-		HttpOnly: true,
-		Secure:   workOSCookieSecure(s.config.Environment),
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   -1,
-	})
+	s.setWorkOSCookie(w, workOSStateCookieName, "", "/auth", -1)
 
 	authResponse, err := s.workosClient.UserManagement().AuthenticateWithCode(
 		r.Context(),
@@ -322,11 +306,11 @@ func (s *Server) handleWorkOSCallback(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		Error(w, http.StatusUnauthorized, "authentication failed")
+		writeUnauthorized(w)
 		return
 	}
 	if authResponse == nil || authResponse.User == nil {
-		Error(w, http.StatusInternalServerError, "internal error")
+		writeInternalError(w)
 		return
 	}
 
@@ -337,7 +321,7 @@ func (s *Server) handleWorkOSCallback(w http.ResponseWriter, r *http.Request) {
 		Name:        "",
 		AvatarURL:   "",
 	}); err != nil {
-		Error(w, http.StatusInternalServerError, "internal error")
+		writeInternalError(w)
 		return
 	}
 
@@ -349,18 +333,11 @@ func (s *Server) handleWorkOSCallback(w http.ResponseWriter, r *http.Request) {
 		s.config.WorkOS.CookiePassword,
 	)
 	if err != nil {
-		Error(w, http.StatusInternalServerError, "internal error")
+		writeInternalError(w)
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     s.config.WorkOS.CookieName,
-		Value:    sealedSession,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   workOSCookieSecure(s.config.Environment),
-		SameSite: http.SameSiteLaxMode,
-	})
+	s.setWorkOSCookie(w, s.config.WorkOS.CookieName, sealedSession, "/", 0)
 
 	http.Redirect(w, r, s.config.WorkOS.PostLoginRedirectURI, http.StatusSeeOther)
 }
@@ -369,85 +346,84 @@ func (s *Server) workOSSessionMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if s.workosClient == nil {
-				SetAuthFailure(r, "workos_unconfigured")
-				Error(w, http.StatusServiceUnavailable, "auth unavailable")
+				s.rejectWorkOSSession(w, r, "workos_unconfigured")
 				return
 			}
 
 			sessionCookie, err := r.Cookie(s.config.WorkOS.CookieName)
 			if err != nil {
-				SetAuthFailure(r, "missing_session_cookie")
-				Error(w, http.StatusUnauthorized, "unauthorized")
+				s.rejectWorkOSSession(w, r, "missing_session_cookie")
 				return
 			}
 
 			session := workos.NewSession(s.workosClient, sessionCookie.Value, s.config.WorkOS.CookiePassword)
 			authn, err := session.Authenticate()
 			if err != nil {
-				s.clearWorkOSSessionCookie(w)
-				SetAuthFailure(r, "invalid_session")
-				Error(w, http.StatusUnauthorized, "unauthorized")
+				s.rejectWorkOSSession(w, r, "invalid_session")
 				return
 			}
 
 			if authn != nil && authn.Authenticated && authn.User != nil {
 				principal := workOSPrincipalFromUser(authn.User)
-				ctx := context.WithValue(r.Context(), principalContextKey{}, principal)
-				if lc, ok := MetadataFromContext(ctx); ok {
-					lc.UserID = principal.IdentityKey
-				}
-				next.ServeHTTP(w, r.WithContext(ctx))
+				s.serveWithPrincipal(next, w, r, principal)
 				return
 			}
 
 			if authn != nil && authn.NeedsRefresh {
 				refreshed, err := session.Refresh(r.Context())
 				if err == nil && refreshed != nil && refreshed.Authenticated && refreshed.Session != nil && refreshed.Session.User != nil {
-					s.setWorkOSSessionCookie(w, refreshed.SealedSession)
+					s.setWorkOSCookie(w, s.config.WorkOS.CookieName, refreshed.SealedSession, "/", 0)
 
 					principal := workOSPrincipalFromUser(refreshed.Session.User)
-					ctx := context.WithValue(r.Context(), principalContextKey{}, principal)
-					if lc, ok := MetadataFromContext(ctx); ok {
-						lc.UserID = principal.IdentityKey
-					}
-					next.ServeHTTP(w, r.WithContext(ctx))
+					s.serveWithPrincipal(next, w, r, principal)
 					return
 				}
 
-				s.clearWorkOSSessionCookie(w)
-				SetAuthFailure(r, "session_refresh_failed")
-				Error(w, http.StatusUnauthorized, "unauthorized")
+				s.rejectWorkOSSession(w, r, "session_refresh_failed")
 				return
 			}
 
-			s.clearWorkOSSessionCookie(w)
-			SetAuthFailure(r, "invalid_session")
-			Error(w, http.StatusUnauthorized, "unauthorized")
+			s.rejectWorkOSSession(w, r, "invalid_session")
 		})
 	}
 }
 
-func (s *Server) setWorkOSSessionCookie(w http.ResponseWriter, sealedSession string) {
+func (s *Server) serveWithPrincipal(next http.Handler, w http.ResponseWriter, r *http.Request, principal Principal) {
+	ctx := context.WithValue(r.Context(), principalContextKey{}, principal)
+	if lc, ok := MetadataFromContext(ctx); ok {
+		lc.UserID = principal.IdentityKey
+	}
+	next.ServeHTTP(w, r.WithContext(ctx))
+}
+
+func (s *Server) rejectWorkOSSession(w http.ResponseWriter, r *http.Request, reason string) {
+	s.setWorkOSCookie(w, s.config.WorkOS.CookieName, "", "/", -1)
+	SetAuthFailure(r, reason)
+	writeUnauthorized(w)
+}
+
+func (s *Server) setWorkOSCookie(w http.ResponseWriter, name, value, path string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     s.config.WorkOS.CookieName,
-		Value:    sealedSession,
-		Path:     "/",
+		Name:     name,
+		Value:    value,
+		Path:     path,
 		HttpOnly: true,
 		Secure:   workOSCookieSecure(s.config.Environment),
 		SameSite: http.SameSiteLaxMode,
+		MaxAge:   maxAge,
 	})
 }
 
-func (s *Server) clearWorkOSSessionCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     s.config.WorkOS.CookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   workOSCookieSecure(s.config.Environment),
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   -1,
-	})
+func writeAuthUnavailable(w http.ResponseWriter) {
+	Error(w, http.StatusServiceUnavailable, "auth unavailable")
+}
+
+func writeUnauthorized(w http.ResponseWriter) {
+	Error(w, http.StatusUnauthorized, "unauthorized")
+}
+
+func writeInternalError(w http.ResponseWriter) {
+	Error(w, http.StatusInternalServerError, "internal error")
 }
 
 func workOSPrincipalFromUser(user *workos.User) Principal {
