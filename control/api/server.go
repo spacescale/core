@@ -247,9 +247,11 @@ func PrincipalFromContext(ctx context.Context) (Principal, bool) {
 	return p, ok
 }
 
-// handleWorkOSLogin starts the WorkOS login flow.
-// It creates a short-lived CSRF state token, stores it in a cookie, and then
-// redirects the browser to WorkOS for authentication.
+// handleWorkOSLogin starts the browser login flow through WorkOS.
+// It refuses to run when WorkOS is disabled.
+// It creates a short-lived random state value for CSRF protection.
+// It stores that state in a temporary cookie scoped to the auth path.
+// It then redirects the browser to the WorkOS authorization URL.
 func (s *Server) handleWorkOSLogin(w http.ResponseWriter, r *http.Request) {
 	if s.workosClient == nil {
 		writeAuthUnavailable(w)
@@ -274,9 +276,11 @@ func (s *Server) handleWorkOSLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, authorizationURL, http.StatusFound)
 }
 
-// handleWorkOSCallback completes the WorkOS login flow.
-// It validates the callback state, exchanges the authorization code, syncs the
-// user into the local database, seals the WorkOS session, and stores it.
+// handleWorkOSCallback finishes the browser login flow after WorkOS redirects back.
+// It rejects the request when WorkOS is disabled or the callback is malformed.
+// It checks the returned state against the temporary cookie before trusting the request.
+// It exchanges the authorization code for tokens, then syncs the WorkOS user locally.
+// It seals the session, stores the long-lived cookie, and redirects back into the app.
 func (s *Server) handleWorkOSCallback(w http.ResponseWriter, r *http.Request) {
 	if s.workosClient == nil {
 		writeAuthUnavailable(w)
