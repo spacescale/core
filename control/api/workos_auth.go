@@ -34,7 +34,7 @@ type workOSAuth struct {
 	users  *tenant.UserService
 }
 
-// newWorkOSAuth builds the WorkOS helper from app config and the user service.
+// newWorkOSAuth builds the WorkOS helper from workload config and the user service.
 //
 // If WorkOS is not configured, the helper still exists but its client stays nil
 // so the router can skip auth routes and treat API requests as unauthenticated.
@@ -134,7 +134,7 @@ func (a *workOSAuth) handleLogin(w http.ResponseWriter, r *http.Request) {
 // handleCallback completes the browser login flow after WorkOS redirects back.
 //
 // It checks the OAuth code and state, swaps the auth code for tokens, syncs the
-// user locally, seals a session cookie, and redirects back into the app.
+// user locally, seals a session cookie, and redirects back into the workload.
 func (a *workOSAuth) handleCallback(w http.ResponseWriter, r *http.Request) {
 	if a.client == nil {
 		writeAuthUnavailable(w)

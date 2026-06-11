@@ -32,14 +32,14 @@ var (
 
 // Dispatcher coordinates placement auctions and targeted launch commands.
 type Dispatcher struct {
-	apps   *tenant.AppService
-	nats   *nats.Client
-	logger *slog.Logger
+	workloads *tenant.WorkloadService
+	nats      *nats.Client
+	logger    *slog.Logger
 }
 
 // Request is the durable workload state needed to dispatch one microVM launch.
 type Request struct {
-	AppID        uuid.UUID
+	WorkloadID   uuid.UUID
 	DeploymentID uuid.UUID
 	MicroVMID    uuid.UUID
 
@@ -58,11 +58,11 @@ type Winner struct {
 
 // NewDispatcher creates a dispatcher bound to tenant lifecycle services and the
 // NATS communication fabric.
-func NewDispatcher(apps *tenant.AppService, client *nats.Client, logger *slog.Logger) *Dispatcher {
+func NewDispatcher(workloads *tenant.WorkloadService, client *nats.Client, logger *slog.Logger) *Dispatcher {
 	return &Dispatcher{
-		apps:   apps,
-		nats:   client,
-		logger: logger.With("component", "dispatch"),
+		workloads: workloads,
+		nats:      client,
+		logger:    logger.With("component", "dispatch"),
 	}
 }
 
@@ -76,7 +76,7 @@ func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 	shapeAttrs := shapeLogAttrs(req.Shape)
 	launchArgs := make([]any, 0, launchLogAttrBaseCap+len(shapeAttrs))
 	launchArgs = append(launchArgs,
-		"app_id", req.AppID,
+		"workload_id", req.WorkloadID,
 		"deployment_id", req.DeploymentID,
 		"microvm_id", req.MicroVMID,
 		"region", req.Region,
@@ -88,8 +88,8 @@ func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 	if err != nil {
 		return err
 	}
-	if err := d.apps.AssignMicroVMToNodeAndMarkDeploying(ctx, tenant.DispatchAssignment{
-		AppID:        req.AppID,
+	if err := d.workloads.AssignMicroVMToNodeAndMarkDeploying(ctx, tenant.DispatchAssignment{
+		WorkloadID:   req.WorkloadID,
 		DeploymentID: req.DeploymentID,
 		MicroVMID:    req.MicroVMID,
 		NodeID:       nodeID,
@@ -140,9 +140,9 @@ func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 	)
 	d.logger.Info("microvm launch accepted", acceptedArgs...)
 
-	if err := d.apps.MarkMicroVMStarting(ctx, req.MicroVMID); err != nil {
+	if err := d.workloads.MarkMicroVMStarting(ctx, req.MicroVMID); err != nil {
 		d.logger.Error("failed to mark microvm starting",
-			"app_id", req.AppID,
+			"workload_id", req.WorkloadID,
 			"deployment_id", req.DeploymentID,
 			"microvm_id", req.MicroVMID,
 			"node_id", winner.NodeID,
@@ -189,7 +189,7 @@ func (d *Dispatcher) logNoAuctionBids(req Request) {
 	shapeAttrs := shapeLogAttrs(req.Shape)
 	warnArgs := make([]any, 0, noAuctionBidLogBaseCap+len(shapeAttrs))
 	warnArgs = append(warnArgs,
-		"app_id", req.AppID,
+		"workload_id", req.WorkloadID,
 		"deployment_id", req.DeploymentID,
 		"microvm_id", req.MicroVMID,
 		"region", req.Region,
@@ -207,8 +207,8 @@ func returnLaunchError(launchErr, markErr error) error {
 }
 
 func (d *Dispatcher) markFailed(ctx context.Context, req Request, reason string) error {
-	return d.apps.MarkDispatchFailed(ctx, tenant.DispatchFailure{
-		AppID:        req.AppID,
+	return d.workloads.MarkDispatchFailed(ctx, tenant.DispatchFailure{
+		WorkloadID:   req.WorkloadID,
 		DeploymentID: req.DeploymentID,
 		MicroVMID:    req.MicroVMID,
 		Reason:       reason,

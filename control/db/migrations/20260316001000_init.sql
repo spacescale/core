@@ -29,7 +29,7 @@ CREATE TABLE workspaces
     UNIQUE (owner_user_id, name)
 );
 -- projects group deployable products inside one workspace.
--- A project gives apps and future managed resources a stable home.
+-- A project gives workloads and future managed resources a stable home.
 CREATE TABLE projects
 (
     id           UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
@@ -48,9 +48,9 @@ CREATE INDEX projects_workspace_id_idx
 CREATE INDEX workspaces_owner_user_id_idx
     ON workspaces (owner_user_id);
 
--- apps are the long-lived product object customers think about.
--- An app survives across many deployments and across many microvms over time.
-CREATE TABLE apps
+-- workloads are the long-lived product object customers think about.
+-- A workload survives across many deployments and across many microvms over time.
+CREATE TABLE workloads
 (
     id           UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
     project_id   UUID        NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
@@ -69,12 +69,12 @@ CREATE TABLE apps
     UNIQUE (project_id, subdomain)
 );
 
--- deployments capture one concrete release of an app.
+-- deployments capture one concrete release of a workload.
 -- This is the row that rolling updates and replica groups should hang off.
 CREATE TABLE deployments
 (
     id            UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
-    app_id        UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
+    workload_id   UUID        NOT NULL REFERENCES workloads (id) ON DELETE CASCADE,
     status        TEXT        NOT NULL CHECK (status IN ('queued', 'deploying', 'running', 'failed')),
     image_ref     TEXT        NOT NULL,
     runtime_port  INT         NOT NULL,
@@ -84,15 +84,15 @@ CREATE TABLE deployments
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 -- Deployments are read newest first for app release history and rollout logic.
-CREATE INDEX deployments_app_id_created_at_idx ON deployments (app_id, created_at DESC);
+CREATE INDEX deployments_workload_id_created_at_idx ON deployments (workload_id, created_at DESC);
 
 
--- app_env_vars stores encrypted environment variables for one app.
+-- workload_env_vars stores encrypted environment variables for one workload.
 -- Values never land in plaintext in Postgres.
-CREATE TABLE app_env_vars
+CREATE TABLE workload_env_vars
 (
     id              UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
-    app_id          UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
+    workload_id     UUID        NOT NULL REFERENCES workloads (id) ON DELETE CASCADE,
     key             TEXT        NOT NULL,
     value_encrypted TEXT        NOT NULL,
     cipher_version  TEXT GENERATED ALWAYS AS (split_part(value_encrypted, ':', 1)) STORED,
@@ -101,10 +101,10 @@ CREATE TABLE app_env_vars
     is_secret       BOOLEAN     NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (app_id, key)
+    UNIQUE (workload_id, key)
 );
 
-CREATE INDEX app_env_vars_cipher_claim_idx ON app_env_vars (cipher_key_id, created_at) WHERE cipher_version = 'v1' AND cipher_algo = 'xchacha20poly1305';
+CREATE INDEX workload_env_vars_cipher_claim_idx ON workload_env_vars (cipher_key_id, created_at) WHERE cipher_version = 'v1' AND cipher_algo = 'xchacha20poly1305';
 
 
 
@@ -174,26 +174,26 @@ CREATE TABLE registry_credentials
 );
 
 
--- app_registry_credentials connects an app to the registry secret it uses.
-CREATE TABLE app_registry_credentials
+-- workload_registry_credentials connects a workload to the registry secret it uses.
+CREATE TABLE workload_registry_credentials
 (
-    app_id                 UUID        NOT NULL REFERENCES apps (id) ON DELETE CASCADE,
+    workload_id            UUID        NOT NULL REFERENCES workloads (id) ON DELETE CASCADE,
     registry_credential_id UUID        NOT NULL REFERENCES registry_credentials (id) ON DELETE CASCADE,
     created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_used              TIMESTAMPTZ,
-	PRIMARY KEY (app_id, registry_credential_id)
+	PRIMARY KEY (workload_id, registry_credential_id)
 );
 
 -- Registry first lookups are needed for audit and cleanup work.
-CREATE INDEX app_registry_credentials_registry_idx ON app_registry_credentials (registry_credential_id);
+CREATE INDEX workload_registry_credentials_registry_idx ON workload_registry_credentials (registry_credential_id);
 
 -- +goose Down
-DROP TABLE IF EXISTS app_registry_credentials;
-DROP TABLE IF EXISTS app_env_vars;
+DROP TABLE IF EXISTS workload_registry_credentials;
+DROP TABLE IF EXISTS workload_env_vars;
 DROP TABLE IF EXISTS microvms;
 DROP TABLE IF EXISTS nodes;
 DROP TABLE IF EXISTS deployments;
-DROP TABLE IF EXISTS apps;
+DROP TABLE IF EXISTS workloads;
 DROP TABLE IF EXISTS registry_credentials;
 DROP TABLE IF EXISTS projects;
 DROP TABLE IF EXISTS workspaces;

@@ -12,32 +12,32 @@ import (
 	"github.com/spacescale/core/control/tenant"
 )
 
-const createAppDispatchTimeout = 20 * time.Second
+const createWorkloadDispatchTimeout = 20 * time.Second
 
-type createAppEnvVarRequest struct {
+type createWorkloadEnvVarRequest struct {
 	Key      string `json:"key" validate:"required,notblank,envkey"`
 	Value    string `json:"value" validate:"max=8192"`
 	IsSecret bool   `json:"isSecret"`
 }
 
-type createAppComputeRequest struct {
+type createWorkloadComputeRequest struct {
 	VCPU      uint32 `json:"vcpu" validate:"gt=0,lte=2147483647"`
 	MemoryMB  uint64 `json:"memoryMb" validate:"gt=0,lte=9223372036854775807"`
 	Dedicated bool   `json:"dedicated"`
 }
 
-type createAppRequest struct {
-	Name                 string                   `json:"name" validate:"omitempty,notblank,max=63"`
-	ImageRef             string                   `json:"imageRef" validate:"required,notblank,max=1024,excludesall= \t\r\n"`
-	Compute              createAppComputeRequest  `json:"compute" validate:"required"`
-	PrimaryRegion        string                   `json:"primaryRegion" validate:"required,notblank,max=32"`
-	RuntimePort          *int                     `json:"runtimePort" validate:"omitempty,min=1,max=65535"`
-	IsPublic             *bool                    `json:"isPublic"`
-	RegistryCredentialID string                   `json:"registryCredentialId" validate:"omitempty,uuid"`
-	EnvVars              []createAppEnvVarRequest `json:"envVars" validate:"max=50,dive"`
+type createWorkloadRequest struct {
+	Name                 string                        `json:"name" validate:"omitempty,notblank,max=63"`
+	ImageRef             string                        `json:"imageRef" validate:"required,notblank,max=1024,excludesall= \t\r\n"`
+	Compute              createWorkloadComputeRequest  `json:"compute" validate:"required"`
+	PrimaryRegion        string                        `json:"primaryRegion" validate:"required,notblank,max=32"`
+	RuntimePort          *int                          `json:"runtimePort" validate:"omitempty,min=1,max=65535"`
+	IsPublic             *bool                         `json:"isPublic"`
+	RegistryCredentialID string                        `json:"registryCredentialId" validate:"omitempty,uuid"`
+	EnvVars              []createWorkloadEnvVarRequest `json:"envVars" validate:"max=50,dive"`
 }
 
-type appResponse struct {
+type workloadResponse struct {
 	ID             string `json:"id"`
 	ProjectID      string `json:"projectId"`
 	Name           string `json:"name"`
@@ -53,11 +53,11 @@ type appResponse struct {
 	UpdatedAt      string `json:"updatedAt"`
 }
 
-type listAppsResponse struct {
-	Apps []appResponse `json:"apps"`
+type listWorkloadsResponse struct {
+	Workloads []workloadResponse `json:"workloads"`
 }
 
-func (s *Server) handleListApps(responseWriter http.ResponseWriter, request *http.Request) {
+func (s *Server) handleListWorkloads(responseWriter http.ResponseWriter, request *http.Request) {
 	user, ok := RequireCallerUser(responseWriter, request, s.users)
 	if !ok {
 		return
@@ -70,21 +70,21 @@ func (s *Server) handleListApps(responseWriter http.ResponseWriter, request *htt
 		return
 	}
 
-	apps, err := s.apps.ListApps(request.Context(), user.ID, workspaceID, projectID)
+	workloads, err := s.workloads.ListWorkloads(request.Context(), user.ID, workspaceID, projectID)
 	if err != nil {
 		WriteTenantError(responseWriter, err)
 
 		return
 	}
 
-	items := make([]appResponse, 0, len(apps))
-	for _, app := range apps {
-		items = append(items, appResponseFromModel(app))
+	items := make([]workloadResponse, 0, len(workloads))
+	for _, workload := range workloads {
+		items = append(items, workloadResponseFromModel(workload))
 	}
-	JSON(responseWriter, http.StatusOK, listAppsResponse{Apps: items})
+	JSON(responseWriter, http.StatusOK, listWorkloadsResponse{Workloads: items})
 }
 
-func (s *Server) handleCreateApp(responseWriter http.ResponseWriter, request *http.Request) {
+func (s *Server) handleCreateWorkload(responseWriter http.ResponseWriter, request *http.Request) {
 	user, ok := RequireCallerUser(responseWriter, request, s.users)
 	if !ok {
 		return
@@ -97,26 +97,26 @@ func (s *Server) handleCreateApp(responseWriter http.ResponseWriter, request *ht
 		return
 	}
 
-	var req createAppRequest
+	var req createWorkloadRequest
 	if err := ReadAndValidateJSON(request, &req, false); err != nil {
 		WriteJSONError(responseWriter, err)
 
 		return
 	}
 
-	envVars := make([]tenant.AppEnvVarInput, 0, len(req.EnvVars))
+	envVars := make([]tenant.WorkloadEnvVarInput, 0, len(req.EnvVars))
 	for _, item := range req.EnvVars {
-		envVars = append(envVars, tenant.AppEnvVarInput{
+		envVars = append(envVars, tenant.WorkloadEnvVarInput{
 			Key:      strings.ToUpper(strings.TrimSpace(item.Key)),
 			Value:    item.Value,
 			IsSecret: item.IsSecret,
 		})
 	}
 
-	result, err := s.apps.CreateApp(request.Context(), user.ID, workspaceID, projectID, tenant.CreateAppParams{
+	result, err := s.workloads.CreateWorkload(request.Context(), user.ID, workspaceID, projectID, tenant.CreateWorkloadParams{
 		Name:     req.Name,
 		ImageRef: req.ImageRef,
-		Compute: tenant.AppComputeInput{
+		Compute: tenant.WorkloadComputeInput{
 			VCPU:      req.Compute.VCPU,
 			MemoryMB:  req.Compute.MemoryMB,
 			Dedicated: req.Compute.Dedicated,
@@ -133,20 +133,20 @@ func (s *Server) handleCreateApp(responseWriter http.ResponseWriter, request *ht
 		return
 	}
 
-	app := result.App
+	workload := result.Workload
 	if s.dispatcher != nil {
-		dispatchCtx, cancel := newCreateAppDispatchContext(request.Context())
+		dispatchCtx, cancel := newCreateWorkloadDispatchContext(request.Context())
 		defer cancel()
 
 		dispatchErr := s.dispatcher.Launch(dispatchCtx, fabric.Request{
-			AppID:        result.AppID,
+			WorkloadID:   result.WorkloadID,
 			DeploymentID: result.DeploymentID,
 			MicroVMID:    result.MicroVMID,
-			Region:       result.App.PrimaryRegion,
+			Region:       result.Workload.PrimaryRegion,
 			Shape:        result.Shape,
-			ImageRef:     result.App.ImageRef,
+			ImageRef:     result.Workload.ImageRef,
 			Env:          result.Env,
-			RuntimePort:  uint32(result.App.RuntimePort),
+			RuntimePort:  uint32(result.Workload.RuntimePort),
 		})
 
 		if dispatchErr != nil {
@@ -162,40 +162,40 @@ func (s *Server) handleCreateApp(responseWriter http.ResponseWriter, request *ht
 			}
 		}
 
-		refreshed, refreshErr := s.apps.GetApp(dispatchCtx, user.ID, workspaceID, projectID, app.ID)
-		app = resolveCreateAppAfterDispatch(app, dispatchErr, refreshed, refreshErr)
+		refreshed, refreshErr := s.workloads.GetWorkload(dispatchCtx, user.ID, workspaceID, projectID, workload.ID)
+		workload = resolveCreateWorkloadAfterDispatch(workload, dispatchErr, refreshed, refreshErr)
 	}
 
 	responseWriter.Header().Set(
 		"Location",
-		"/v1/workspaces/"+url.PathEscape(workspaceID)+"/projects/"+url.PathEscape(projectID)+"/apps/"+url.PathEscape(app.ID),
+		"/v1/workspaces/"+url.PathEscape(workspaceID)+"/projects/"+url.PathEscape(projectID)+"/workloads/"+url.PathEscape(workload.ID),
 	)
-	JSON(responseWriter, http.StatusCreated, appResponseFromModel(app))
+	JSON(responseWriter, http.StatusCreated, workloadResponseFromModel(workload))
 }
 
-func appResponseFromModel(app tenant.App) appResponse {
-	return appResponse{
-		ID:             app.ID,
-		ProjectID:      app.ProjectID,
-		Name:           app.Name,
-		Slug:           app.Slug,
-		Subdomain:      app.Subdomain,
-		ImageRef:       app.ImageRef,
-		TargetReplicas: app.TargetReplicas,
-		PrimaryRegion:  app.PrimaryRegion,
-		RuntimePort:    app.RuntimePort,
-		Status:         app.Status,
-		IsPublic:       app.IsPublic,
-		CreatedAt:      app.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:      app.UpdatedAt.Format(time.RFC3339),
+func workloadResponseFromModel(workload tenant.Workload) workloadResponse {
+	return workloadResponse{
+		ID:             workload.ID,
+		ProjectID:      workload.ProjectID,
+		Name:           workload.Name,
+		Slug:           workload.Slug,
+		Subdomain:      workload.Subdomain,
+		ImageRef:       workload.ImageRef,
+		TargetReplicas: workload.TargetReplicas,
+		PrimaryRegion:  workload.PrimaryRegion,
+		RuntimePort:    workload.RuntimePort,
+		Status:         workload.Status,
+		IsPublic:       workload.IsPublic,
+		CreatedAt:      workload.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:      workload.UpdatedAt.Format(time.RFC3339),
 	}
 }
 
-func newCreateAppDispatchContext(parent context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(parent), createAppDispatchTimeout)
+func newCreateWorkloadDispatchContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(parent), createWorkloadDispatchTimeout)
 }
 
-func resolveCreateAppAfterDispatch(current tenant.App, dispatchErr error, refreshed tenant.App, refreshErr error) tenant.App {
+func resolveCreateWorkloadAfterDispatch(current tenant.Workload, dispatchErr error, refreshed tenant.Workload, refreshErr error) tenant.Workload {
 	if refreshErr == nil {
 		return refreshed
 	}

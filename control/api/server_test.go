@@ -64,13 +64,13 @@ func newTestServer(t *testing.T) *testServer {
 	projects := tenant.NewProjectService(queries)
 	workspaces := tenant.NewWorkspaceService(queries)
 	bootstrap := tenant.NewBootstrapService(queries)
-	apps := tenant.NewAppService(queries, pool, envCipher)
+	workloads := tenant.NewWorkloadService(queries, pool, envCipher)
 	server := api.NewServer(api.ServerDeps{
 		Users:      users,
 		Projects:   projects,
 		Workspaces: workspaces,
 		Bootstrap:  bootstrap,
-		Apps:       apps,
+		Workloads:  workloads,
 		DBPool:     pool,
 		Config: config.Control{
 			WorkOS: config.WorkOSConfig{

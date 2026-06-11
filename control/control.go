@@ -50,7 +50,7 @@ func Run(ctx context.Context) error {
 	projects := tenant.NewProjectService(queries)
 	workspaces := tenant.NewWorkspaceService(queries)
 	bootstrap := tenant.NewBootstrapService(queries)
-	apps := tenant.NewAppService(queries, dbPool, envCipher)
+	workloads := tenant.NewWorkloadService(queries, dbPool, envCipher)
 
 	natsClient, err := nats.New(cfg.NATSURL, "controlp", log)
 	if err != nil {
@@ -63,10 +63,10 @@ func Run(ctx context.Context) error {
 		Projects:   projects,
 		Workspaces: workspaces,
 		Bootstrap:  bootstrap,
-		Apps:       apps,
+		Workloads:  workloads,
 		DBPool:     dbPool,
 		Config:     cfg,
-		Dispatcher: fabric.NewDispatcher(apps, natsClient, log),
+		Dispatcher: fabric.NewDispatcher(workloads, natsClient, log),
 	})
 
 	return runControlPlane(ctx, log, cfg.ListenAddr, apiServer)

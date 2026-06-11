@@ -34,7 +34,7 @@ type Server struct {
 	projects   *tenant.ProjectService
 	workspaces *tenant.WorkspaceService
 	bootstrap  *tenant.BootstrapService
-	apps       *tenant.AppService
+	workloads  *tenant.WorkloadService
 
 	// dependencies
 	dbPool *pgxpool.Pool
@@ -64,7 +64,7 @@ type ServerDeps struct {
 	Projects   *tenant.ProjectService
 	Workspaces *tenant.WorkspaceService
 	Bootstrap  *tenant.BootstrapService
-	Apps       *tenant.AppService
+	Workloads  *tenant.WorkloadService
 	DBPool     *pgxpool.Pool
 	Config     config.Control
 	Dispatcher *fabric.Dispatcher
@@ -79,7 +79,7 @@ func NewServer(deps ServerDeps) *Server {
 		projects:   deps.Projects,
 		workspaces: deps.Workspaces,
 		bootstrap:  deps.Bootstrap,
-		apps:       deps.Apps,
+		workloads:  deps.Workloads,
 		dbPool:     deps.DBPool,
 		auth:       newWorkOSAuth(deps.Config, deps.Users),
 		dispatcher: deps.Dispatcher,
@@ -167,8 +167,8 @@ func (s *Server) registerV1Routes(router chi.Router) {
 	router.Patch("/workspaces/{workspaceId}/projects/{projectId}", s.handleUpdateProject)
 	router.Delete("/workspaces/{workspaceId}/projects/{projectId}", s.handleDeleteProject)
 
-	router.Get("/workspaces/{workspaceId}/projects/{projectId}/apps", s.handleListApps)
-	router.Post("/workspaces/{workspaceId}/projects/{projectId}/apps", s.handleCreateApp)
+	router.Get("/workspaces/{workspaceId}/projects/{projectId}/workloads", s.handleListWorkloads)
+	router.Post("/workspaces/{workspaceId}/projects/{projectId}/workloads", s.handleCreateWorkload)
 }
 
 // rateLimitExceeded writes the shared 429 response used by route limiters.
