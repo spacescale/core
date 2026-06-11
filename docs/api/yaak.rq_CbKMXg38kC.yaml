@@ -33,7 +33,7 @@ description: |-
 
   ### Current Route Prefixes
   - health: `/healthz`
-  - internal route: `/v1/internal/auth-sync`
+  - auth routes: `/auth/login`, `/auth/callback`
   - authenticated user routes: `/v1/...`
 
   ### Yaak Environment Notes
@@ -43,11 +43,12 @@ description: |-
 
   ### Recommended Request Order In Yaak
   1. `Health Check`
-  2. `Bootstrap Defaults`
-  3. `List Workspaces`
-  4. `List Projects In Workspace`
-  5. `Create App`
-  6. `List Apps`
+  2. `Open WorkOS Login`
+  3. `Bootstrap Defaults`
+  4. `List Workspaces`
+  5. `List Projects In Workspace`
+  6. `Create App`
+  7. `List Apps`
 
   ### Important For Create App
   - `compute` is required with `vcpu`, `memoryMb`, and `dedicated`

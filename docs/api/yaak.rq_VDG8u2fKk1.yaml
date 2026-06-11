@@ -7,55 +7,28 @@ workspaceId: wk_KJF6oyHis3
 folderId: fl_Yy2sLBoCtW
 authentication: {}
 authenticationType: null
-body:
-  text: |-
-    {
-      "identityKey": "${[ IDENTITY_KEY ]}",
-      "email": "${[ USER_EMAIL ]}",
-      "name": "${[ USER_NAME ]}",
-      "avatarUrl": "${[ AVATAR_URL ]}"
-    }
-bodyType: application/json
+body: {}
+bodyType: null
 description: |-
-  ## Internal Auth Sync
+  ## WorkOS Login
 
-  Upsert a user profile by stable `identityKey` for trusted server-to-server auth flows.
+  Start the browser login flow and let the API set the `spacescale_session` cookie.
 
   ### Endpoint
-  - **Method**: `POST`
-  - **Path**: `/v1/internal/auth-sync`
+  - **Method**: `GET`
+  - **Path**: `/auth/login`
 
-  ### Security
-  - route is intended for private-network service traffic
-  - requires header `X-Internal-Auth: ${[ INTERNAL_AUTH_SYNC_SECRET ]}`
-  - applies global circuit-breaker and per-identity rate limiting
+  ### Behavior
+  - this route redirects to WorkOS AuthKit
+  - open it in a browser, not the Yaak request runner
+  - after successful callback, use the resulting `spacescale_session` cookie for `/v1/...` requests
 
-  ### Validation
-  - `identityKey` is required and must be <= 512 chars
-  - optional fields are sanitized (invalid optional values are dropped)
-
-  ### Success Response
-  - **Status**: `200 OK`
-  - body includes:
-    - `id`
-    - `onboardingCompleted`
-
-  ### Error Responses
-  - `400 Bad Request`: invalid JSON or invalid input
-  - `401 Unauthorized`: missing/invalid internal secret
-  - `429 Too Many Requests`: per-identity internal rate limit exceeded
-  - `500 Internal Server Error`: unexpected runtime error
-headers:
-- enabled: true
-  name: X-Internal-Auth
-  value: ${[ INTERNAL_AUTH_SYNC_SECRET ]}
-  id: Ovh8gyyYjs
-- enabled: true
-  name: Content-Type
-  value: application/json
-  id: pYUrKQpF1v
-method: POST
-name: Internal Auth Sync
+  ### Notes
+  - `auth/callback` is handled by the browser redirect after WorkOS completes authentication
+  - if you need a fresh session, clear the cookie and re-run the browser flow
+headers: []
+method: GET
+name: WorkOS Login
 sortPriority: 0.0
-url: http://${[ BASE_URL ]}/v1/internal/auth-sync
+url: http://${[ BASE_URL ]}/auth/login
 urlParameters: []

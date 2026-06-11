@@ -145,10 +145,7 @@ func (s *AppService) CreateApp(ctx context.Context, ownerUserID, workspaceID, pr
 		return CreateAppResult{}, ErrInvalidInput
 	}
 
-	primaryRegion, ok := normalizeAppPrimaryRegion(params.PrimaryRegion)
-	if !ok {
-		return CreateAppResult{}, ErrInvalidInput
-	}
+	primaryRegion := strings.ToLower(strings.TrimSpace(params.PrimaryRegion))
 	name, ok := normalizeOrDeriveAppName(params.Name, imageRef)
 	if !ok {
 		return CreateAppResult{}, ErrInvalidInput
@@ -546,15 +543,6 @@ func normalizeAppCompute(raw AppComputeInput) (*pb.MicroVMShape, bool) {
 		CpuMode:  cpuMode,
 		VolumeMb: 0,
 	}, true
-}
-
-func normalizeAppPrimaryRegion(raw string) (string, bool) {
-	region := strings.ToLower(strings.TrimSpace(raw))
-	if region == "" || !appPrimaryRegionPattern.MatchString(region) {
-		return "", false
-	}
-
-	return region, true
 }
 
 // normalizeOrDeriveAppName returns a validated app name.
