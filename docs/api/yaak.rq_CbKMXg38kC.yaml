@@ -1,0 +1,78 @@
+type: http_request
+model: http_request
+id: rq_CbKMXg38kC
+createdAt: 2026-06-12T00:00:00
+updatedAt: 2026-06-12T00:00:00
+workspaceId: wk_KJF6oyHis3
+folderId: null
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: |-
+  ## SpaceScale API Workspace
+
+  This is the local Yaak workspace for the SpaceScale control plane.
+
+  ### What To Know
+  - The workspace is API-only. There is no frontend.
+  - Auth is WorkOS session-cookie based.
+  - The current domain term is `workloads`, not `apps`.
+  - Use the `WORKOS_SESSION` cookie value in the `LOCAL` environment.
+
+  ### Before You Start
+  1. Start the local stack.
+  2. Open `http://localhost:8080/auth/login` in a browser.
+  3. Copy the `spacescale_session` cookie value.
+  4. Put that value into `WORKOS_SESSION`.
+  5. Refresh `WORKSPACE_ID`, `PROJECT_ID`, and `PRIMARY_REGION` when bootstrap state changes.
+
+  ### Current Routes
+  - `GET /healthz`
+  - `GET /auth/login`
+  - `GET /auth/callback`
+  - `GET /auth/logout`
+  - `POST /v1/bootstrap-defaults`
+  - `GET /v1/workspaces`
+  - `POST /v1/workspaces`
+  - `GET /v1/workspaces/{workspaceId}/projects`
+  - `POST /v1/workspaces/{workspaceId}/projects`
+  - `GET /v1/workspaces/{workspaceId}/projects/{projectId}/workloads`
+  - `POST /v1/workspaces/{workspaceId}/projects/{projectId}/workloads`
+
+  ### Recommended Request Order
+  1. `Health Check`
+  2. `Open WorkOS Login`
+  3. `Bootstrap Defaults`
+  4. `List Workspaces`
+  5. `List Projects In Workspace`
+  6. `Create Workload`
+  7. `List Workloads`
+  8. `Open WorkOS Logout`
+
+  ### Notes
+  - `Bootstrap Defaults` is idempotent.
+  - `Create Workload` launches one workload by default with `targetReplicas = 1`.
+  - For live placement tests, use `PRIMARY_REGION=eu-central`.
+  - `WORKOS_LOGOUT_REDIRECT_URI` points back to `http://localhost:8080/healthz`.
+headers: []
+method: INFO
+name: SpaceScale API Workspace
+sortPriority: 0.0
+url: ''
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0
