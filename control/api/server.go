@@ -124,8 +124,8 @@ func (s *Server) Shutdown(ctx context.Context) error {
 func (s *Server) Router() http.Handler {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
-	router.Use(Middleware())
-	router.Use(Recoverer())
+	router.Use(AccessLogger())
+	router.Use(middleware.Recoverer)
 
 	userLimiter := httprate.Limit(userRateLimitRequests, userRateLimitWindow, httprate.WithKeyFuncs(KeyByIdentityKey),
 		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {

@@ -29,13 +29,13 @@ func TestAccessLogLevel(t *testing.T) {
 	require.Equal(t, slog.LevelError, accessLogLevel(http.StatusInternalServerError))
 }
 
-func TestMiddlewareEmitsAccessLog(t *testing.T) {
+func TestAccessLoggerEmitsAccessLog(t *testing.T) {
 	buf, restore := withCapturedAccessLogger(t)
 	defer restore()
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(Middleware())
+	r.Use(AccessLogger())
 	r.Get("/v1/projects/{id}", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 	})
@@ -55,35 +55,6 @@ func TestMiddlewareEmitsAccessLog(t *testing.T) {
 	require.Equal(t, "192.168.97.1", entry["client_ip"])
 	require.Equal(t, "/v1/projects/{id}", entry["route"])
 	require.NotEmpty(t, entry["request_id"])
-}
-
-func TestRecovererMiddlewareRecoversPanic(t *testing.T) {
-	buf, restore := withCapturedAccessLogger(t)
-	defer restore()
-
-	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	r.Use(Middleware())
-	r.Use(Recoverer())
-	r.Get("/v1/projects/{id}", func(_ http.ResponseWriter, _ *http.Request) {
-		panic(strings.Repeat("a", 300))
-	})
-
-	rr := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/projects/123", nil)
-	r.ServeHTTP(rr, req)
-
-	require.Equal(t, http.StatusInternalServerError, rr.Code)
-	require.JSONEq(t, `{"error":"internal error"}`, rr.Body.String())
-
-	entries := decodeJSONLogEntries(t, buf)
-	panicEntry := findEntryByEvent(t, entries, "panic")
-	require.Equal(t, "api", panicEntry["component"])
-	require.Equal(t, "ERROR", panicEntry["level"])
-	require.Equal(t, "panic recovered", panicEntry["msg"])
-	require.Equal(t, "/v1/projects/{id}", panicEntry["route"])
-	require.Equal(t, "string", panicEntry["panic_type"])
-	require.Equal(t, strings.Repeat("a", maxPanicValueLogLen), panicEntry["panic_value"])
 }
 
 func TestClientIP(t *testing.T) {
