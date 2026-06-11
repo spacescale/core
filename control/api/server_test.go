@@ -15,9 +15,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/control/api"
 	"github.com/spacescale/core/control/db/sqlc"
-	"github.com/spacescale/core/control/service"
-	"github.com/spacescale/core/control/service/tenant"
+	"github.com/spacescale/core/control/tenant"
 	"github.com/spacescale/core/shared/config"
+	"github.com/spacescale/core/shared/secret"
 	"github.com/stretchr/testify/require"
 	workos "github.com/workos/workos-go/v9"
 )
@@ -58,19 +58,20 @@ func newTestServer(t *testing.T) *testServer {
 	}
 
 	queries := sqlc.New(pool)
-	svcs, err := service.NewServices(service.Deps{
-		Queries:            queries,
-		DBPool:             pool,
-		EnvEncryptionKeyID: testEnvEncryptionKeyID,
-		EnvEncryptionKey:   testEnvEncryptionKey,
-	})
-	if err != nil {
-		pool.Close()
-		require.NoError(t, err)
-	}
+	envCipher, err := secret.NewBox(testEnvEncryptionKeyID, testEnvEncryptionKey)
+	require.NoError(t, err)
+	users := tenant.NewUserService(queries)
+	projects := tenant.NewProjectService(queries)
+	workspaces := tenant.NewWorkspaceService(queries)
+	bootstrap := tenant.NewBootstrapService(queries)
+	apps := tenant.NewAppService(queries, pool, envCipher)
 	server := api.NewServer(api.ServerDeps{
-		Services: svcs,
-		DBPool:   pool,
+		Users:      users,
+		Projects:   projects,
+		Workspaces: workspaces,
+		Bootstrap:  bootstrap,
+		Apps:       apps,
+		DBPool:     pool,
 		Config: config.Control{
 			WorkOS: config.WorkOSConfig{
 				APIKey:               testWorkOSAPIKey,

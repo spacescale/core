@@ -15,8 +15,7 @@ import (
 	"github.com/go-chi/httprate"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/control/fabric"
-	"github.com/spacescale/core/control/service"
-	"github.com/spacescale/core/control/service/tenant"
+	"github.com/spacescale/core/control/tenant"
 	"github.com/spacescale/core/shared/config"
 )
 
@@ -31,7 +30,6 @@ const (
 
 // Server wires HTTP handlers to tenant services, database access, and auth state.
 type Server struct {
-	// multi tenant service layer
 	users      *tenant.UserService
 	projects   *tenant.ProjectService
 	workspaces *tenant.WorkspaceService
@@ -62,11 +60,13 @@ type principalContextKey struct{}
 // ServerDeps groups the dependencies required to construct the API server.
 // It keeps startup and test wiring explicit at one call site.
 type ServerDeps struct {
-	Services *service.Services
-	DBPool   *pgxpool.Pool
-	Config   config.Control
-
-	// fabric dependencies
+	Users      *tenant.UserService
+	Projects   *tenant.ProjectService
+	Workspaces *tenant.WorkspaceService
+	Bootstrap  *tenant.BootstrapService
+	Apps       *tenant.AppService
+	DBPool     *pgxpool.Pool
+	Config     config.Control
 	Dispatcher *fabric.Dispatcher
 }
 
@@ -74,19 +74,15 @@ type ServerDeps struct {
 // It also preconfigures the underlying http.Server with body limits and
 // timeout settings.
 func NewServer(deps ServerDeps) *Server {
-	tenantServices := deps.Services.Tenant
 	apiServer := &Server{
-		users:      tenantServices.Users,
-		projects:   tenantServices.Projects,
-		workspaces: tenantServices.Workspaces,
-		bootstrap:  tenantServices.Bootstrap,
-		apps:       tenantServices.Apps,
+		users:      deps.Users,
+		projects:   deps.Projects,
+		workspaces: deps.Workspaces,
+		bootstrap:  deps.Bootstrap,
+		apps:       deps.Apps,
 		dbPool:     deps.DBPool,
-		auth:       newWorkOSAuth(deps.Config, tenantServices.Users),
-
-		// fabric dependencies
+		auth:       newWorkOSAuth(deps.Config, deps.Users),
 		dispatcher: deps.Dispatcher,
-		server:     nil,
 	}
 	server := new(http.Server)
 	server.Addr = deps.Config.ListenAddr

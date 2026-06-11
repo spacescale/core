@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/spacescale/core/control/service/tenant"
+	"github.com/spacescale/core/control/tenant"
 	"github.com/spacescale/core/shared/config"
 	"github.com/workos/workos-go/v9"
 )

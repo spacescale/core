@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/spacescale/core/control/service/tenant"
+	"github.com/spacescale/core/control/tenant"
 	"github.com/spacescale/core/shared/nats"
 	pb "github.com/spacescale/core/shared/pb/v1"
 )

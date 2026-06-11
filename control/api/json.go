@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/spacescale/core/control/service/tenant"
+	"github.com/spacescale/core/control/tenant"
 )
 
 // ErrRequestBodyTooLarge is returned when request decoding hits net/http's body-size limit.

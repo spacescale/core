@@ -11,10 +11,11 @@ import (
 	"github.com/spacescale/core/control/api"
 	"github.com/spacescale/core/control/db/sqlc"
 	"github.com/spacescale/core/control/fabric"
-	"github.com/spacescale/core/control/service"
+	"github.com/spacescale/core/control/tenant"
 	"github.com/spacescale/core/shared/config"
 	"github.com/spacescale/core/shared/logger"
 	"github.com/spacescale/core/shared/nats"
+	"github.com/spacescale/core/shared/secret"
 )
 
 const (
@@ -41,15 +42,15 @@ func Run(ctx context.Context) error {
 	defer dbPool.Close()
 
 	queries := sqlc.New(dbPool)
-	services, err := service.NewServices(service.Deps{
-		Queries:            queries,
-		DBPool:             dbPool,
-		EnvEncryptionKeyID: cfg.EnvEncryptionKeyID,
-		EnvEncryptionKey:   cfg.EnvEncryptionKey,
-	})
+	envCipher, err := secret.NewBox(cfg.EnvEncryptionKeyID, cfg.EnvEncryptionKey)
 	if err != nil {
 		return fmt.Errorf("service init failed: %w", err)
 	}
+	users := tenant.NewUserService(queries)
+	projects := tenant.NewProjectService(queries)
+	workspaces := tenant.NewWorkspaceService(queries)
+	bootstrap := tenant.NewBootstrapService(queries)
+	apps := tenant.NewAppService(queries, dbPool, envCipher)
 
 	natsClient, err := nats.New(cfg.NATSURL, "controlp", log)
 	if err != nil {
@@ -58,11 +59,14 @@ func Run(ctx context.Context) error {
 	defer func() { _ = natsClient.Drain() }()
 
 	apiServer := api.NewServer(api.ServerDeps{
-		Services: services,
-		DBPool:   dbPool,
-		Config:   cfg,
-
-		Dispatcher: fabric.NewDispatcher(services.Tenant.Apps, natsClient, log),
+		Users:      users,
+		Projects:   projects,
+		Workspaces: workspaces,
+		Bootstrap:  bootstrap,
+		Apps:       apps,
+		DBPool:     dbPool,
+		Config:     cfg,
+		Dispatcher: fabric.NewDispatcher(apps, natsClient, log),
 	})
 
 	return runControlPlane(ctx, log, cfg.ListenAddr, apiServer)

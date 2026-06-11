@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/spacescale/core/control/fabric"
-	"github.com/spacescale/core/control/service/tenant"
+	"github.com/spacescale/core/control/tenant"
 )
 
 const createAppDispatchTimeout = 20 * time.Second
