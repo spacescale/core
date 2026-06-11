@@ -54,16 +54,7 @@ func (s *Server) handleCreateWorkspace(responseWriter http.ResponseWriter, reque
 
 	out, err := s.workspaces.CreateWorkspace(request.Context(), user.ID, tenant.CreateWorkspaceParams{Name: req.Name})
 	if err != nil {
-		switch {
-		case errors.Is(err, tenant.ErrInvalidInput):
-			Error(responseWriter, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, tenant.ErrUnauthorized):
-			Error(responseWriter, http.StatusUnauthorized, "unauthorized")
-		case errors.Is(err, tenant.ErrConflict):
-			Error(responseWriter, http.StatusConflict, "conflict")
-		default:
-			Error(responseWriter, http.StatusInternalServerError, "internal error")
-		}
+		writeTenantError(responseWriter, err)
 
 		return
 	}
@@ -85,14 +76,7 @@ func (s *Server) handleListWorkspaces(responseWriter http.ResponseWriter, reques
 
 	workspaces, err := s.workspaces.ListWorkspaces(request.Context(), user.ID)
 	if err != nil {
-		switch {
-		case errors.Is(err, tenant.ErrInvalidInput):
-			Error(responseWriter, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, tenant.ErrUnauthorized):
-			Error(responseWriter, http.StatusUnauthorized, "unauthorized")
-		default:
-			Error(responseWriter, http.StatusInternalServerError, "internal error")
-		}
+		writeTenantError(responseWriter, err)
 
 		return
 	}
@@ -115,8 +99,8 @@ func (s *Server) handleGetWorkspace(responseWriter http.ResponseWriter, request 
 		return
 	}
 
-	workspaceID := strings.TrimSpace(chi.URLParam(request, "workspaceId"))
-	if workspaceID == "" {
+	workspaceID, ok := workspaceIDFromRequest(request)
+	if !ok {
 		Error(responseWriter, http.StatusBadRequest, "invalid input")
 
 		return
@@ -124,14 +108,7 @@ func (s *Server) handleGetWorkspace(responseWriter http.ResponseWriter, request 
 
 	workspace, err := s.workspaces.GetWorkspace(request.Context(), user.ID, workspaceID)
 	if err != nil {
-		switch {
-		case errors.Is(err, tenant.ErrInvalidInput):
-			Error(responseWriter, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, tenant.ErrUnauthorized):
-			Error(responseWriter, http.StatusUnauthorized, "unauthorized")
-		default:
-			Error(responseWriter, http.StatusInternalServerError, "internal error")
-		}
+		writeTenantError(responseWriter, err)
 
 		return
 	}
@@ -150,8 +127,8 @@ func (s *Server) handleUpdateWorkspace(responseWriter http.ResponseWriter, reque
 		return
 	}
 
-	workspaceID := strings.TrimSpace(chi.URLParam(request, "workspaceId"))
-	if workspaceID == "" {
+	workspaceID, ok := workspaceIDFromRequest(request)
+	if !ok {
 		Error(responseWriter, http.StatusBadRequest, "invalid input")
 
 		return
@@ -175,16 +152,7 @@ func (s *Server) handleUpdateWorkspace(responseWriter http.ResponseWriter, reque
 
 	workspace, err := s.workspaces.UpdateWorkspace(request.Context(), user.ID, workspaceID, tenant.UpdateWorkspaceParams{Name: req.Name})
 	if err != nil {
-		switch {
-		case errors.Is(err, tenant.ErrInvalidInput):
-			Error(responseWriter, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, tenant.ErrUnauthorized):
-			Error(responseWriter, http.StatusUnauthorized, "unauthorized")
-		case errors.Is(err, tenant.ErrConflict):
-			Error(responseWriter, http.StatusConflict, "conflict")
-		default:
-			Error(responseWriter, http.StatusInternalServerError, "internal error")
-		}
+		writeTenantError(responseWriter, err)
 
 		return
 	}
@@ -203,24 +171,39 @@ func (s *Server) handleDeleteWorkspace(responseWriter http.ResponseWriter, reque
 		return
 	}
 
-	workspaceID := strings.TrimSpace(chi.URLParam(request, "workspaceId"))
-	if workspaceID == "" {
+	workspaceID, ok := workspaceIDFromRequest(request)
+	if !ok {
 		Error(responseWriter, http.StatusBadRequest, "invalid input")
 
 		return
 	}
 
 	if err := s.workspaces.DeleteWorkspace(request.Context(), user.ID, workspaceID); err != nil {
-		switch {
-		case errors.Is(err, tenant.ErrInvalidInput):
-			Error(responseWriter, http.StatusBadRequest, "invalid input")
-		case errors.Is(err, tenant.ErrUnauthorized):
-			Error(responseWriter, http.StatusUnauthorized, "unauthorized")
-		default:
-			Error(responseWriter, http.StatusInternalServerError, "internal error")
-		}
+		writeTenantError(responseWriter, err)
 
 		return
 	}
 	responseWriter.WriteHeader(http.StatusNoContent)
+}
+
+func writeTenantError(responseWriter http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, tenant.ErrInvalidInput):
+		Error(responseWriter, http.StatusBadRequest, "invalid input")
+	case errors.Is(err, tenant.ErrUnauthorized):
+		Error(responseWriter, http.StatusUnauthorized, "unauthorized")
+	case errors.Is(err, tenant.ErrConflict):
+		Error(responseWriter, http.StatusConflict, "conflict")
+	default:
+		Error(responseWriter, http.StatusInternalServerError, "internal error")
+	}
+}
+
+func workspaceIDFromRequest(request *http.Request) (string, bool) {
+	workspaceID := strings.TrimSpace(chi.URLParam(request, "workspaceId"))
+	if workspaceID == "" {
+		return "", false
+	}
+
+	return workspaceID, true
 }
