@@ -1,11 +1,19 @@
-// Package api owns control HTTP server lifecycle and route composition.
+// Package api configures and runs the primary HTTP control plane server.
+// It sets up route routing, rate limiting, and middleware chains like CORS and recoverers.
+// It binds core multi-tenant business services to their corresponding HTTP handlers.
+// It also initializes session authentication using work OS Client Libary.
+// The package keeps lifecycle operations clean, structured, and easy to orchestrate.
 package api
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -16,6 +24,7 @@ import (
 	"github.com/spacescale/core/control/service"
 	"github.com/spacescale/core/control/service/tenant"
 	"github.com/spacescale/core/shared/config"
+	"github.com/workos/workos-go/v9"
 )
 
 // Server wires HTTP handlers to service dependencies and auth configuration.
@@ -33,18 +42,21 @@ type Server struct {
 	config                  config.Control
 	internalIdentityLimiter *httprate.RateLimiter
 	server                  *http.Server
+	workosClient            *workos.Client
 
 	// fabric dependencies
 	dispatcher *fabric.Dispatcher
 }
 
 const (
-	maxRequestBodyBytes             = 1 << 20
-	serverReadHeaderTimeout         = 5 * time.Second
-	serverWriteTimeout              = 30 * time.Second
-	serverIdleTimeout               = 120 * time.Second
-	userRateLimitRequests           = 200
-	userRateLimitWindow             = time.Minute
+	maxRequestBodyBytes     = 1 << 20
+	serverReadHeaderTimeout = 5 * time.Second
+	serverWriteTimeout      = 30 * time.Second
+	serverIdleTimeout       = 120 * time.Second
+	userRateLimitRequests   = 200
+	userRateLimitWindow     = time.Minute
+	workOSStateCookieName   = "spacescale_workos_state"
+	workOSStateTTL          = 10 * time.Minute
 )
 
 // ServerDeps groups dependencies required to construct the API server.
@@ -61,6 +73,11 @@ type ServerDeps struct {
 
 // NewServer constructs a control API server from service dependencies.
 func NewServer(deps ServerDeps) *Server {
+	var workosClient *workos.Client
+	if deps.Config.WorkOS.APIKey != "" {
+		workosClient = workos.NewClient(deps.Config.WorkOS.APIKey, workos.WithClientID(deps.Config.WorkOS.ClientID))
+	}
+
 	tenantServices := deps.Services.Tenant
 	apiServer := &Server{
 		users:                   tenantServices.Users,
@@ -73,8 +90,9 @@ func NewServer(deps ServerDeps) *Server {
 		internalIdentityLimiter: NewSyncIdentityLimiter(),
 
 		// fabric dependencies
-		dispatcher: deps.Dispatcher,
-		server:     nil,
+		dispatcher:   deps.Dispatcher,
+		server:       nil,
+		workosClient: workosClient,
 	}
 	server := new(http.Server)
 	server.Addr = deps.Config.ListenAddr
@@ -105,9 +123,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// Router builds the full HTTP router and middleware stack.
-// It registers health and versioned API routes, then applies request-level
-// middleware for traceability, logging, panic recovery, and authentication.
+// Router initializes and returns the complete HTTP handler for the API.
+// It sets up core middlewares, rate limiters, and maps handlers to all API endpoints.
+// Callers should use the returned handler to serve incoming client requests.
 func (s *Server) Router() http.Handler {
 	router := chi.NewRouter()
 
@@ -117,16 +135,16 @@ func (s *Server) Router() http.Handler {
 	router.Use(Middleware())
 	router.Use(Recoverer())
 
-	// userLimiter applies per-authenticated-user request limits on API v1 routes.
-	// Keys come from KeyByIdentityKey, so limits are enforced by authenticated
-	// identity key instead of source IP. This keeps limits fair when requests
-	// are proxied through Next.js, CLI backends, or shared infrastructure.
-	// Exceeded requests receive a consistent HTTP 429 JSON error response.
 	userLimiter := httprate.Limit(userRateLimitRequests, userRateLimitWindow, httprate.WithKeyFuncs(KeyByIdentityKey),
 		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
 			rateLimitExceeded(w, r)
 		}),
 	)
+
+	if s.workosClient != nil {
+		router.Get("/auth/login", s.handleWorkOSLogin)
+		router.Get("/auth/callback", s.handleWorkOSCallback)
+	}
 
 	// Health check route.
 	router.Get("/healthz", func(responseWriter http.ResponseWriter, r *http.Request) {
@@ -171,4 +189,148 @@ func (s *Server) registerV1Routes(router chi.Router) {
 // rateLimitExceeded keeps 429 responses consistent across route groups.
 func rateLimitExceeded(w http.ResponseWriter, _ *http.Request) {
 	Error(w, http.StatusTooManyRequests, "rate limit exceeded")
+}
+
+func (s *Server) handleWorkOSLogin(w http.ResponseWriter, r *http.Request) {
+	if s.workosClient == nil {
+		Error(w, http.StatusServiceUnavailable, "auth unavailable")
+		return
+	}
+
+	state, err := generateWorkOSState()
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     workOSStateCookieName,
+		Value:    state,
+		Path:     "/auth",
+		HttpOnly: true,
+		Secure:   workOSCookieSecure(s.config.Environment),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(workOSStateTTL.Seconds()),
+	})
+	authorizationURL := s.workosClient.UserManagement().GetAuthorizationURL(
+		&workos.UserManagementGetAuthorizationURLParams{
+			RedirectURI: s.config.WorkOS.RedirectURI,
+			State:       nonEmptyStringPtr(state),
+			Provider:    new(workos.UserManagementAuthenticationProviderAuthkit),
+		},
+	)
+
+	http.Redirect(w, r, authorizationURL, http.StatusFound)
+}
+
+func (s *Server) handleWorkOSCallback(w http.ResponseWriter, r *http.Request) {
+	if s.workosClient == nil {
+		Error(w, http.StatusServiceUnavailable, "auth unavailable")
+		return
+	}
+
+	code := strings.TrimSpace(r.URL.Query().Get("code"))
+	if code == "" {
+		Error(w, http.StatusBadRequest, "missing code")
+		return
+	}
+
+	state := strings.TrimSpace(r.URL.Query().Get("state"))
+	if state == "" {
+		Error(w, http.StatusBadRequest, "missing state")
+		return
+	}
+
+	stateCookie, err := r.Cookie(workOSStateCookieName)
+	if err != nil {
+		Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(stateCookie.Value), []byte(state)) != 1 {
+		Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     workOSStateCookieName,
+		Value:    "",
+		Path:     "/auth",
+		HttpOnly: true,
+		Secure:   workOSCookieSecure(s.config.Environment),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+
+	authResponse, err := s.workosClient.UserManagement().AuthenticateWithCode(
+		r.Context(),
+		&workos.UserManagementAuthenticateWithCodeParams{
+			Code:      code,
+			IPAddress: nonEmptyStringPtr(clientIP(r.RemoteAddr)),
+			UserAgent: nonEmptyStringPtr(r.UserAgent()),
+		},
+	)
+	if err != nil {
+		Error(w, http.StatusUnauthorized, "authentication failed")
+		return
+	}
+	if authResponse == nil || authResponse.User == nil {
+		Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	identityKey := "workos:" + authResponse.User.ID
+	if _, err := s.users.SyncAuthUser(r.Context(), tenant.SyncAuthUserParams{
+		IdentityKey: identityKey,
+		Email:       authResponse.User.Email,
+		Name:        "",
+		AvatarURL:   "",
+	}); err != nil {
+		Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	sealedSession, err := workos.SealSessionFromAuthResponse(
+		authResponse.AccessToken,
+		authResponse.RefreshToken,
+		authResponse.User,
+		authResponse.Impersonator,
+		s.config.WorkOS.CookiePassword,
+	)
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     s.config.WorkOS.CookieName,
+		Value:    sealedSession,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   workOSCookieSecure(s.config.Environment),
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	http.Redirect(w, r, s.config.WorkOS.PostLoginRedirectURI, http.StatusSeeOther)
+}
+
+func generateWorkOSState() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+func nonEmptyStringPtr(v string) *string {
+	trimmed := strings.TrimSpace(v)
+	if trimmed == "" {
+		return nil
+	}
+
+	return &trimmed
+}
+
+func workOSCookieSecure(environment string) bool {
+	return strings.TrimSpace(environment) == "production"
 }

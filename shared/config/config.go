@@ -26,6 +26,9 @@ const (
 	defaultAuthIssuer   = "api.spacescale.io"
 	defaultAuthAudience = "spacescale-api"
 
+	defaultWorkOSRedirectURI          = "http://localhost:8080/auth/callback"
+	defaultWorkOSPostLoginRedirectURI = "http://localhost:3000"
+	defaultWorkOSLogoutRedirectURI    = "http://localhost:3000"
 	defaultWorkOSCookieName = "spacescale_session"
 )
 
@@ -175,7 +178,7 @@ func (c *Control) normalizeAndValidate(rawEncryptionKey string) error {
 		return err
 	}
 
-	if err := c.WorkOS.normalizeAndValidate(); err != nil {
+	if err := c.WorkOS.normalizeAndValidate(c.Environment); err != nil {
 		return err
 	}
 
@@ -218,6 +221,10 @@ func normalizeAndValidateEnvironment(environment *string) error {
 		*environment = developmentEnvironment
 		return nil
 	}
+	if trimmed == developmentEnvironment {
+		*environment = developmentEnvironment
+		return nil
+	}
 	if trimmed == productionEnvironment {
 		*environment = productionEnvironment
 		return nil
@@ -241,7 +248,7 @@ func (w *WorkOSConfig) configured() bool {
 // normalizeAndValidate checks the WorkOS configuration block.
 // It only runs when WorkOS has been configured at all.
 // When active, it requires the keys, password, and redirect URIs.
-func (w *WorkOSConfig) normalizeAndValidate() error {
+func (w *WorkOSConfig) normalizeAndValidate(environment string) error {
 	if !w.configured() {
 		return nil
 	}
@@ -260,6 +267,18 @@ func (w *WorkOSConfig) normalizeAndValidate() error {
 
 	if len(w.CookiePassword) < 32 {
 		return errors.New("invalid config WORKOS_COOKIE_PASSWORD: must be at least 32 characters")
+	}
+
+	if environment == developmentEnvironment {
+		if w.RedirectURI == "" {
+			w.RedirectURI = defaultWorkOSRedirectURI
+		}
+		if w.PostLoginRedirectURI == "" {
+			w.PostLoginRedirectURI = defaultWorkOSPostLoginRedirectURI
+		}
+		if w.LogoutRedirectURI == "" {
+			w.LogoutRedirectURI = defaultWorkOSLogoutRedirectURI
+		}
 	}
 
 	if w.RedirectURI == "" {

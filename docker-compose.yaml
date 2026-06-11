@@ -12,7 +12,7 @@ services:
       - pgdata:/var/lib/postgresql/18/docker
       - ./control/db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U spacescale -d postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U spacescale -d postgres" ]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -56,10 +56,11 @@ services:
       LISTEN_ADDR: ":8080"
       NATS_URL: nats://nats:4222
       DATABASE_URL: postgres://spacescale:spacescale@db:5432/spacescale?sslmode=disable
-      AUTH_ENABLED: false
-      AUTH_JWT_SECRET: dev-auth-jwt-secret
-      AUTH_ISSUER: api.spacescale.io
-      AUTH_AUDIENCE: spacescale-api
+
+      WORKOS_API_KEY: sk_test_a2V5XzAxS1RTUDU3NUNBVEhZMUZSNlNDQzRKVEs5LHQ0WDJ3c2lPNXE0dWc4dlEwS1dWZkpJd2c
+      WORKOS_CLIENT_ID: client_01KTSP56XH6GYPPXMWFR814T97
+      WORKOS_COOKIE_PASSWORD: tnxVjrTrfqG0BK7atcFdXACFXeWW0vnJy6jBw8MGakM=
+
       API_ENV_ENCRYPTION_KEY_ID: dev-key
       API_ENV_ENCRYPTION_KEY: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
     depends_on:
