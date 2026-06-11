@@ -23,7 +23,7 @@ description: |-
   - `projectId` (required): project UUID
 
   ### Authentication
-  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+  - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
 
   ### Behavior
   - operation is ownership-scoped to the caller
@@ -35,14 +35,14 @@ description: |-
 
   ### Error Responses
   - `400 Bad Request`: invalid UUID path params
-  - `401 Unauthorized`: token invalid or resource not owned by caller
+  - `401 Unauthorized`: missing/invalid session cookie or resource not owned by caller
   - `429 Too Many Requests`: per-user API rate limit exceeded
   - `500 Internal Server Error`: unexpected runtime error
 headers:
-- enabled: true
-  name: Authorization
-  value: Bearer ${[ BFF_TOKEN ]}
-  id: hPrDlAuth01
+  - enabled: true
+    name: Cookie
+    value: spacescale_session=${[ WORKOS_SESSION ]}
+    id: hPrDlAuth01
 method: DELETE
 name: Delete Project
 sortPriority: 4.0

@@ -23,7 +23,7 @@ description: |-
   - `projectId` (required): project UUID
 
   ### Authentication
-  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+  - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
 
   ### Behavior
   - both ownership and workspace/project relationship are validated
@@ -46,8 +46,8 @@ description: |-
   - `500 Internal Server Error`: unexpected runtime error
 headers:
 - enabled: true
-  name: Authorization
-  value: Bearer ${[ BFF_TOKEN ]}
+    name: Cookie
+    value: spacescale_session=${[ WORKOS_SESSION ]}
   id: hPrGtAuth01
 method: GET
 name: Get Project

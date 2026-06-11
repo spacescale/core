@@ -40,9 +40,8 @@ description: |-
   - **Path**: `/v1/workspaces/{workspaceId}/projects/{projectId}/apps`
 
   ### Authentication
-  - `Authorization: Bearer <BFF_JWT_TOKEN>`
-  - token must be signed by trusted BFF secret (`BFF_JWT_SECRET`)
-  - caller identity must exist in API users table (seed via internal auth-sync)
+  - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
+  - caller must already have a valid WorkOS session cookie
 
   ### Path Parameters
   - `workspaceId` (required): workspace UUID owned by caller
@@ -96,8 +95,8 @@ description: |-
   - `500 Internal Server Error`: unexpected runtime error
 headers:
 - enabled: true
-  name: Authorization
-  value: Bearer ${[ BFF_TOKEN ]}
+    name: Cookie
+    value: spacescale_session=${[ WORKOS_SESSION ]}
   id: hAppCrAuth01
 - enabled: true
   name: Content-Type

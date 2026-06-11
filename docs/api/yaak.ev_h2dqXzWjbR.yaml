@@ -11,7 +11,7 @@ parentModel: workspace
 parentId: null
 variables:
 - enabled: true
-  name: BFF_TOKEN
+  name: WORKOS_SESSION
   value: ''
   id: KIqG7n5H8P
 color: null

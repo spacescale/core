@@ -19,7 +19,7 @@ description: |-
   - **Path**: `/v1/workspaces/{workspaceId}/projects/{projectId}/apps`
 
   ### Authentication
-  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+  - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
 
   ### Path Parameters
   - `workspaceId` (required): workspace UUID owned by caller
@@ -58,8 +58,8 @@ description: |-
   - `500 Internal Server Error`: unexpected runtime error
 headers:
 - enabled: true
-  name: Authorization
-  value: Bearer ${[ BFF_TOKEN ]}
+    name: Cookie
+    value: spacescale_session=${[ WORKOS_SESSION ]}
   id: hAppLsAuth01
 method: GET
 name: List Apps

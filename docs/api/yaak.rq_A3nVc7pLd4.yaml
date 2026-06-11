@@ -22,7 +22,7 @@ description: |-
   - `workspaceId` (required): UUID of the workspace to delete
 
   ### Authentication
-  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+  - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
 
   ### Behavior
   - operation is ownership-scoped (caller must own workspace)
@@ -39,8 +39,8 @@ description: |-
   - `500 Internal Server Error`: unexpected runtime error
 headers:
 - enabled: true
-  name: Authorization
-  value: Bearer ${[ BFF_TOKEN ]}
+    name: Cookie
+    value: spacescale_session=${[ WORKOS_SESSION ]}
   id: hWkDlAuth01
 method: DELETE
 name: Delete Workspace

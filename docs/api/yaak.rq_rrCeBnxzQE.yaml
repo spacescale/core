@@ -20,28 +20,15 @@ description: |-
   - **Path**: `/v1/workspaces/{workspaceId}/projects`
 
   ### Authentication
-  - `Authorization: Bearer <BFF_JWT_TOKEN>`
-  - token must be signed with trusted BFF secret (`BFF_JWT_SECRET`)
-  - user must already exist in API users table (seed via `POST /v1/internal/auth-sync`)
+  - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
+  - caller must already have a valid WorkOS session cookie
 
   ### Path Parameters
   - `workspaceId` (required): UUID of a workspace owned by the caller
-  - `workspaceId` must map to a workspace belonging to the bearer token identity
-
-  ### Required JWT Claims
-  - `sub`: required and must be non-empty
-  - `identity_key`: required stable caller identity key
-  - `iss`: must match `BFF_JWT_ISSUER` (default `spacescale-web-bff`)
-  - `aud`: must include `BFF_JWT_AUDIENCE` (default `spacescale-api`)
-  - `exp`: must be present and in the future
-
-  Optional claims accepted and carried in principal context:
-  - `email`
-  - `name`
-  - `avatar_url`
+  - `workspaceId` must map to a workspace belonging to the caller session
 
   ### Header Contract
-  - `Authorization` (required): `Bearer ${[ BFF_TOKEN ]}`
+  - `Cookie` (required): `spacescale_session=${[ WORKOS_SESSION ]}`
   - `Content-Type` (required for JSON body): `application/json`
 
   ### Body Contract (Optional)
@@ -59,14 +46,14 @@ description: |-
 
   ### Error Responses
   - `400 Bad Request`: malformed JSON or invalid input
-  - `401 Unauthorized`: missing/invalid bearer token, invalid claims, or workspace ownership mismatch
+  - `401 Unauthorized`: missing/invalid session cookie or workspace ownership mismatch
   - `429 Too Many Requests`: per-user API rate limit exceeded
   - `409 Conflict`: slug collision after retries
   - `500 Internal Server Error`: unexpected runtime error
 headers:
   - enabled: true
-    name: Authorization
-    value: Bearer ${[ BFF_TOKEN ]}
+    name: Cookie
+    value: spacescale_session=${[ WORKOS_SESSION ]}
     id: htigSCPhis
   - enabled: true
     name: Content-Type

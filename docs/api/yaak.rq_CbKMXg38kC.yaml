@@ -38,17 +38,16 @@ description: |-
 
   ### Yaak Environment Notes
   - `LOCAL` contains the variables Yaak requests expect
-  - `BFF_TOKEN`, `WORKSPACE_ID`, and `PROJECT_ID` must be refreshed manually when the token expires, the DB is reset, or bootstrap state changes
+  - `WORKOS_SESSION`, `WORKSPACE_ID`, and `PROJECT_ID` must be refreshed manually when the session expires, the DB is reset, or bootstrap state changes
   - `PRIMARY_REGION` defaults to `eu-central` for the current manual node path
 
   ### Recommended Request Order In Yaak
   1. `Health Check`
-  2. `Internal Auth Sync`
-  3. `Bootstrap Defaults`
-  4. `List Workspaces`
-  5. `List Projects In Workspace`
-  6. `Create App`
-  7. `List Apps`
+  2. `Bootstrap Defaults`
+  3. `List Workspaces`
+  4. `List Projects In Workspace`
+  5. `Create App`
+  6. `List Apps`
 
   ### Important For Create App
   - `compute` is required with `vcpu`, `memoryMb`, and `dedicated`

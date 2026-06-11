@@ -15,7 +15,7 @@ variables:
     value: '127.0.0.1:8080'
     id: n9Au9fRs4f
   - enabled: true
-    name: BFF_TOKEN
+    name: WORKOS_SESSION
     value: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzcGFjZXNjYWxlLXdlYi1iZmYiLCJhdWQiOiJzcGFjZXNjYWxlLWFwaSIsInN1YiI6ImdpdGh1YjplbWFpbDphcHByZW50aWNlX3B5QGljbG91ZC5jb20iLCJpZGVudGl0eV9rZXkiOiJlbWFpbDphcHByZW50aWNlX3B5QGljbG91ZC5jb20iLCJleHAiOjE3Nzc1NzU4NzksImlhdCI6MTc3NzU3MjIxOSwiZW1haWwiOiJhcHByZW50aWNlX3B5QGljbG91ZC5jb20iLCJuYW1lIjoiRGV2IFVzZXIiLCJhdmF0YXJfdXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbS9hdmF0YXIucG5nIn0.kJ3XOWmP47asL33q4U-pr3C66EG88jZAbyIY_eeeH1Q'
     id: authToken
   - enabled: true
