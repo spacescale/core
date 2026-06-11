@@ -53,7 +53,6 @@ services:
       - gobuildcache:/root/.cache/go-build
     environment:
       ENVIRONMENT: development
-      LISTEN_ADDR: ":8080"
       NATS_URL: nats://nats:4222
       DATABASE_URL: postgres://spacescale:spacescale@db:5432/spacescale?sslmode=disable
 
@@ -63,7 +62,6 @@ services:
       WORKOS_REDIRECT_URI: http://localhost:8080/auth/callback
       WORKOS_POST_LOGIN_REDIRECT_URI: http://localhost:3000
       WORKOS_LOGOUT_REDIRECT_URI: http://localhost:3000
-      WORKOS_COOKIE_NAME: spacescale_session
 
       API_ENV_ENCRYPTION_KEY_ID: dev-key
       API_ENV_ENCRYPTION_KEY: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=

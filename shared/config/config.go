@@ -10,7 +10,11 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-const envEncryptionKeyBytes = 32
+const (
+	envEncryptionKeyBytes = 32
+	defaultListenAddr     = ":8080"
+	workOSCookieName      = "spacescale_session"
+)
 
 var configValidator = validator.New(validator.WithRequiredStructEnabled())
 
@@ -46,7 +50,6 @@ type controlEnv struct {
 	Environment        string `env:"ENVIRONMENT"`
 	NATSURL            string `env:"NATS_URL"`
 	DatabaseURL        string `env:"DATABASE_URL"`
-	ListenAddr         string `env:"LISTEN_ADDR"`
 	EnvEncryptionKeyID string `env:"API_ENV_ENCRYPTION_KEY_ID"`
 	EnvEncryptionKey   string `env:"API_ENV_ENCRYPTION_KEY"`
 
@@ -56,7 +59,6 @@ type controlEnv struct {
 	WorkOSRedirectURI          string `env:"WORKOS_REDIRECT_URI"`
 	WorkOSPostLoginRedirectURI string `env:"WORKOS_POST_LOGIN_REDIRECT_URI"`
 	WorkOSLogoutRedirectURI    string `env:"WORKOS_LOGOUT_REDIRECT_URI"`
-	WorkOSCookieName           string `env:"WORKOS_COOKIE_NAME"`
 }
 
 type scaledEnv struct {
@@ -75,7 +77,6 @@ func LoadControl() (Control, error) {
 		Environment: strings.TrimSpace(raw.Environment),
 		NATSURL:     strings.TrimSpace(raw.NATSURL),
 		DatabaseURL: strings.TrimSpace(raw.DatabaseURL),
-		ListenAddr:  strings.TrimSpace(raw.ListenAddr),
 		WorkOS: WorkOSConfig{
 			APIKey:               strings.TrimSpace(raw.WorkOSAPIKey),
 			ClientID:             strings.TrimSpace(raw.WorkOSClientID),
@@ -83,10 +84,11 @@ func LoadControl() (Control, error) {
 			RedirectURI:          strings.TrimSpace(raw.WorkOSRedirectURI),
 			PostLoginRedirectURI: strings.TrimSpace(raw.WorkOSPostLoginRedirectURI),
 			LogoutRedirectURI:    strings.TrimSpace(raw.WorkOSLogoutRedirectURI),
-			CookieName:           strings.TrimSpace(raw.WorkOSCookieName),
+			CookieName:           workOSCookieName,
 		},
 		EnvEncryptionKeyID: strings.TrimSpace(raw.EnvEncryptionKeyID),
 	}
+	cfg.ListenAddr = defaultListenAddr
 	if err := configValidator.Struct(cfg); err != nil {
 		return Control{}, err
 	}

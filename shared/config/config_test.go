@@ -13,7 +13,6 @@ func setValidControlEnv(t *testing.T, key string) {
 	t.Setenv("ENVIRONMENT", "development")
 	t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
 	t.Setenv("DATABASE_URL", "postgres://db")
-	t.Setenv("LISTEN_ADDR", "127.0.0.1:9090")
 	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
 	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 	t.Setenv("WORKOS_API_KEY", "workos-key")
@@ -22,15 +21,14 @@ func setValidControlEnv(t *testing.T, key string) {
 	t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
 	t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
 	t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
-	t.Setenv("WORKOS_COOKIE_NAME", "spacescale_session")
 }
 
 func TestLoadControlReadsExplicitConfig(t *testing.T) {
 	key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
+
 	t.Setenv("ENVIRONMENT", "production")
 	t.Setenv("NATS_URL", "nats://10.0.0.1:4222")
 	t.Setenv("DATABASE_URL", "postgres://user:pass@db/spacescale")
-	t.Setenv("LISTEN_ADDR", "127.0.0.1:9090")
 	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", " key-v1 ")
 	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 	t.Setenv("WORKOS_API_KEY", "workos-key")
@@ -39,7 +37,6 @@ func TestLoadControlReadsExplicitConfig(t *testing.T) {
 	t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
 	t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
 	t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
-	t.Setenv("WORKOS_COOKIE_NAME", "spacescale_session")
 
 	cfg, err := LoadControl()
 	require.NoError(t, err)
@@ -47,7 +44,7 @@ func TestLoadControlReadsExplicitConfig(t *testing.T) {
 	assert.Equal(t, "production", cfg.Environment)
 	assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
 	assert.Equal(t, "postgres://user:pass@db/spacescale", cfg.DatabaseURL)
-	assert.Equal(t, "127.0.0.1:9090", cfg.ListenAddr)
+	assert.Equal(t, defaultListenAddr, cfg.ListenAddr)
 	assert.Equal(t, "key-v1", cfg.EnvEncryptionKeyID)
 	assert.Len(t, cfg.EnvEncryptionKey, 32)
 	assert.Equal(t, "workos-key", cfg.WorkOS.APIKey)
@@ -56,7 +53,7 @@ func TestLoadControlReadsExplicitConfig(t *testing.T) {
 	assert.Equal(t, "https://example.com/workos/callback", cfg.WorkOS.RedirectURI)
 	assert.Equal(t, "https://example.com/app", cfg.WorkOS.PostLoginRedirectURI)
 	assert.Equal(t, "https://example.com/logout", cfg.WorkOS.LogoutRedirectURI)
-	assert.Equal(t, "spacescale_session", cfg.WorkOS.CookieName)
+	assert.Equal(t, workOSCookieName, cfg.WorkOS.CookieName)
 }
 
 func TestLoadControlReadsTrimmedConfig(t *testing.T) {
@@ -65,7 +62,6 @@ func TestLoadControlReadsTrimmedConfig(t *testing.T) {
 	t.Setenv("ENVIRONMENT", "development")
 	t.Setenv("NATS_URL", " nats://127.0.0.1:4222 ")
 	t.Setenv("DATABASE_URL", " postgres://db ")
-	t.Setenv("LISTEN_ADDR", " 127.0.0.1:8081 ")
 	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", " key-v1 ")
 	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
 	t.Setenv("WORKOS_API_KEY", " workos-key ")
@@ -74,7 +70,6 @@ func TestLoadControlReadsTrimmedConfig(t *testing.T) {
 	t.Setenv("WORKOS_REDIRECT_URI", " https://example.com/workos/callback ")
 	t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", " https://example.com/app ")
 	t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", " https://example.com/logout ")
-	t.Setenv("WORKOS_COOKIE_NAME", " spacescale_session ")
 
 	cfg, err := LoadControl()
 	require.NoError(t, err)
@@ -82,7 +77,7 @@ func TestLoadControlReadsTrimmedConfig(t *testing.T) {
 	assert.Equal(t, "development", cfg.Environment)
 	assert.Equal(t, "nats://127.0.0.1:4222", cfg.NATSURL)
 	assert.Equal(t, "postgres://db", cfg.DatabaseURL)
-	assert.Equal(t, "127.0.0.1:8081", cfg.ListenAddr)
+	assert.Equal(t, defaultListenAddr, cfg.ListenAddr)
 	assert.Equal(t, "key-v1", cfg.EnvEncryptionKeyID)
 	assert.Equal(t, "workos-key", cfg.WorkOS.APIKey)
 	assert.Equal(t, "workos-client", cfg.WorkOS.ClientID)
@@ -90,7 +85,7 @@ func TestLoadControlReadsTrimmedConfig(t *testing.T) {
 	assert.Equal(t, "https://example.com/workos/callback", cfg.WorkOS.RedirectURI)
 	assert.Equal(t, "https://example.com/app", cfg.WorkOS.PostLoginRedirectURI)
 	assert.Equal(t, "https://example.com/logout", cfg.WorkOS.LogoutRedirectURI)
-	assert.Equal(t, "spacescale_session", cfg.WorkOS.CookieName)
+	assert.Equal(t, workOSCookieName, cfg.WorkOS.CookieName)
 }
 
 func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
@@ -107,16 +102,11 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 				t.Helper()
 				t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
 				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("LISTEN_ADDR", "127.0.0.1:8080")
 				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
 				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
-				t.Setenv("WORKOS_API_KEY", "workos-key")
-				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
-				t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
-				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
-				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
-				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
-				t.Setenv("WORKOS_COOKIE_NAME", "spacescale_session")
+				setValidControlEnv(t, key)
+				// unset environment last so the required tag sees it missing.
+				t.Setenv("ENVIRONMENT", "")
 			},
 			wantErrMsg: "Key: 'Control.Environment' Error:Field validation for 'Environment' failed on the 'required' tag",
 		},
@@ -124,19 +114,8 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 			name: "invalid environment",
 			setenv: func(t *testing.T) {
 				t.Helper()
+				setValidControlEnv(t, key)
 				t.Setenv("ENVIRONMENT", "staging")
-				t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
-				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("LISTEN_ADDR", "127.0.0.1:8080")
-				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
-				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
-				t.Setenv("WORKOS_API_KEY", "workos-key")
-				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
-				t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
-				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
-				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
-				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
-				t.Setenv("WORKOS_COOKIE_NAME", "spacescale_session")
 			},
 			wantErrMsg: "Key: 'Control.Environment' Error:Field validation for 'Environment' failed on the 'oneof' tag",
 		},
@@ -146,188 +125,46 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 				t.Helper()
 				t.Setenv("ENVIRONMENT", "development")
 				t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
-				t.Setenv("LISTEN_ADDR", "127.0.0.1:8080")
 				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
 				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
-				t.Setenv("WORKOS_API_KEY", "workos-key")
-				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
-				t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
-				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
-				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
-				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
-				t.Setenv("WORKOS_COOKIE_NAME", "spacescale_session")
+				setValidControlEnv(t, key)
+				t.Setenv("DATABASE_URL", "")
 			},
 			wantErrMsg: "Key: 'Control.DatabaseURL' Error:Field validation for 'DatabaseURL' failed on the 'required' tag",
 		},
 		{
-			name: "missing workos api key when workos is enabled",
+			name: "missing workos api key",
 			setenv: func(t *testing.T) {
 				t.Helper()
-				t.Setenv("ENVIRONMENT", "development")
-				t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
-				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("LISTEN_ADDR", "127.0.0.1:8080")
-				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
-				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
-				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
-				t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
-				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
-				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
-				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
-				t.Setenv("WORKOS_COOKIE_NAME", "spacescale_session")
+				setValidControlEnv(t, key)
+				t.Setenv("WORKOS_API_KEY", "")
 			},
 			wantErrMsg: "Key: 'Control.WorkOS.APIKey' Error:Field validation for 'APIKey' failed on the 'required' tag",
 		},
 		{
-			name: "missing workos client id when workos is enabled",
+			name: "missing workos client id",
 			setenv: func(t *testing.T) {
 				t.Helper()
-				t.Setenv("ENVIRONMENT", "development")
-				t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
-				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("LISTEN_ADDR", "127.0.0.1:8080")
-				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
-				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
-				t.Setenv("WORKOS_API_KEY", "workos-key")
-				t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
-				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
-				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
-				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
-				t.Setenv("WORKOS_COOKIE_NAME", "spacescale_session")
+				setValidControlEnv(t, key)
+				t.Setenv("WORKOS_CLIENT_ID", "")
 			},
 			wantErrMsg: "Key: 'Control.WorkOS.ClientID' Error:Field validation for 'ClientID' failed on the 'required' tag",
 		},
 		{
-			name: "missing workos cookie password when workos is enabled",
+			name: "missing workos cookie password",
 			setenv: func(t *testing.T) {
 				t.Helper()
-				t.Setenv("ENVIRONMENT", "development")
-				t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
-				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("LISTEN_ADDR", "127.0.0.1:8080")
-				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
-				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
-				t.Setenv("WORKOS_API_KEY", "workos-key")
-				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
-				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
-				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
-				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
-				t.Setenv("WORKOS_COOKIE_NAME", "spacescale_session")
+				setValidControlEnv(t, key)
+				t.Setenv("WORKOS_COOKIE_PASSWORD", "")
 			},
 			wantErrMsg: "Key: 'Control.WorkOS.CookiePassword' Error:Field validation for 'CookiePassword' failed on the 'required' tag",
-		},
-		{
-			name: "missing workos redirect uri in production",
-			setenv: func(t *testing.T) {
-				t.Helper()
-				t.Setenv("ENVIRONMENT", "production")
-				t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
-				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("LISTEN_ADDR", "127.0.0.1:8080")
-				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
-				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
-				t.Setenv("WORKOS_API_KEY", "workos-key")
-				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
-				t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
-				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
-				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
-				t.Setenv("WORKOS_COOKIE_NAME", "spacescale_session")
-			},
-			wantErrMsg: "Key: 'Control.WorkOS.RedirectURI' Error:Field validation for 'RedirectURI' failed on the 'required' tag",
-		},
-		{
-			name: "missing workos post login redirect uri in production",
-			setenv: func(t *testing.T) {
-				t.Helper()
-				t.Setenv("ENVIRONMENT", "production")
-				t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
-				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("LISTEN_ADDR", "127.0.0.1:8080")
-				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
-				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
-				t.Setenv("WORKOS_API_KEY", "workos-key")
-				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
-				t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
-				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
-				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
-				t.Setenv("WORKOS_COOKIE_NAME", "spacescale_session")
-			},
-			wantErrMsg: "Key: 'Control.WorkOS.PostLoginRedirectURI' Error:Field validation for 'PostLoginRedirectURI' failed on the 'required' tag",
-		},
-		{
-			name: "missing workos logout redirect uri in production",
-			setenv: func(t *testing.T) {
-				t.Helper()
-				t.Setenv("ENVIRONMENT", "production")
-				t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
-				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("LISTEN_ADDR", "127.0.0.1:8080")
-				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
-				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
-				t.Setenv("WORKOS_API_KEY", "workos-key")
-				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
-				t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
-				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
-				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
-				t.Setenv("WORKOS_COOKIE_NAME", "spacescale_session")
-			},
-			wantErrMsg: "Key: 'Control.WorkOS.LogoutRedirectURI' Error:Field validation for 'LogoutRedirectURI' failed on the 'required' tag",
-		},
-		{
-			name: "missing key id",
-			setenv: func(t *testing.T) {
-				t.Helper()
-				t.Setenv("ENVIRONMENT", "development")
-				t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
-				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("LISTEN_ADDR", "127.0.0.1:8080")
-				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
-				t.Setenv("WORKOS_API_KEY", "workos-key")
-				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
-				t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
-				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
-				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
-				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
-				t.Setenv("WORKOS_COOKIE_NAME", "spacescale_session")
-			},
-			wantErrMsg: "Key: 'Control.EnvEncryptionKeyID' Error:Field validation for 'EnvEncryptionKeyID' failed on the 'required' tag",
-		},
-		{
-			name: "missing key",
-			setenv: func(t *testing.T) {
-				t.Helper()
-				t.Setenv("ENVIRONMENT", "development")
-				t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
-				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("LISTEN_ADDR", "127.0.0.1:8080")
-				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
-				t.Setenv("WORKOS_API_KEY", "workos-key")
-				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
-				t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
-				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
-				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
-				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
-				t.Setenv("WORKOS_COOKIE_NAME", "spacescale_session")
-			},
-			wantErrMsg: "missing required config API_ENV_ENCRYPTION_KEY",
 		},
 		{
 			name: "short workos cookie password",
 			setenv: func(t *testing.T) {
 				t.Helper()
-				t.Setenv("ENVIRONMENT", "development")
-				t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
-				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("LISTEN_ADDR", "127.0.0.1:8080")
-				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
-				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
-				t.Setenv("WORKOS_API_KEY", "workos-key")
-				t.Setenv("WORKOS_CLIENT_ID", "workos-client")
+				setValidControlEnv(t, key)
 				t.Setenv("WORKOS_COOKIE_PASSWORD", "too-short")
-				t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
-				t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
-				t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
-				t.Setenv("WORKOS_COOKIE_NAME", "spacescale_session")
 			},
 			wantErrMsg: "Key: 'Control.WorkOS.CookiePassword' Error:Field validation for 'CookiePassword' failed on the 'min' tag",
 		},
@@ -373,24 +210,9 @@ func TestDecodeEnvEncryptionKey(t *testing.T) {
 		wantErrMsg  string
 		wantKeySize int
 	}{
-		{
-			name:        "invalid base64",
-			raw:         "%%%",
-			wantErrMsg:  "invalid config API_ENV_ENCRYPTION_KEY: must be base64-encoded 32-byte key",
-			wantKeySize: 0,
-		},
-		{
-			name:        "wrong decoded size",
-			raw:         base64.StdEncoding.EncodeToString([]byte("short")),
-			wantErrMsg:  "invalid config API_ENV_ENCRYPTION_KEY: must decode to 32 bytes",
-			wantKeySize: 0,
-		},
-		{
-			name:        "valid key",
-			raw:         base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012")),
-			wantErrMsg:  "",
-			wantKeySize: 32,
-		},
+		{name: "invalid base64", raw: "%%%", wantErrMsg: "invalid config API_ENV_ENCRYPTION_KEY: must be base64-encoded 32-byte key"},
+		{name: "wrong decoded size", raw: base64.StdEncoding.EncodeToString([]byte("short")), wantErrMsg: "invalid config API_ENV_ENCRYPTION_KEY: must decode to 32 bytes"},
+		{name: "valid key", raw: base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012")), wantKeySize: 32},
 	}
 
 	for _, tc := range tests {
@@ -401,7 +223,6 @@ func TestDecodeEnvEncryptionKey(t *testing.T) {
 				assert.Len(t, key, tc.wantKeySize)
 				return
 			}
-
 			require.EqualError(t, err, tc.wantErrMsg)
 			assert.Nil(t, key)
 		})
