@@ -12,11 +12,11 @@ import (
 )
 
 type createWorkspaceRequest struct {
-	Name string `json:"name"`
+	Name string `json:"name" validate:"required,notblank,max=255"`
 }
 
 type updateWorkspaceRequest struct {
-	Name string `json:"name"`
+	Name string `json:"name" validate:"required,notblank,max=255"`
 }
 
 type workspaceResponse struct {
@@ -45,6 +45,10 @@ func (s *Server) handleCreateWorkspace(responseWriter http.ResponseWriter, reque
 			Error(responseWriter, http.StatusBadRequest, "invalid json")
 		}
 
+		return
+	}
+	if err := ValidateStruct(req); err != nil {
+		Error(responseWriter, http.StatusBadRequest, "invalid input")
 		return
 	}
 
@@ -162,6 +166,10 @@ func (s *Server) handleUpdateWorkspace(responseWriter http.ResponseWriter, reque
 			Error(responseWriter, http.StatusBadRequest, "invalid json")
 		}
 
+		return
+	}
+	if err := ValidateStruct(req); err != nil {
+		Error(responseWriter, http.StatusBadRequest, "invalid input")
 		return
 	}
 

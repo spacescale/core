@@ -16,26 +16,26 @@ import (
 const createAppDispatchTimeout = 20 * time.Second
 
 type createAppEnvVarRequest struct {
-	Key      string `json:"key"`
-	Value    string `json:"value"`
+	Key      string `json:"key" validate:"required,notblank,max=255"`
+	Value    string `json:"value" validate:"max=8192"`
 	IsSecret bool   `json:"isSecret"`
 }
 
 type createAppComputeRequest struct {
-	VCPU      uint32 `json:"vcpu"`
-	MemoryMB  uint64 `json:"memoryMb"`
+	VCPU      uint32 `json:"vcpu" validate:"gt=0"`
+	MemoryMB  uint64 `json:"memoryMb" validate:"gt=0"`
 	Dedicated bool   `json:"dedicated"`
 }
 
 type createAppRequest struct {
-	Name                 string                   `json:"name"`
-	ImageRef             string                   `json:"imageRef"`
-	Compute              createAppComputeRequest  `json:"compute"`
-	PrimaryRegion        string                   `json:"primaryRegion"`
-	RuntimePort          *int                     `json:"runtimePort"`
+	Name                 string                   `json:"name" validate:"omitempty,notblank,max=255"`
+	ImageRef             string                   `json:"imageRef" validate:"required,notblank"`
+	Compute              createAppComputeRequest  `json:"compute" validate:"required"`
+	PrimaryRegion        string                   `json:"primaryRegion" validate:"required,notblank,max=32"`
+	RuntimePort          *int                     `json:"runtimePort" validate:"omitempty,min=1,max=65535"`
 	IsPublic             *bool                    `json:"isPublic"`
-	RegistryCredentialID string                   `json:"registryCredentialId"`
-	EnvVars              []createAppEnvVarRequest `json:"envVars"`
+	RegistryCredentialID string                   `json:"registryCredentialId" validate:"omitempty,uuid"`
+	EnvVars              []createAppEnvVarRequest `json:"envVars" validate:"max=64,dive"`
 }
 
 type appResponse struct {
@@ -116,6 +116,10 @@ func (s *Server) handleCreateApp(responseWriter http.ResponseWriter, request *ht
 			Error(responseWriter, http.StatusBadRequest, "invalid json")
 		}
 
+		return
+	}
+	if err := ValidateStruct(req); err != nil {
+		Error(responseWriter, http.StatusBadRequest, "invalid input")
 		return
 	}
 

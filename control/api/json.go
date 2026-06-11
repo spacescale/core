@@ -8,10 +8,15 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
+
+	"github.com/go-playground/validator/v10"
 )
 
 // ErrRequestBodyTooLarge is returned when request decoding hits net/http's body-size limit.
 var ErrRequestBodyTooLarge = errors.New("request body too large")
+
+var apiValidator = newAPIValidator()
 
 type errorResponse struct {
 	Error string `json:"error"`
@@ -59,7 +64,24 @@ func ReadJSON(r *http.Request, dst any) error {
 	return errors.New("multiple json values")
 }
 
+// ValidateStruct validates a decoded API request payload.
+func ValidateStruct(v any) error {
+	return apiValidator.Struct(v)
+}
+
 func isRequestBodyTooLarge(err error) bool {
 	_, ok := errors.AsType[*http.MaxBytesError](err)
 	return ok
+}
+
+func newAPIValidator() *validator.Validate {
+	v := validator.New(validator.WithRequiredStructEnabled())
+	_ = v.RegisterValidation("notblank", func(fl validator.FieldLevel) bool {
+		field := fl.Field()
+		if field.Kind().String() != "string" {
+			return false
+		}
+		return strings.TrimSpace(field.String()) != ""
+	})
+	return v
 }

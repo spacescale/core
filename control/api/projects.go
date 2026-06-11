@@ -13,11 +13,11 @@ import (
 )
 
 type createProjectRequest struct {
-	Name string `json:"name"`
+	Name string `json:"name" validate:"omitempty,notblank,max=120"`
 }
 
 type updateProjectRequest struct {
-	Name string `json:"name"`
+	Name string `json:"name" validate:"required,notblank,max=120"`
 }
 
 type projectResponse struct {
@@ -52,6 +52,10 @@ func (s *Server) handleCreateProject(responseWriter http.ResponseWriter, request
 
 			return
 		}
+	}
+	if err := ValidateStruct(req); err != nil {
+		Error(responseWriter, http.StatusBadRequest, "invalid input")
+		return
 	}
 
 	workspaceID := strings.TrimSpace(chi.URLParam(request, "workspaceId"))
@@ -196,6 +200,10 @@ func (s *Server) handleUpdateProject(responseWriter http.ResponseWriter, request
 
 			return
 		}
+	}
+	if err := ValidateStruct(req); err != nil {
+		Error(responseWriter, http.StatusBadRequest, "invalid input")
+		return
 	}
 
 	project, err := s.projects.UpdateProject(request.Context(), user.ID, workspaceID, projectID, tenant.UpdateProjectParams{Name: req.Name})

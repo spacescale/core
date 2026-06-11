@@ -63,21 +63,23 @@ func Middleware() func(http.Handler) http.Handler {
 
 			attrs := []any{
 				"component", "api",
-				"event", "http_access",
 				"request_id", middleware.GetReqID(ctx),
 				"method", req.Method,
-				"route", routePatternFromContext(ctx),
-				"path", req.URL.Path,
 				"status_code", status,
 				"rate_limited", status == http.StatusTooManyRequests,
 				"duration_ms", time.Since(start).Milliseconds(),
-				"bytes_out", ww.BytesWritten(),
 				"client_ip", clientIP(req.RemoteAddr),
 			}
 
-			if key, value, ok := userAgentLogAttr(req.UserAgent()); ok {
-				attrs = append(attrs, key, value)
+			route := routePatternFromContext(ctx)
+			attrs = append(attrs, "route", route)
+			if route == "-" {
+				attrs = append(attrs, "path", req.URL.Path)
 			}
+			if includeVerboseAccessFields(status) {
+				_ = ww
+			}
+
 			if metadata.UserID != "" {
 				attrs = append(attrs, "user_id", metadata.UserID)
 			}
@@ -155,6 +157,8 @@ func accessLogLevel(status int) slog.Level {
 	}
 	return slog.LevelInfo
 }
+
+func includeVerboseAccessFields(status int) bool { return status >= http.StatusBadRequest }
 
 func responseWriterStatus(w http.ResponseWriter) int {
 	type statusProvider interface {

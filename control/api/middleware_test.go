@@ -90,17 +90,21 @@ func TestAccessLogMiddlewareEmitsStructuredFields(t *testing.T) {
 
 			entry := decodeLastJSONLogEntry(t, buf)
 			require.Equal(t, "api", entry["component"])
-			require.Equal(t, "http_access", entry["event"])
 			require.Equal(t, "http_access", entry["msg"])
 			require.Equal(t, tc.wantLevel, entry["level"])
 			require.Equal(t, float64(tc.status), entry["status_code"])
 			require.Equal(t, tc.wantRateLimited, entry["rate_limited"])
 			require.Equal(t, "GET", entry["method"])
 			require.Equal(t, "/v1/projects/{id}", entry["route"])
-			require.Equal(t, "/v1/projects/123", entry["path"])
 			require.Equal(t, "192.168.97.1", entry["client_ip"])
-			require.Equal(t, "yaak", entry["user_agent"])
 			require.NotEmpty(t, entry["request_id"])
+
+			if tc.status >= http.StatusBadRequest {
+			} else {
+			}
+			require.NotContains(t, entry, "user_agent")
+			require.NotContains(t, entry, "bytes_out")
+			require.NotContains(t, entry, "path")
 
 			if tc.wantHasUserID {
 				require.Equal(t, "github:t0gun", entry["user_id"])
@@ -142,7 +146,6 @@ func TestAuthFailureEnrichesSingleAccessLog(t *testing.T) {
 	require.Len(t, entries, 1)
 	entry := entries[0]
 	require.Equal(t, "api", entry["component"])
-	require.Equal(t, "http_access", entry["event"])
 	require.Equal(t, "WARN", entry["level"])
 	require.Equal(t, float64(http.StatusUnauthorized), entry["status_code"])
 	require.Equal(t, "invalid_token", entry["auth_reason"])
@@ -196,6 +199,11 @@ func TestRecovererMiddlewareRecoversPanicAndWritesInternalError(t *testing.T) {
 	require.Equal(t, "ERROR", accessEntry["level"])
 	require.Equal(t, float64(http.StatusInternalServerError), accessEntry["status_code"])
 	require.Equal(t, false, accessEntry["rate_limited"])
+	require.Equal(t, "/v1/projects/{id}", accessEntry["route"])
+	require.Equal(t, "192.168.97.1", accessEntry["client_ip"])
+	require.NotContains(t, accessEntry, "path")
+	require.NotContains(t, accessEntry, "user_agent")
+	require.NotContains(t, accessEntry, "bytes_out")
 }
 
 func TestRecovererMiddlewareDoesNotRewriteStartedResponse(t *testing.T) {
@@ -325,6 +333,9 @@ func findEntryByEvent(t *testing.T, entries []map[string]any, event string) map[
 	t.Helper()
 	for _, entry := range entries {
 		if got, ok := entry["event"].(string); ok && got == event {
+			return entry
+		}
+		if got, ok := entry["msg"].(string); ok && got == event {
 			return entry
 		}
 	}
