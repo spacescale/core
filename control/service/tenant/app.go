@@ -15,9 +15,9 @@ import (
 	"context"
 	"errors"
 	"math"
+	"regexp"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -27,17 +27,14 @@ import (
 )
 
 const (
-	appPrimaryRegionMaxLen = 32
 	defaultAppRuntimePort  = 8080 // fallback when create input omits runtime port.
 	defaultTargetReplicas  = 1    // current create flow launches one microvm by default.
 	defaultRootDiskMB      = 5120 // persisted legacy metadata; not sent to scaled launch shape.
-	appNameMaxChars        = 63   // maximum app display-name length.
-	appImageRefMaxChars    = 1024 // maximum accepted image reference length.
-	appEnvVarKeyMaxChars   = 128  // maximum environment-variable key length.
-	appEnvVarValueMaxRunes = 8192 // maximum environment-variable value length in runes.
-	appEnvVarsMaxCount     = 50   // maximum environment variables accepted per create request.
-	maxPostgresInt4        = uint32(1<<31 - 1)
-	maxPostgresInt8        = uint64(1<<63 - 1)
+)
+
+var (
+	appPrimaryRegionPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$`)
+	appEnvVarKeyPattern     = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,127}$`)
 )
 
 const microvmResourceTypeDeployment = "deployment"
@@ -534,24 +531,10 @@ func (s *AppService) resolveRegistryCredential(ctx context.Context, projectID uu
 // normalizeImageRef trims and validates image reference input.
 func normalizeImageRef(raw string) (string, bool) {
 	ref := strings.TrimSpace(raw)
-	if ref == "" || len(ref) > appImageRefMaxChars {
-		return "", false
-	}
-	if strings.ContainsAny(ref, " \t\r\n") {
-		return "", false
-	}
-
-	return ref, true
+	return ref, ref != ""
 }
 
 func normalizeAppCompute(raw AppComputeInput) (*pb.MicroVMShape, bool) {
-	if raw.VCPU == 0 || raw.VCPU > maxPostgresInt4 {
-		return nil, false
-	}
-	if raw.MemoryMB == 0 || raw.MemoryMB > maxPostgresInt8 {
-		return nil, false
-	}
-
 	cpuMode := pb.CpuMode_CPU_MODE_SHARED
 	if raw.Dedicated {
 		cpuMode = pb.CpuMode_CPU_MODE_PINNED
@@ -567,20 +550,8 @@ func normalizeAppCompute(raw AppComputeInput) (*pb.MicroVMShape, bool) {
 
 func normalizeAppPrimaryRegion(raw string) (string, bool) {
 	region := strings.ToLower(strings.TrimSpace(raw))
-	if region == "" || len(region) > appPrimaryRegionMaxLen {
+	if region == "" || !appPrimaryRegionPattern.MatchString(region) {
 		return "", false
-	}
-	if region[0] == '-' || region[len(region)-1] == '-' {
-		return "", false
-	}
-	for i := range len(region) {
-		ch := region[i]
-		if ch == '-' {
-			continue
-		}
-		if !isASCIIAlphaNum(ch) {
-			return "", false
-		}
 	}
 
 	return region, true
@@ -595,9 +566,6 @@ func normalizeOrDeriveAppName(rawName, imageRef string) (string, bool) {
 			return "", false
 		}
 		name = derived
-	}
-	if utf8.RuneCountInString(name) > appNameMaxChars {
-		return "", false
 	}
 
 	return name, name != ""
@@ -632,9 +600,6 @@ func normalizeRuntimePort(raw *int) (int32, bool) {
 	if raw != nil {
 		port = *raw
 	}
-	if port < 1 || port > 65535 {
-		return 0, false
-	}
 
 	return int32(port), true
 }
@@ -654,18 +619,12 @@ func normalizeEnvVars(raw []AppEnvVarInput) ([]AppEnvVarInput, bool) {
 	if len(raw) == 0 {
 		return nil, true
 	}
-	if len(raw) > appEnvVarsMaxCount {
-		return nil, false
-	}
 
 	out := make([]AppEnvVarInput, 0, len(raw))
 	seen := make(map[string]struct{}, len(raw))
 	for _, item := range raw {
 		key, ok := normalizeEnvVarKey(item.Key)
 		if !ok {
-			return nil, false
-		}
-		if utf8.RuneCountInString(item.Value) > appEnvVarValueMaxRunes {
 			return nil, false
 		}
 		if _, exists := seen[key]; exists {
@@ -686,18 +645,7 @@ func normalizeEnvVars(raw []AppEnvVarInput) ([]AppEnvVarInput, bool) {
 // uppercase. The first character must be an uppercase letter or underscore.
 func normalizeEnvVarKey(raw string) (string, bool) {
 	key := strings.ToUpper(strings.TrimSpace(raw))
-	if key == "" || len(key) > appEnvVarKeyMaxChars {
-		return "", false
-	}
-	if !isASCIIUpper(key[0]) && key[0] != '_' {
-		return "", false
-	}
-	for i := 1; i < len(key); i++ {
-		ch := key[i]
-		if isASCIIUpper(ch) || isASCIIDigit(ch) || ch == '_' {
-			continue
-		}
-
+	if key == "" || !appEnvVarKeyPattern.MatchString(key) {
 		return "", false
 	}
 

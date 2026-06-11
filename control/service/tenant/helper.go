@@ -9,7 +9,6 @@ import (
 	"errors"
 	"math/big"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -18,7 +17,6 @@ import (
 const (
 	maxSlugRetries       = 8
 	suffixLength         = 6
-	projectNameMaxLength = 120
 	projectSlugMaxLength = 63
 )
 
@@ -70,13 +68,10 @@ func slugifyProjectName(name string) string {
 	return strings.Trim(slug[:projectSlugMaxLength], "-")
 }
 
-// normalizeProjectName trims and validates the display name length.
+// normalizeProjectName trims the project display name.
 func normalizeProjectName(raw string) (string, bool) {
 	name := strings.TrimSpace(raw)
 	if name == "" {
-		return "", false
-	}
-	if utf8.RuneCountInString(name) > projectNameMaxLength {
 		return "", false
 	}
 	return name, true

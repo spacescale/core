@@ -140,10 +140,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 // the endpoint handlers.
 func (s *Server) Router() http.Handler {
 	router := chi.NewRouter()
-
-	// Base middleware stack.
 	router.Use(middleware.RequestID)
-	router.Use(middleware.ClientIPFromRemoteAddr)
 	router.Use(Middleware())
 	router.Use(Recoverer())
 
@@ -408,9 +405,6 @@ func (s *Server) workOSSessionMiddleware() func(http.Handler) http.Handler {
 // serveWithPrincipal attaches a Principal to the request context and continues.
 func (s *Server) serveWithPrincipal(next http.Handler, w http.ResponseWriter, r *http.Request, principal Principal) {
 	ctx := context.WithValue(r.Context(), principalContextKey{}, principal)
-	if lc, ok := MetadataFromContext(ctx); ok {
-		lc.UserID = principal.IdentityKey
-	}
 	next.ServeHTTP(w, r.WithContext(ctx))
 }
 
@@ -418,7 +412,6 @@ func (s *Server) serveWithPrincipal(next http.Handler, w http.ResponseWriter, r 
 // and returns the shared unauthorized response.
 func (s *Server) rejectWorkOSSession(w http.ResponseWriter, r *http.Request, reason string) {
 	s.setWorkOSCookie(w, s.config.WorkOS.CookieName, "", "/", -1)
-	SetAuthFailure(r, reason)
 	writeUnauthorized(w)
 }
 

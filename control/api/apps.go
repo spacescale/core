@@ -14,26 +14,26 @@ import (
 const createAppDispatchTimeout = 20 * time.Second
 
 type createAppEnvVarRequest struct {
-	Key      string `json:"key" validate:"required,notblank,max=255"`
+	Key      string `json:"key" validate:"required,notblank,max=128"`
 	Value    string `json:"value" validate:"max=8192"`
 	IsSecret bool   `json:"isSecret"`
 }
 
 type createAppComputeRequest struct {
-	VCPU      uint32 `json:"vcpu" validate:"gt=0"`
-	MemoryMB  uint64 `json:"memoryMb" validate:"gt=0"`
+	VCPU      uint32 `json:"vcpu" validate:"gt=0,lte=2147483647"`
+	MemoryMB  uint64 `json:"memoryMb" validate:"gt=0,lte=9223372036854775807"`
 	Dedicated bool   `json:"dedicated"`
 }
 
 type createAppRequest struct {
-	Name                 string                   `json:"name" validate:"omitempty,notblank,max=255"`
-	ImageRef             string                   `json:"imageRef" validate:"required,notblank"`
+	Name                 string                   `json:"name" validate:"omitempty,notblank,max=63"`
+	ImageRef             string                   `json:"imageRef" validate:"required,notblank,max=1024,excludesall= \t\r\n"`
 	Compute              createAppComputeRequest  `json:"compute" validate:"required"`
 	PrimaryRegion        string                   `json:"primaryRegion" validate:"required,notblank,max=32"`
 	RuntimePort          *int                     `json:"runtimePort" validate:"omitempty,min=1,max=65535"`
 	IsPublic             *bool                    `json:"isPublic"`
 	RegistryCredentialID string                   `json:"registryCredentialId" validate:"omitempty,uuid"`
-	EnvVars              []createAppEnvVarRequest `json:"envVars" validate:"max=64,dive"`
+	EnvVars              []createAppEnvVarRequest `json:"envVars" validate:"max=50,dive"`
 }
 
 type appResponse struct {
@@ -133,11 +133,6 @@ func (s *Server) handleCreateApp(responseWriter http.ResponseWriter, request *ht
 	}
 
 	app := result.App
-	if lc, ok := MetadataFromContext(request.Context()); ok {
-		lc.ProjectID = app.ProjectID
-		lc.AppID = app.ID
-	}
-
 	if s.dispatcher != nil {
 		dispatchCtx, cancel := newCreateAppDispatchContext(request.Context())
 		defer cancel()

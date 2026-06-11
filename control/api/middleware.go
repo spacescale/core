@@ -1,7 +1,4 @@
-// Package api owns request-scoped access and panic logging for the
-// control HTTP API. It emits one structured access event per request and lets
-// middleware or handlers attach safe, low-cardinality metadata discovered while
-// handling the request.
+// Package api owns access logging and panic recovery for the control HTTP API.
 package api
 
 import (
@@ -10,40 +7,13 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-// Metadata stores request log fields discovered after middleware setup.
-type Metadata struct {
-	UserID            string
-	ProjectID         string
-	AppID             string
-	AuthFailureReason string
-}
-
-type contextKey struct{}
-
-const (
-	maxUserAgentLogLen  = 255
-	maxPanicValueLogLen = 200
-)
-
-// MetadataFromContext returns mutable request log metadata when middleware installed it.
-func MetadataFromContext(ctx context.Context) (*Metadata, bool) {
-	v, ok := ctx.Value(contextKey{}).(*Metadata)
-	return v, ok
-}
-
-// SetAuthFailure attaches a stable auth failure reason to the request access log.
-func SetAuthFailure(r *http.Request, reason string) {
-	if metadata, ok := MetadataFromContext(r.Context()); ok {
-		metadata.AuthFailureReason = reason
-	}
-}
+const maxPanicValueLogLen = 200
 
 // Middleware emits one structured access log event after request completion.
 func Middleware() func(http.Handler) http.Handler {
@@ -51,10 +21,7 @@ func Middleware() func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
-			metadata := &Metadata{}
-			ctx := context.WithValue(r.Context(), contextKey{}, metadata)
-			req := r.WithContext(ctx)
-			next.ServeHTTP(ww, req)
+			next.ServeHTTP(ww, r)
 
 			status := ww.Status()
 			if status == 0 {
@@ -63,34 +30,19 @@ func Middleware() func(http.Handler) http.Handler {
 
 			attrs := []any{
 				"component", "api",
-				"request_id", middleware.GetReqID(ctx),
-				"method", req.Method,
+				"request_id", middleware.GetReqID(r.Context()),
+				"method", r.Method,
 				"status_code", status,
-				"rate_limited", status == http.StatusTooManyRequests,
 				"duration_ms", time.Since(start).Milliseconds(),
-				"client_ip", clientIP(req.RemoteAddr),
+				"client_ip", clientIP(r.RemoteAddr),
 			}
-
-			route := routePatternFromContext(ctx)
+			route := routePatternFromContext(r.Context())
 			attrs = append(attrs, "route", route)
 			if route == "-" {
-				attrs = append(attrs, "path", req.URL.Path)
+				attrs = append(attrs, "path", r.URL.Path)
 			}
 
-			if metadata.UserID != "" {
-				attrs = append(attrs, "user_id", metadata.UserID)
-			}
-			if metadata.ProjectID != "" {
-				attrs = append(attrs, "project_id", metadata.ProjectID)
-			}
-			if metadata.AppID != "" {
-				attrs = append(attrs, "app_id", metadata.AppID)
-			}
-			if metadata.AuthFailureReason != "" {
-				attrs = append(attrs, "auth_reason", metadata.AuthFailureReason)
-			}
-
-			slog.Log(ctx, accessLogLevel(status), "http_access", attrs...)
+			slog.Log(r.Context(), accessLogLevel(status), "http_access", attrs...)
 		})
 	}
 }
@@ -117,21 +69,6 @@ func Recoverer() func(http.Handler) http.Handler {
 					"client_ip", clientIP(r.RemoteAddr),
 					"panic_type", fmt.Sprintf("%T", recovered),
 					"panic_value", panicValueLogValue(recovered),
-				}
-
-				if key, value, ok := userAgentLogAttr(r.UserAgent()); ok {
-					attrs = append(attrs, key, value)
-				}
-				if metadata, ok := MetadataFromContext(ctx); ok {
-					if metadata.UserID != "" {
-						attrs = append(attrs, "user_id", metadata.UserID)
-					}
-					if metadata.ProjectID != "" {
-						attrs = append(attrs, "project_id", metadata.ProjectID)
-					}
-					if metadata.AppID != "" {
-						attrs = append(attrs, "app_id", metadata.AppID)
-					}
 				}
 
 				slog.Error("panic recovered", attrs...)
@@ -175,24 +112,10 @@ func clientIP(remoteAddr string) string {
 	return host
 }
 
-func userAgentLogAttr(rawUserAgent string) (string, string, bool) {
-	ua := strings.TrimSpace(rawUserAgent)
-	if ua == "" {
-		return "", "", false
-	}
-	return "user_agent", truncateLogString(ua, maxUserAgentLogLen), true
-}
-
-func truncateLogString(input string, maxLen int) string {
-	if maxLen <= 0 {
-		return ""
-	}
-	if len(input) <= maxLen {
-		return input
-	}
-	return input[:maxLen]
-}
-
 func panicValueLogValue(recovered any) string {
-	return truncateLogString(fmt.Sprint(recovered), maxPanicValueLogLen)
+	value := fmt.Sprint(recovered)
+	if len(value) <= maxPanicValueLogLen {
+		return value
+	}
+	return value[:maxPanicValueLogLen]
 }

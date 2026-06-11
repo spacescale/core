@@ -58,10 +58,6 @@ func (s *Server) handleCreateProject(responseWriter http.ResponseWriter, request
 		return
 	}
 
-	if lc, ok := MetadataFromContext(request.Context()); ok {
-		lc.ProjectID = project.ID
-	}
-
 	responseWriter.Header().Set(
 		"Location",
 		"/v1/workspaces/"+url.PathEscape(project.WorkspaceID)+"/projects/"+url.PathEscape(project.ID),
@@ -116,9 +112,6 @@ func (s *Server) handleGetProject(responseWriter http.ResponseWriter, request *h
 		return
 	}
 
-	if lc, ok := MetadataFromContext(request.Context()); ok {
-		lc.ProjectID = project.ID
-	}
 	JSON(responseWriter, http.StatusOK, projectResponseFromModel(project))
 }
 
@@ -149,9 +142,6 @@ func (s *Server) handleUpdateProject(responseWriter http.ResponseWriter, request
 		return
 	}
 
-	if lc, ok := MetadataFromContext(request.Context()); ok {
-		lc.ProjectID = project.ID
-	}
 	JSON(responseWriter, http.StatusOK, projectResponseFromModel(project))
 }
 
@@ -175,9 +165,6 @@ func (s *Server) handleDeleteProject(responseWriter http.ResponseWriter, request
 		return
 	}
 
-	if lc, ok := MetadataFromContext(request.Context()); ok {
-		lc.ProjectID = projectID
-	}
 	responseWriter.WriteHeader(http.StatusNoContent)
 }
 

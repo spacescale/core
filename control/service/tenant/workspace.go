@@ -9,13 +9,10 @@ import (
 	"errors"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/spacescale/core/control/db/sqlc"
 )
-
-const maxWorkspaceNameChars = 255
 
 // Workspace represents one user-owned workspace.
 type Workspace struct {
@@ -178,9 +175,6 @@ func workspaceFromRow(r sqlc.Workspace) Workspace {
 func normalizeWorkspaceName(raw string) (string, bool) {
 	name := strings.TrimSpace(raw)
 	if name == "" {
-		return "", false
-	}
-	if utf8.RuneCountInString(name) > maxWorkspaceNameChars {
 		return "", false
 	}
 	return name, true
