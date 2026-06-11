@@ -4,19 +4,19 @@ id: rq_M4nLp8sQw3
 createdAt: 2026-04-01T23:00:00
 updatedAt: 2026-04-01T22:44:55.705341
 workspaceId: wk_KJF6oyHis3
-folderId: fl_da6TvdABY7
+folderId: fl_Wk9mQ2tXr8
 authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
 description: |-
-  ## List Apps In Project
+  ## List Workloads In Project
 
-  Return apps for one caller-owned project inside one caller-owned workspace.
+  Return workloads for one caller-owned project inside one caller-owned workspace.
 
   ### Endpoint
   - **Method**: `GET`
-  - **Path**: `/v1/workspaces/{workspaceId}/projects/{projectId}/apps`
+  - **Path**: `/v1/workspaces/{workspaceId}/projects/{projectId}/workloads`
 
   ### Authentication
   - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
@@ -31,7 +31,7 @@ description: |-
 
   ```json
   {
-    "apps": [
+    "workloads": [
       {
         "id": "uuid",
         "projectId": "uuid",
@@ -62,7 +62,7 @@ headers:
     value: spacescale_session=${[ WORKOS_SESSION ]}
   id: hAppLsAuth01
 method: GET
-name: List Apps
+name: List Workloads
 sortPriority: 1.0
-url: http://${[ BASE_URL ]}/v1/workspaces/${[ WORKSPACE_ID ]}/projects/${[ PROJECT_ID ]}/apps
+url: http://${[ BASE_URL ]}/v1/workspaces/${[ WORKSPACE_ID ]}/projects/${[ PROJECT_ID ]}/workloads
 urlParameters: []

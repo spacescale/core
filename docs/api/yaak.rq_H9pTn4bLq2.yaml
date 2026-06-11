@@ -4,7 +4,7 @@ id: rq_H9pTn4bLq2
 createdAt: 2026-03-02T12:00:00
 updatedAt: 2026-05-03T02:05:26.548287
 workspaceId: wk_KJF6oyHis3
-folderId: fl_da6TvdABY7
+folderId: fl_Wk9mQ2tXr8
 authentication: {}
 authenticationType: null
 body:
@@ -31,13 +31,13 @@ body:
     }
 bodyType: application/json
 description: |-
-  ## Create App
+  ## Create Workload
 
-  Create one app under a caller-owned workspace/project.
+  Create one workload under a caller-owned workspace/project.
 
   ### Endpoint
   - **Method**: `POST`
-  - **Path**: `/v1/workspaces/{workspaceId}/projects/{projectId}/apps`
+  - **Path**: `/v1/workspaces/{workspaceId}/projects/{projectId}/workloads`
 
   ### Authentication
   - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
@@ -62,14 +62,14 @@ description: |-
     - duplicate keys (after normalization) are rejected
 
   ### Behavior Notes
-  - create operation persists app, deployment, microvm, optional registry binding, and encrypted env vars atomically
-  - new apps default to `targetReplicas = 1`, so create currently launches one microvm
+   - create operation persists workload, deployment, microvm, optional registry binding, and encrypted env vars atomically
+   - new workloads default to `targetReplicas = 1`, so create currently launches one microvm
   - when dispatch is active, `control` immediately runs auction + targeted launch after create
   - current manual node region is `eu-central`, so use `primaryRegion=eu-central` for the live end-to-end path
 
   ### Success Response
   - **Status**: `201 Created`
-  - **Headers**: `Location: /v1/workspaces/{workspaceId}/projects/{projectId}/apps/{appId}`
+  - **Headers**: `Location: /v1/workspaces/{workspaceId}/projects/{projectId}/workloads/{workloadId}`
   - **Body**:
     - `id`
     - `projectId`
@@ -103,7 +103,7 @@ headers:
   value: application/json
   id: hAppCrType01
 method: POST
-name: Create App
+name: Create Workload
 sortPriority: 0.0
-url: http://${[ BASE_URL ]}/v1/workspaces/${[ WORKSPACE_ID ]}/projects/${[ PROJECT_ID ]}/apps
+url: http://${[ BASE_URL ]}/v1/workspaces/${[ WORKSPACE_ID ]}/projects/${[ PROJECT_ID ]}/workloads
 urlParameters: []
