@@ -116,7 +116,7 @@ func NewWorkloadService(queries *sqlc.Queries, pool *pgxpool.Pool, envCipher *se
 	return &WorkloadService{queries: queries, pool: pool, envCipher: envCipher}
 }
 
-// CreateWorkload creates an workload under an owned workspace/project and applies defaults.
+// CreateWorkload creates a workload under an owned workspace/project and applies defaults.
 // If Name is empty, it is derived from image repository name.
 //
 // Atomic write contract:
