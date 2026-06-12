@@ -1,10 +1,10 @@
 type: http_request
 model: http_request
-id: rq_A3nVc7pLd4
-createdAt: 2026-02-24T21:30:05
-updatedAt: 2026-02-24T22:10:04
+id: rq_XRX5TsGM2C
+createdAt: 2026-06-12T00:12:22.527457
+updatedAt: 2026-06-12T00:12:22.527457
 workspaceId: wk_KJF6oyHis3
-folderId: fl_zP4fK8sLm2
+folderId: fl_Li7KvtnFs3
 authentication: {}
 authenticationType: null
 body: {}
@@ -28,7 +28,6 @@ description: |-
 
   ### Success Response
   - **Status**: `204 No Content`
-  - empty response body
 
   ### Error Responses
   - `400 Bad Request`: invalid `workspaceId`
@@ -37,11 +36,26 @@ description: |-
   - `500 Internal Server Error`: unexpected runtime error
 headers:
 - enabled: true
-    name: Cookie
-    value: spacescale_session=${[ WORKOS_SESSION ]}
-  id: hWkDlAuth01
+  name: Cookie
+  value: spacescale_session=${[ WORKOS_SESSION ]}
+  id: null
 method: DELETE
 name: Delete Workspace
-sortPriority: 4.0
+sortPriority: 0.0
 url: http://${[ BASE_URL ]}/v1/workspaces/${[ WORKSPACE_ID ]}
 urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

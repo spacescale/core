@@ -9,9 +9,7 @@ authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: |2-
-
-
+description: |-
   This is the local Yaak readme for the SpaceScale control plane.
 
   ### What To Know

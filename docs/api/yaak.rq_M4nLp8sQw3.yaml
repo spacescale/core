@@ -10,8 +10,6 @@ authenticationType: null
 body: {}
 bodyType: null
 description: |-
-  ## List Workloads In Project
-
   Return workloads for one caller-owned project inside one caller-owned workspace.
 
   ### Endpoint

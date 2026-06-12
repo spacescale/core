@@ -14,8 +14,6 @@ body:
     }
 bodyType: application/json
 description: |-
-  ## Update Project
-
   Update mutable project fields inside one workspace.
 
   ### Endpoint

@@ -10,8 +10,6 @@ authenticationType: null
 body: {}
 bodyType: null
 description: |-
-  ## Get Project
-
   Return one project by id within one workspace scope.
 
   ### Endpoint

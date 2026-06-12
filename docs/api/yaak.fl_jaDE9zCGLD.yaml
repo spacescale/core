@@ -1,12 +1,12 @@
 type: folder
 model: folder
-id: fl_Wk9mQ2tXr8
-createdAt: 2026-06-12T00:00:00
-updatedAt: 2026-06-12T00:00:00
+id: fl_jaDE9zCGLD
+createdAt: 2026-06-12T00:11:58.455755
+updatedAt: 2026-06-12T00:11:58.455755
 workspaceId: wk_KJF6oyHis3
 folderId: null
 authentication: {}
-authenticationType: null
+authenticationType: none
 description: ''
 headers: []
 name: workloads

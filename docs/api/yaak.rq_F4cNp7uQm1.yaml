@@ -11,8 +11,6 @@ body:
   text: '{}'
 bodyType: application/json
 description: |-
-  ## Bootstrap Defaults
-
   Bootstrap default resources for an authenticated user.
 
   This endpoint is idempotent and intended for first-login onboarding flows.

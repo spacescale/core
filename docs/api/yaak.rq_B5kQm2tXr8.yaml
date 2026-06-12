@@ -10,8 +10,6 @@ authenticationType: null
 body: {}
 bodyType: null
 description: |-
-  ## List Projects In Workspace
-
   Return projects for one caller-owned workspace.
 
   ### Endpoint

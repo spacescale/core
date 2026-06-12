@@ -10,8 +10,6 @@ authenticationType: null
 body: {}
 bodyType: null
 description: |-
-  ## WorkOS Login
-
   Start the browser login flow and let the API set the `spacescale_session` cookie.
 
   ### Endpoint

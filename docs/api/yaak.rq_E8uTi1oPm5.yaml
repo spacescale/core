@@ -10,8 +10,6 @@ authenticationType: null
 body: {}
 bodyType: null
 description: |-
-  ## Delete Project
-
   Delete one project inside one workspace.
 
   ### Endpoint

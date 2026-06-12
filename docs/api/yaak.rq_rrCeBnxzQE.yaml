@@ -11,8 +11,6 @@ body:
   text: "{}"
 bodyType: application/json
 description: |-
-  ## Create Project
-
   Create a new project inside one workspace owned by the authenticated user.
 
   ### Endpoint
