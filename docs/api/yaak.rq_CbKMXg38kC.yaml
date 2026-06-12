@@ -2,17 +2,17 @@ type: http_request
 model: http_request
 id: rq_CbKMXg38kC
 createdAt: 2026-06-12T00:00:00
-updatedAt: 2026-06-12T00:00:00
+updatedAt: 2026-06-11T23:57:31.431983
 workspaceId: wk_KJF6oyHis3
 folderId: null
 authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
-description: |-
-  ## SpaceScale API Workspace
+description: |2-
 
-  This is the local Yaak workspace for the SpaceScale control plane.
+
+  This is the local Yaak readme for the SpaceScale control plane.
 
   ### What To Know
   - The workspace is API-only. There is no frontend.
@@ -56,10 +56,10 @@ description: |-
   - For live placement tests, use `PRIMARY_REGION=eu-central`.
   - `WORKOS_LOGOUT_REDIRECT_URI` points back to `http://localhost:8080/healthz`.
 headers: []
-method: INFO
+method: GET
 name: SpaceScale API Workspace
 sortPriority: 0.0
-url: ''
+url: http://${[ BASE_URL ]}/healthz
 urlParameters: []
 settingSendCookies:
   enabled: false
