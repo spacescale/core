@@ -1,10 +1,10 @@
 type: http_request
 model: http_request
-id: rq_6qjNpP2aXk
-createdAt: 2026-02-24T21:30:01
-updatedAt: 2026-02-25T07:23:40.112328
+id: rq_ku7wA5Tioi
+createdAt: 2026-06-12T00:12:22.684944
+updatedAt: 2026-06-12T00:12:22.684945
 workspaceId: wk_KJF6oyHis3
-folderId: null
+folderId: fl_Li7KvtnFs3
 authentication: {}
 authenticationType: null
 body:
@@ -29,22 +29,9 @@ description: |-
   - value is trimmed and must be non-empty
   - duplicate names are blocked per user
 
-  Example:
-
-  ```json
-  {
-    "name": "workspace-01"
-  }
-  ```
-
   ### Success Response
   - **Status**: `201 Created`
   - **Headers**: includes `Location: /v1/workspaces/{id}`
-  - **Body**:
-    - `id`
-    - `name`
-    - `createdAt`
-    - `updatedAt`
 
   ### Error Responses
   - `400 Bad Request`: invalid JSON or invalid input
@@ -54,15 +41,30 @@ description: |-
   - `500 Internal Server Error`: unexpected runtime error
 headers:
 - enabled: true
-    name: Cookie
-    value: spacescale_session=${[ WORKOS_SESSION ]}
-  id: hWkCrAuth01
+  name: Cookie
+  value: spacescale_session=${[ WORKOS_SESSION ]}
+  id: null
 - enabled: true
   name: Content-Type
   value: application/json
-  id: hWkCrType01
+  id: null
 method: POST
 name: Create Workspace
 sortPriority: 0.0
 url: http://${[ BASE_URL ]}/v1/workspaces
 urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

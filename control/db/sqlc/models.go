@@ -10,45 +10,9 @@ import (
 	"github.com/google/uuid"
 )
 
-type App struct {
-	ID             uuid.UUID
-	ProjectID      uuid.UUID
-	Name           string
-	Slug           string
-	Subdomain      string
-	ImageRef       string
-	TargetReplicas int32
-	PrimaryRegion  string
-	RuntimePort    int32
-	IsPublic       bool
-	Status         string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-}
-
-type AppEnvVar struct {
-	ID             uuid.UUID
-	AppID          uuid.UUID
-	Key            string
-	ValueEncrypted string
-	CipherVersion  *string
-	CipherAlgo     *string
-	CipherKeyID    *string
-	IsSecret       bool
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-}
-
-type AppRegistryCredential struct {
-	AppID                uuid.UUID
-	RegistryCredentialID uuid.UUID
-	CreatedAt            time.Time
-	LastUsed             *time.Time
-}
-
 type Deployment struct {
 	ID           uuid.UUID
-	AppID        uuid.UUID
+	WorkloadID   uuid.UUID
 	Status       string
 	ImageRef     string
 	RuntimePort  int32
@@ -124,6 +88,42 @@ type User struct {
 	AvatarUrl   *string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type Workload struct {
+	ID             uuid.UUID
+	ProjectID      uuid.UUID
+	Name           string
+	Slug           string
+	Subdomain      string
+	ImageRef       string
+	TargetReplicas int32
+	PrimaryRegion  string
+	RuntimePort    int32
+	IsPublic       bool
+	Status         string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type WorkloadEnvVar struct {
+	ID             uuid.UUID
+	WorkloadID     uuid.UUID
+	Key            string
+	ValueEncrypted string
+	CipherVersion  *string
+	CipherAlgo     *string
+	CipherKeyID    *string
+	IsSecret       bool
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type WorkloadRegistryCredential struct {
+	WorkloadID           uuid.UUID
+	RegistryCredentialID uuid.UUID
+	CreatedAt            time.Time
+	LastUsed             *time.Time
 }
 
 type Workspace struct {

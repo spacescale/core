@@ -11,8 +11,6 @@ body:
   text: '{}'
 bodyType: application/json
 description: |-
-  ## Bootstrap Defaults
-
   Bootstrap default resources for an authenticated user.
 
   This endpoint is idempotent and intended for first-login onboarding flows.
@@ -22,9 +20,8 @@ description: |-
   - **Path**: `/v1/bootstrap-defaults`
 
   ### Authentication
-  - `Authorization: Bearer <BFF_JWT_TOKEN>`
-  - token must be signed with trusted BFF secret (`BFF_JWT_SECRET`)
-  - user must already exist in API users table (seed via `POST /v1/internal/auth-sync`)
+  - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
+  - caller must already have a valid WorkOS session cookie
 
   ### Request Body
   - empty body is allowed
@@ -62,19 +59,19 @@ description: |-
 
   ### Error Responses
   - `400 Bad Request`: invalid JSON or invalid input
-  - `401 Unauthorized`: missing/invalid bearer token or unsynced identity
+  - `401 Unauthorized`: missing/invalid session cookie
   - `409 Conflict`: project slug collision after retry budget is exhausted
   - `429 Too Many Requests`: per-user API rate limit exceeded
   - `500 Internal Server Error`: unexpected runtime error
 headers:
-- enabled: true
-  name: Authorization
-  value: Bearer ${[ BFF_TOKEN ]}
-  id: hBtDfAuth01
-- enabled: true
-  name: Content-Type
-  value: application/json
-  id: hBtDfType01
+  - enabled: true
+    name: Cookie
+    value: spacescale_session=${[ WORKOS_SESSION ]}
+    id: hBtDfAuth01
+  - enabled: true
+    name: Content-Type
+    value: application/json
+    id: hBtDfType01
 method: POST
 name: Bootstrap Defaults
 sortPriority: 2000.0

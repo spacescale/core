@@ -1,170 +1,112 @@
-// Package config loads startup configuration from the environment.
+// Package config reads startup settings from environment variables.
 package config
 
 import (
-	"encoding/base64"
-	"errors"
-	"fmt"
-	"os"
 	"strings"
+
+	"github.com/caarlos0/env/v11"
+	"github.com/go-playground/validator/v10"
 )
 
 const (
-	envEncryptionKeyBytes = 32
-	productionEnvironment = "production"
-	defaultEnvironment    = "development"
-	defaultNATSURL        = "nats://127.0.0.1:4222"
-	defaultPort           = "8080"
-	defaultAuthIssuer     = "spacescale-web-bff"
-	defaultAuthAudience   = "spacescale-api"
+	defaultListenAddr = ":8080"
+	workOSCookieName  = "spacescale_session"
 )
+
+var configValidator = validator.New(validator.WithRequiredStructEnabled())
 
 // Control is the runtime configuration for the control plane.
 type Control struct {
-	Environment string
-	NATSURL     string
-
-	DatabaseURL string
-	Port        string
-
-	Auth               AuthConfig
-	InternalAuthSecret string
-	EnvEncryptionKeyID string
-	EnvEncryptionKey   []byte
+	Environment        string `validate:"required,oneof=development production"`
+	NATSURL            string `validate:"required,url"`
+	DatabaseURL        string `validate:"required"`
+	ListenAddr         string `validate:"required"`
+	WorkOS             WorkOSConfig
+	EnvEncryptionKeyID string `validate:"required"`
+	EnvEncryptionKey   string `validate:"required,base64,min=44,max=44"`
 }
 
 // Scaled is the runtime configuration for the edge daemon.
 type Scaled struct {
-	Environment string
-	NATSURL     string
+	Environment string `validate:"required,oneof=development production"`
+	NATSURL     string `validate:"required,url"`
 }
 
-// AuthConfig contains BFF-issued JWT verification settings.
-type AuthConfig struct {
-	JWTSecret string
-	Issuer    string
-	Audience  string
+// WorkOSConfig holds the WorkOS settings used by the control plane.
+type WorkOSConfig struct {
+	APIKey               string `validate:"required"`
+	ClientID             string `validate:"required"`
+	CookiePassword       string `validate:"required,min=32"`
+	RedirectURI          string `validate:"required,url"`
+	PostLoginRedirectURI string `validate:"required,url"`
+	LogoutRedirectURI    string `validate:"required,url"`
+	CookieName           string `validate:"required"`
 }
 
-// LoadControl reads and validates config required by the control plane.
+type controlEnv struct {
+	Environment        string `env:"ENVIRONMENT"`
+	NATSURL            string `env:"NATS_URL"`
+	DatabaseURL        string `env:"DATABASE_URL"`
+	EnvEncryptionKeyID string `env:"API_ENV_ENCRYPTION_KEY_ID"`
+	EnvEncryptionKey   string `env:"API_ENV_ENCRYPTION_KEY"`
+
+	WorkOSAPIKey               string `env:"WORKOS_API_KEY"`
+	WorkOSClientID             string `env:"WORKOS_CLIENT_ID"`
+	WorkOSCookiePassword       string `env:"WORKOS_COOKIE_PASSWORD"`
+	WorkOSRedirectURI          string `env:"WORKOS_REDIRECT_URI"`
+	WorkOSPostLoginRedirectURI string `env:"WORKOS_POST_LOGIN_REDIRECT_URI"`
+	WorkOSLogoutRedirectURI    string `env:"WORKOS_LOGOUT_REDIRECT_URI"`
+}
+
+type scaledEnv struct {
+	Environment string `env:"ENVIRONMENT"`
+	NATSURL     string `env:"NATS_URL"`
+}
+
+// LoadControl reads control-plane config from the environment.
 func LoadControl() (Control, error) {
-	environment := strings.TrimSpace(os.Getenv("APP_ENV"))
-	if environment == "" {
-		environment = strings.TrimSpace(os.Getenv("ENVIRONMENT"))
-	}
-	switch strings.ToLower(environment) {
-	case productionEnvironment, "prod":
-		environment = productionEnvironment
-	default:
-		environment = defaultEnvironment
-	}
-
-	natsURL := strings.TrimSpace(os.Getenv("NATS_URL"))
-	if natsURL == "" {
-		natsURL = defaultNATSURL
-	}
-
-	port := strings.TrimSpace(os.Getenv("PORT"))
-	if port == "" {
-		port = defaultPort
-	}
-
-	issuer := strings.TrimSpace(os.Getenv("BFF_JWT_ISSUER"))
-	if issuer == "" {
-		issuer = defaultAuthIssuer
-	}
-
-	audience := strings.TrimSpace(os.Getenv("BFF_JWT_AUDIENCE"))
-	if audience == "" {
-		audience = defaultAuthAudience
-	}
-
-	keyID := strings.TrimSpace(os.Getenv("API_ENV_ENCRYPTION_KEY_ID"))
-	keyRaw := strings.TrimSpace(os.Getenv("API_ENV_ENCRYPTION_KEY"))
-	if keyID == "" {
-		return Control{}, errors.New("missing required config API_ENV_ENCRYPTION_KEY_ID")
-	}
-	if keyRaw == "" {
-		return Control{}, errors.New("missing required config API_ENV_ENCRYPTION_KEY")
-	}
-	key, err := decodeEnvEncryptionKey(keyRaw, "API_ENV_ENCRYPTION_KEY")
+	raw, err := env.ParseAs[controlEnv]()
 	if err != nil {
 		return Control{}, err
 	}
 
 	cfg := Control{
-		Environment: environment,
-		NATSURL:     natsURL,
-		DatabaseURL: strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		Port:        port,
-		Auth: AuthConfig{
-			JWTSecret: strings.TrimSpace(os.Getenv("BFF_JWT_SECRET")),
-			Issuer:    issuer,
-			Audience:  audience,
+		Environment: strings.TrimSpace(raw.Environment),
+		NATSURL:     strings.TrimSpace(raw.NATSURL),
+		DatabaseURL: strings.TrimSpace(raw.DatabaseURL),
+		WorkOS: WorkOSConfig{
+			APIKey:               strings.TrimSpace(raw.WorkOSAPIKey),
+			ClientID:             strings.TrimSpace(raw.WorkOSClientID),
+			CookiePassword:       strings.TrimSpace(raw.WorkOSCookiePassword),
+			RedirectURI:          strings.TrimSpace(raw.WorkOSRedirectURI),
+			PostLoginRedirectURI: strings.TrimSpace(raw.WorkOSPostLoginRedirectURI),
+			LogoutRedirectURI:    strings.TrimSpace(raw.WorkOSLogoutRedirectURI),
+			CookieName:           workOSCookieName,
 		},
-		InternalAuthSecret: strings.TrimSpace(os.Getenv("INTERNAL_AUTH_SYNC_SECRET")),
-		EnvEncryptionKeyID: keyID,
-		EnvEncryptionKey:   key,
+		EnvEncryptionKeyID: strings.TrimSpace(raw.EnvEncryptionKeyID),
+		EnvEncryptionKey:   strings.TrimSpace(raw.EnvEncryptionKey),
 	}
-
-	if cfg.DatabaseURL == "" {
-		return Control{}, errors.New("missing required config DATABASE_URL")
-	}
-	if cfg.Auth.JWTSecret == "" {
-		return Control{}, errors.New("missing required config BFF_JWT_SECRET")
-	}
-	if cfg.InternalAuthSecret == "" {
-		return Control{}, errors.New("missing required config INTERNAL_AUTH_SYNC_SECRET")
+	cfg.ListenAddr = defaultListenAddr
+	if err := configValidator.Struct(cfg); err != nil {
+		return Control{}, err
 	}
 
 	return cfg, nil
 }
 
-// LoadScaled reads config required by the edge daemon.
-func LoadScaled() Scaled {
-	environment := strings.TrimSpace(os.Getenv("APP_ENV"))
-	if environment == "" {
-		environment = strings.TrimSpace(os.Getenv("ENVIRONMENT"))
-	}
-	switch strings.ToLower(environment) {
-	case productionEnvironment, "prod":
-		environment = productionEnvironment
-	default:
-		environment = defaultEnvironment
-	}
-
-	natsURL := strings.TrimSpace(os.Getenv("NATS_URL"))
-	if natsURL == "" {
-		natsURL = defaultNATSURL
-	}
-
-	return Scaled{
-		Environment: environment,
-		NATSURL:     natsURL,
-	}
-}
-
-// ListenAddr returns the HTTP listen address derived from Port.
-func (c Control) ListenAddr() string {
-	port := strings.TrimSpace(c.Port)
-	if port == "" {
-		port = defaultPort
-	}
-	if strings.Contains(port, ":") {
-		return port
-	}
-
-	return ":" + port
-}
-
-func decodeEnvEncryptionKey(raw, envName string) ([]byte, error) {
-	key, err := base64.StdEncoding.DecodeString(raw)
+// LoadScaled reads edge-daemon config from the environment.
+func LoadScaled() (Scaled, error) {
+	raw, err := env.ParseAs[scaledEnv]()
 	if err != nil {
-		return nil, fmt.Errorf("invalid config %s: must be base64-encoded 32-byte key", envName)
-	}
-	if len(key) != envEncryptionKeyBytes {
-		return nil, fmt.Errorf("invalid config %s: must decode to 32 bytes", envName)
+		return Scaled{}, err
 	}
 
-	return append([]byte(nil), key...), nil
+	cfg := Scaled{
+		Environment: strings.TrimSpace(raw.Environment),
+		NATSURL:     strings.TrimSpace(raw.NATSURL),
+	}
+	if err := configValidator.Struct(cfg); err != nil {
+		return Scaled{}, err
+	}
+	return cfg, nil
 }

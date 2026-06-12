@@ -29,8 +29,8 @@ func createWorkspaceViaAPI(t *testing.T, ts *testServer, identityKey, name strin
 
 	body := []byte(fmt.Sprintf(`{"name":"%s"}`, name))
 	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces", body, map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, identityKey),
-		"Content-Type":  "application/json",
+		"Cookie":       authCookieForIdentityKey(t, identityKey),
+		"Content-Type": "application/json",
 	})
 	require.Equal(t, http.StatusCreated, resp.StatusCode, string(data))
 
@@ -51,8 +51,8 @@ func TestCreateWorkspace(t *testing.T) {
 
 	workspaceName := fmt.Sprintf("workspace-%d", time.Now().UnixNano())
 	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces", []byte(fmt.Sprintf(`{"name":"%s"}`, workspaceName)), map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, identityKey),
-		"Content-Type":  "application/json",
+		"Cookie":       authCookieForIdentityKey(t, identityKey),
+		"Content-Type": "application/json",
 	})
 	require.Equal(t, http.StatusCreated, resp.StatusCode, string(data))
 
@@ -76,11 +76,16 @@ func TestCreateWorkspaceConflict(t *testing.T) {
 	syncAuthUserForTest(t, ts, identityKey)
 
 	workspaceName := fmt.Sprintf("workspace-%d", time.Now().UnixNano())
-	_ = createWorkspaceViaAPI(t, ts, identityKey, workspaceName)
+	body := []byte(fmt.Sprintf(`{"name":"%s"}`, workspaceName))
+	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces", body, map[string]string{
+		"Cookie":       authCookieForIdentityKey(t, identityKey),
+		"Content-Type": "application/json",
+	})
+	require.Equal(t, http.StatusCreated, resp.StatusCode, string(data))
 
-	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces", []byte(fmt.Sprintf(`{"name":"%s"}`, workspaceName)), map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, identityKey),
-		"Content-Type":  "application/json",
+	resp, data = doRequest(t, ts, http.MethodPost, "/v1/workspaces", []byte(fmt.Sprintf(`{"name":"%s"}`, workspaceName)), map[string]string{
+		"Cookie":       authCookieForIdentityKey(t, identityKey),
+		"Content-Type": "application/json",
 	})
 	require.Equal(t, http.StatusConflict, resp.StatusCode, string(data))
 
@@ -113,8 +118,8 @@ func TestCreateWorkspaceInvalidInput(t *testing.T) {
 	syncAuthUserForTest(t, ts, identityKey)
 
 	resp, data := doRequest(t, ts, http.MethodPost, "/v1/workspaces", []byte(`{"name":"   "}`), map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, identityKey),
-		"Content-Type":  "application/json",
+		"Cookie":       authCookieForIdentityKey(t, identityKey),
+		"Content-Type": "application/json",
 	})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, string(data))
 
@@ -151,7 +156,7 @@ func TestListWorkspacesScopesToCaller(t *testing.T) {
 	_ = createWorkspaceViaAPI(t, ts, userB, b1)
 
 	resp, data := doRequest(t, ts, http.MethodGet, "/v1/workspaces", nil, map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, userA),
+		"Cookie": authCookieForIdentityKey(t, userA),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
 
@@ -180,12 +185,12 @@ func TestGetWorkspaceOwnership(t *testing.T) {
 	workspace := createWorkspaceViaAPI(t, ts, owner, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 
 	resp, data := doRequest(t, ts, http.MethodGet, "/v1/workspaces/"+workspace.ID, nil, map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, owner),
+		"Cookie": authCookieForIdentityKey(t, owner),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
 
 	resp, data = doRequest(t, ts, http.MethodGet, "/v1/workspaces/"+workspace.ID, nil, map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, other),
+		"Cookie": authCookieForIdentityKey(t, other),
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
 }
@@ -203,8 +208,8 @@ func TestUpdateWorkspace(t *testing.T) {
 	newName := fmt.Sprintf("workspace-renamed-%d", time.Now().UnixNano())
 
 	resp, data := doRequest(t, ts, http.MethodPatch, "/v1/workspaces/"+workspace.ID, []byte(fmt.Sprintf(`{"name":"%s"}`, newName)), map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, owner),
-		"Content-Type":  "application/json",
+		"Cookie":       authCookieForIdentityKey(t, owner),
+		"Content-Type": "application/json",
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
 
@@ -214,8 +219,8 @@ func TestUpdateWorkspace(t *testing.T) {
 	require.Equal(t, newName, out.Name)
 
 	resp, data = doRequest(t, ts, http.MethodPatch, "/v1/workspaces/"+workspace.ID, []byte(`{"name":"nope"}`), map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, other),
-		"Content-Type":  "application/json",
+		"Cookie":       authCookieForIdentityKey(t, other),
+		"Content-Type": "application/json",
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
 }
@@ -231,8 +236,8 @@ func TestUpdateWorkspaceConflict(t *testing.T) {
 	w2 := createWorkspaceViaAPI(t, ts, identityKey, fmt.Sprintf("workspace-b-%d", time.Now().UnixNano()))
 
 	resp, data := doRequest(t, ts, http.MethodPatch, "/v1/workspaces/"+w1.ID, []byte(fmt.Sprintf(`{"name":"%s"}`, w2.Name)), map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, identityKey),
-		"Content-Type":  "application/json",
+		"Cookie":       authCookieForIdentityKey(t, identityKey),
+		"Content-Type": "application/json",
 	})
 	require.Equal(t, http.StatusConflict, resp.StatusCode, string(data))
 }
@@ -247,12 +252,12 @@ func TestDeleteWorkspace(t *testing.T) {
 	workspace := createWorkspaceViaAPI(t, ts, owner, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 
 	resp, data := doRequest(t, ts, http.MethodDelete, "/v1/workspaces/"+workspace.ID, nil, map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, owner),
+		"Cookie": authCookieForIdentityKey(t, owner),
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode, string(data))
 
 	resp, data = doRequest(t, ts, http.MethodGet, "/v1/workspaces/"+workspace.ID, nil, map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, owner),
+		"Cookie": authCookieForIdentityKey(t, owner),
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
 }
@@ -269,7 +274,7 @@ func TestDeleteWorkspaceOwnership(t *testing.T) {
 	workspace := createWorkspaceViaAPI(t, ts, owner, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
 
 	resp, data := doRequest(t, ts, http.MethodDelete, "/v1/workspaces/"+workspace.ID, nil, map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, other),
+		"Cookie": authCookieForIdentityKey(t, other),
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
 

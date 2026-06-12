@@ -8,10 +8,16 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
+
+	"github.com/go-playground/validator/v10"
+	"github.com/spacescale/core/control/tenant"
 )
 
 // ErrRequestBodyTooLarge is returned when request decoding hits net/http's body-size limit.
 var ErrRequestBodyTooLarge = errors.New("request body too large")
+
+var apiValidator = newAPIValidator()
 
 type errorResponse struct {
 	Error string `json:"error"`
@@ -59,7 +65,81 @@ func ReadJSON(r *http.Request, dst any) error {
 	return errors.New("multiple json values")
 }
 
+// ReadAndValidateJSON decodes one JSON value and validates the result.
+// When allowEmpty is true, an empty body is treated as a zero-value payload.
+func ReadAndValidateJSON(r *http.Request, dst any, allowEmpty bool) error {
+	err := ReadJSON(r, dst)
+	if errors.Is(err, io.EOF) {
+		if allowEmpty {
+			return apiValidator.Struct(dst)
+		}
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	return apiValidator.Struct(dst)
+}
+
+// WriteJSONError maps request decoding and validation errors to API responses.
+func WriteJSONError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ErrRequestBodyTooLarge):
+		Error(w, http.StatusRequestEntityTooLarge, "request body too large")
+	case func() bool {
+		var validationErrs validator.ValidationErrors
+		return errors.As(err, &validationErrs)
+	}():
+		Error(w, http.StatusBadRequest, "invalid input")
+	default:
+		Error(w, http.StatusBadRequest, "invalid json")
+	}
+}
+
+// WriteTenantError maps service-layer errors to API responses.
+func WriteTenantError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, tenant.ErrInvalidInput):
+		Error(w, http.StatusBadRequest, "invalid input")
+	case errors.Is(err, tenant.ErrUnauthorized):
+		Error(w, http.StatusUnauthorized, "unauthorized")
+	case errors.Is(err, tenant.ErrConflict):
+		Error(w, http.StatusConflict, "conflict")
+	default:
+		Error(w, http.StatusInternalServerError, "internal error")
+	}
+}
+
 func isRequestBodyTooLarge(err error) bool {
 	_, ok := errors.AsType[*http.MaxBytesError](err)
 	return ok
+}
+
+func newAPIValidator() *validator.Validate {
+	v := validator.New(validator.WithRequiredStructEnabled())
+	_ = v.RegisterValidation("notblank", func(fl validator.FieldLevel) bool {
+		field := fl.Field()
+		if field.Kind().String() != "string" {
+			return false
+		}
+		return strings.TrimSpace(field.String()) != ""
+	})
+	_ = v.RegisterValidation("envkey", func(fl validator.FieldLevel) bool {
+		field := strings.TrimSpace(fl.Field().String())
+		if field == "" || len(field) > 128 {
+			return false
+		}
+		first := field[0]
+		if (first < 'A' || first > 'Z') && (first < 'a' || first > 'z') && first != '_' {
+			return false
+		}
+		for i := 1; i < len(field); i++ {
+			ch := field[i]
+			if (ch < 'A' || ch > 'Z') && (ch < 'a' || ch > 'z') && (ch < '0' || ch > '9') && ch != '_' {
+				return false
+			}
+		}
+		return true
+	})
+	return v
 }

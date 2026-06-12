@@ -3,19 +3,28 @@ package control
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/control/api"
 	"github.com/spacescale/core/control/db/sqlc"
 	"github.com/spacescale/core/control/fabric"
-	"github.com/spacescale/core/control/service"
+	"github.com/spacescale/core/control/tenant"
 	"github.com/spacescale/core/shared/config"
 	"github.com/spacescale/core/shared/logger"
 	"github.com/spacescale/core/shared/nats"
-	"golang.org/x/sync/errgroup"
+	"github.com/spacescale/core/shared/secret"
+)
+
+const (
+	controlDBMaxConns           = 25
+	controlDBMinConns           = 5
+	controlDBMaxConnLifetime    = 15 * time.Minute
+	controlDBMaxConnIdleTime    = 5 * time.Minute
+	controlDBPingTimeout        = 5 * time.Second
+	controlPlaneShutdownTimeout = 10 * time.Second
 )
 
 // Run starts the control plane and blocks until the context is canceled or startup fails.
@@ -33,15 +42,15 @@ func Run(ctx context.Context) error {
 	defer dbPool.Close()
 
 	queries := sqlc.New(dbPool)
-	services, err := service.NewServices(service.Deps{
-		Queries:            queries,
-		DBPool:             dbPool,
-		EnvEncryptionKeyID: cfg.EnvEncryptionKeyID,
-		EnvEncryptionKey:   cfg.EnvEncryptionKey,
-	})
+	envCipher, err := secret.NewBox(cfg.EnvEncryptionKeyID, cfg.EnvEncryptionKey)
 	if err != nil {
 		return fmt.Errorf("service init failed: %w", err)
 	}
+	users := tenant.NewUserService(queries)
+	projects := tenant.NewProjectService(queries)
+	workspaces := tenant.NewWorkspaceService(queries)
+	bootstrap := tenant.NewBootstrapService(queries)
+	workloads := tenant.NewWorkloadService(queries, dbPool, envCipher)
 
 	natsClient, err := nats.New(cfg.NATSURL, "controlp", log)
 	if err != nil {
@@ -50,35 +59,17 @@ func Run(ctx context.Context) error {
 	defer func() { _ = natsClient.Drain() }()
 
 	apiServer := api.NewServer(api.ServerDeps{
-		Services: services,
-		DBPool:   dbPool,
-		Config:   cfg,
-
-		Dispatcher: fabric.NewDispatcher(services.Tenant.Apps, natsClient, log),
+		Users:      users,
+		Projects:   projects,
+		Workspaces: workspaces,
+		Bootstrap:  bootstrap,
+		Workloads:  workloads,
+		DBPool:     dbPool,
+		Config:     cfg,
+		Dispatcher: fabric.NewDispatcher(workloads, natsClient, log),
 	})
 
-	group, groupCtx := errgroup.WithContext(ctx)
-
-	group.Go(func() error {
-		log.Info("controlp listening", "component", "controlp", "addr", cfg.ListenAddr())
-
-		return apiServer.Start()
-	})
-
-	group.Go(func() error {
-		<-groupCtx.Done()
-
-		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(groupCtx), 10*time.Second)
-		defer cancel()
-
-		return apiServer.Shutdown(shutdownCtx)
-	})
-
-	if err := group.Wait(); err != nil {
-		return errors.Join(err, errors.New("control plane exited"))
-	}
-
-	return nil
+	return runControlPlane(ctx, log, cfg.ListenAddr, apiServer)
 }
 
 func openDB(ctx context.Context, cfg config.Control) (*pgxpool.Pool, error) {
@@ -87,17 +78,17 @@ func openDB(ctx context.Context, cfg config.Control) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 
-	poolCfg.MaxConns = 25
-	poolCfg.MinConns = 5
-	poolCfg.MaxConnLifetime = 15 * time.Minute
-	poolCfg.MaxConnIdleTime = 5 * time.Minute
+	poolCfg.MaxConns = controlDBMaxConns
+	poolCfg.MinConns = controlDBMinConns
+	poolCfg.MaxConnLifetime = controlDBMaxConnLifetime
+	poolCfg.MaxConnIdleTime = controlDBMaxConnIdleTime
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		return nil, err
 	}
 
-	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	pingCtx, cancel := context.WithTimeout(ctx, controlDBPingTimeout)
 	defer cancel()
 	if err := pool.Ping(pingCtx); err != nil {
 		pool.Close()
@@ -106,4 +97,26 @@ func openDB(ctx context.Context, cfg config.Control) (*pgxpool.Pool, error) {
 	}
 
 	return pool, nil
+}
+
+func runControlPlane(ctx context.Context, log *slog.Logger, listenAddr string, apiServer *api.Server) error {
+	serverErr := make(chan error, 1)
+	go func() {
+		log.Info("controlp listening", "component", "controlp", "addr", listenAddr)
+		serverErr <- apiServer.Start()
+	}()
+
+	select {
+	case err := <-serverErr:
+		return err
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), controlPlaneShutdownTimeout)
+		defer cancel()
+
+		shutdownErr := apiServer.Shutdown(shutdownCtx)
+		if err := <-serverErr; err != nil {
+			return err
+		}
+		return shutdownErr
+	}
 }

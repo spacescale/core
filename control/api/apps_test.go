@@ -1,9 +1,9 @@
-// This file verifies end-to-end behavior of app HTTP workflows.
+// This file verifies end-to-end behavior of workload HTTP workflows.
 //
 // Scope:
-// - Request/response contracts for app create and list endpoints.
+// - Request/response contracts for workload create and list endpoints.
 // - Initial status behavior (queued).
-// - Persistence side effects in deployments, microvms, and app_env_vars tables.
+// - Persistence side effects in deployments, microvms, and workload_env_vars tables.
 //
 // These are DB-backed integration tests by design so transport + service + SQL
 // behavior are exercised together as one externally observable contract.
@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type createAppResponse struct {
+type workloadResponse struct {
 	ID             string `json:"id"`
 	ProjectID      string `json:"projectId"`
 	Name           string `json:"name"`
@@ -39,13 +39,13 @@ type createAppResponse struct {
 	UpdatedAt      string `json:"updatedAt"`
 }
 
-type listAppsResponse struct {
-	Apps []createAppResponse `json:"apps"`
+type listWorkloadsResponse struct {
+	Workloads []workloadResponse `json:"workloads"`
 }
 
-// TestCreateAppCreatesQueuedDeployment verifies create-app writes app,
+// TestCreateWorkloadCreatesQueuedDeployment verifies create-workload writes workload,
 // deployment, and microvm state, returns queued status, and stores env vars.
-func TestCreateAppCreatesQueuedDeployment(t *testing.T) {
+func TestCreateWorkloadCreatesQueuedDeployment(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
@@ -60,17 +60,17 @@ func TestCreateAppCreatesQueuedDeployment(t *testing.T) {
 		t,
 		ts,
 		http.MethodPost,
-		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, project.ID),
+		fmt.Sprintf("/v1/workspaces/%s/projects/%s/workloads", workspaceID, project.ID),
 		body,
 		map[string]string{
-			"Authorization": authHeaderForIdentityKey(t, identityKey),
-			"Content-Type":  "application/json",
+			"Cookie":       authCookieForIdentityKey(t, identityKey),
+			"Content-Type": "application/json",
 		},
 	)
 
 	require.Equal(t, http.StatusCreated, resp.StatusCode, string(data))
 
-	var out createAppResponse
+	var out workloadResponse
 	require.NoError(t, json.Unmarshal(data, &out))
 	require.NotEmpty(t, out.ID)
 	require.Equal(t, project.ID, out.ProjectID)
@@ -81,12 +81,12 @@ func TestCreateAppCreatesQueuedDeployment(t *testing.T) {
 	require.EqualValues(t, 9090, out.RuntimePort)
 	require.NotEmpty(t, resp.Header.Get("Location"))
 
-	appID, err := uuid.Parse(out.ID)
+	workloadID, err := uuid.Parse(out.ID)
 	require.NoError(t, err)
 
 	var appStatus string
 	var appTargetReplicas int32
-	err = ts.pool.QueryRow(context.Background(), `SELECT status, target_replicas FROM apps WHERE id = $1`, appID).Scan(&appStatus, &appTargetReplicas)
+	err = ts.pool.QueryRow(context.Background(), `SELECT status, target_replicas FROM workloads WHERE id = $1`, workloadID).Scan(&appStatus, &appTargetReplicas)
 	require.NoError(t, err)
 	require.Equal(t, "queued", appStatus)
 	require.EqualValues(t, 1, appTargetReplicas)
@@ -98,8 +98,8 @@ func TestCreateAppCreatesQueuedDeployment(t *testing.T) {
 	var deploymentPublicURL *string
 	err = ts.pool.QueryRow(
 		context.Background(),
-		`SELECT id, status, image_ref, runtime_port, public_url FROM deployments WHERE app_id = $1 ORDER BY created_at DESC LIMIT 1`,
-		appID,
+		`SELECT id, status, image_ref, runtime_port, public_url FROM deployments WHERE workload_id = $1 ORDER BY created_at DESC LIMIT 1`,
+		workloadID,
 	).Scan(&deploymentID, &deploymentStatus, &deploymentImageRef, &deploymentRuntimePort, &deploymentPublicURL)
 	require.NoError(t, err)
 	require.Equal(t, "queued", deploymentStatus)
@@ -141,20 +141,20 @@ func TestCreateAppCreatesQueuedDeployment(t *testing.T) {
 
 	var key string
 	var encryptedValue string
-	err = ts.pool.QueryRow(
-		context.Background(),
-		`SELECT key, value_encrypted FROM app_env_vars WHERE app_id = $1 ORDER BY created_at DESC LIMIT 1`,
-		appID,
-	).Scan(&key, &encryptedValue)
+		err = ts.pool.QueryRow(
+			context.Background(),
+			`SELECT key, value_encrypted FROM workload_env_vars WHERE workload_id = $1 ORDER BY created_at DESC LIMIT 1`,
+			workloadID,
+		).Scan(&key, &encryptedValue)
 	require.NoError(t, err)
 	require.Equal(t, "DATABASE_URL", key)
 	require.NotEqual(t, "postgres://local", encryptedValue)
-	require.True(t, strings.HasPrefix(encryptedValue, "v1:aesgcm:"))
+	require.True(t, strings.HasPrefix(encryptedValue, "v1:xchacha20poly1305:"))
 }
 
-// TestCreateAppDefaultsQueuedRuntimePort verifies runtime defaults remain
+// TestCreateWorkloadDefaultsQueuedRuntimePort verifies runtime defaults remain
 // consistent when callers omit runtimePort, while status remains queued.
-func TestCreateAppDefaultsQueuedRuntimePort(t *testing.T) {
+func TestCreateWorkloadDefaultsQueuedRuntimePort(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
@@ -169,17 +169,17 @@ func TestCreateAppDefaultsQueuedRuntimePort(t *testing.T) {
 		t,
 		ts,
 		http.MethodPost,
-		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, project.ID),
+		fmt.Sprintf("/v1/workspaces/%s/projects/%s/workloads", workspaceID, project.ID),
 		body,
 		map[string]string{
-			"Authorization": authHeaderForIdentityKey(t, identityKey),
-			"Content-Type":  "application/json",
+			"Cookie":       authCookieForIdentityKey(t, identityKey),
+			"Content-Type": "application/json",
 		},
 	)
 
 	require.Equal(t, http.StatusCreated, resp.StatusCode, string(data))
 
-	var out createAppResponse
+	var out workloadResponse
 	require.NoError(t, json.Unmarshal(data, &out))
 	require.EqualValues(t, 1, out.TargetReplicas)
 	require.Equal(t, "us-east", out.PrimaryRegion)
@@ -188,9 +188,9 @@ func TestCreateAppDefaultsQueuedRuntimePort(t *testing.T) {
 	require.False(t, out.IsPublic)
 }
 
-// TestCreateAppRejectsTooManyEnvVars verifies request validation rejects payloads
+// TestCreateWorkloadRejectsTooManyEnvVars verifies request validation rejects payloads
 // with env var count above service limit.
-func TestCreateAppRejectsTooManyEnvVars(t *testing.T) {
+func TestCreateWorkloadRejectsTooManyEnvVars(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
@@ -222,11 +222,11 @@ func TestCreateAppRejectsTooManyEnvVars(t *testing.T) {
 		t,
 		ts,
 		http.MethodPost,
-		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, project.ID),
+		fmt.Sprintf("/v1/workspaces/%s/projects/%s/workloads", workspaceID, project.ID),
 		body,
 		map[string]string{
-			"Authorization": authHeaderForIdentityKey(t, identityKey),
-			"Content-Type":  "application/json",
+			"Cookie":       authCookieForIdentityKey(t, identityKey),
+			"Content-Type": "application/json",
 		},
 	)
 
@@ -236,7 +236,7 @@ func TestCreateAppRejectsTooManyEnvVars(t *testing.T) {
 	require.Equal(t, "invalid input", out.Error)
 }
 
-func TestCreateAppRequiresComputeAndPrimaryRegion(t *testing.T) {
+func TestCreateWorkloadRequiresComputeAndPrimaryRegion(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
@@ -251,11 +251,11 @@ func TestCreateAppRequiresComputeAndPrimaryRegion(t *testing.T) {
 		t,
 		ts,
 		http.MethodPost,
-		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, project.ID),
+		fmt.Sprintf("/v1/workspaces/%s/projects/%s/workloads", workspaceID, project.ID),
 		body,
 		map[string]string{
-			"Authorization": authHeaderForIdentityKey(t, identityKey),
-			"Content-Type":  "application/json",
+			"Cookie":       authCookieForIdentityKey(t, identityKey),
+			"Content-Type": "application/json",
 		},
 	)
 
@@ -265,7 +265,7 @@ func TestCreateAppRequiresComputeAndPrimaryRegion(t *testing.T) {
 	require.Equal(t, "invalid input", out.Error)
 }
 
-func TestListApps(t *testing.T) {
+func TestListWorkloads(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
@@ -284,31 +284,31 @@ func TestListApps(t *testing.T) {
 		t,
 		ts,
 		http.MethodGet,
-		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, projectA.ID),
+		fmt.Sprintf("/v1/workspaces/%s/projects/%s/workloads", workspaceID, projectA.ID),
 		nil,
 		map[string]string{
-			"Authorization": authHeaderForIdentityKey(t, identityKey),
+			"Cookie": authCookieForIdentityKey(t, identityKey),
 		},
 	)
 
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
 
-	var out listAppsResponse
+	var out listWorkloadsResponse
 	require.NoError(t, json.Unmarshal(data, &out))
-	require.Len(t, out.Apps, 2)
-	require.Equal(t, appOne.ID, out.Apps[0].ID)
-	require.Equal(t, projectA.ID, out.Apps[0].ProjectID)
-	require.Equal(t, "api", out.Apps[0].Name)
-	require.Equal(t, "eu-central", out.Apps[0].PrimaryRegion)
-	require.Equal(t, "queued", out.Apps[0].Status)
-	require.Equal(t, appTwo.ID, out.Apps[1].ID)
-	require.Equal(t, projectA.ID, out.Apps[1].ProjectID)
-	require.Equal(t, "worker", out.Apps[1].Name)
-	require.Equal(t, "eu-central", out.Apps[1].PrimaryRegion)
-	require.Equal(t, "queued", out.Apps[1].Status)
+	require.Len(t, out.Workloads, 2)
+	require.Equal(t, appOne.ID, out.Workloads[0].ID)
+	require.Equal(t, projectA.ID, out.Workloads[0].ProjectID)
+	require.Equal(t, "api", out.Workloads[0].Name)
+	require.Equal(t, "eu-central", out.Workloads[0].PrimaryRegion)
+	require.Equal(t, "queued", out.Workloads[0].Status)
+	require.Equal(t, appTwo.ID, out.Workloads[1].ID)
+	require.Equal(t, projectA.ID, out.Workloads[1].ProjectID)
+	require.Equal(t, "worker", out.Workloads[1].Name)
+	require.Equal(t, "eu-central", out.Workloads[1].PrimaryRegion)
+	require.Equal(t, "queued", out.Workloads[1].Status)
 }
 
-func TestListAppsRequiresOwnership(t *testing.T) {
+func TestListWorkloadsRequiresOwnership(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
@@ -325,10 +325,10 @@ func TestListAppsRequiresOwnership(t *testing.T) {
 		t,
 		ts,
 		http.MethodGet,
-		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, project.ID),
+		fmt.Sprintf("/v1/workspaces/%s/projects/%s/workloads", workspaceID, project.ID),
 		nil,
 		map[string]string{
-			"Authorization": authHeaderForIdentityKey(t, otherIdentityKey),
+			"Cookie": authCookieForIdentityKey(t, otherIdentityKey),
 		},
 	)
 
@@ -338,24 +338,24 @@ func TestListAppsRequiresOwnership(t *testing.T) {
 	require.Equal(t, "unauthorized", out.Error)
 }
 
-func createAppViaAPI(t *testing.T, ts *testServer, identityKey, workspaceID, projectID, body string) createAppResponse {
+func createAppViaAPI(t *testing.T, ts *testServer, identityKey, workspaceID, projectID, body string) workloadResponse {
 	t.Helper()
 
 	resp, data := doRequest(
 		t,
 		ts,
 		http.MethodPost,
-		fmt.Sprintf("/v1/workspaces/%s/projects/%s/apps", workspaceID, projectID),
+		fmt.Sprintf("/v1/workspaces/%s/projects/%s/workloads", workspaceID, projectID),
 		[]byte(body),
 		map[string]string{
-			"Authorization": authHeaderForIdentityKey(t, identityKey),
-			"Content-Type":  "application/json",
+			"Cookie":       authCookieForIdentityKey(t, identityKey),
+			"Content-Type": "application/json",
 		},
 	)
 
 	require.Equal(t, http.StatusCreated, resp.StatusCode, string(data))
 
-	var out createAppResponse
+	var out workloadResponse
 	require.NoError(t, json.Unmarshal(data, &out))
 	return out
 }

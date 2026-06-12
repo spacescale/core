@@ -10,8 +10,6 @@ authenticationType: null
 body: {}
 bodyType: null
 description: |-
-  ## List Projects In Workspace
-
   Return projects for one caller-owned workspace.
 
   ### Endpoint
@@ -22,7 +20,7 @@ description: |-
   - `workspaceId` (required): UUID of the workspace scope
 
   ### Authentication
-  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+  - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
 
   ### Success Response
   - **Status**: `200 OK`
@@ -50,8 +48,8 @@ description: |-
   - `500 Internal Server Error`: unexpected runtime error
 headers:
 - enabled: true
-  name: Authorization
-  value: Bearer ${[ BFF_TOKEN ]}
+    name: Cookie
+    value: spacescale_session=${[ WORKOS_SESSION ]}
   id: hPrLsAuth01
 method: GET
 name: List Projects In Workspace

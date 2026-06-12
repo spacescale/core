@@ -1,4 +1,6 @@
-// Package api owns control HTTP server lifecycle and route composition.
+// Package api owns the control-plane HTTP surface.
+// It wires routing, middleware, rate limiting, tenant services, and auth state
+// into the server that handles API requests.
 package api
 
 import (
@@ -13,74 +15,79 @@ import (
 	"github.com/go-chi/httprate"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/control/fabric"
-	"github.com/spacescale/core/control/service"
-	"github.com/spacescale/core/control/service/tenant"
+	"github.com/spacescale/core/control/tenant"
 	"github.com/spacescale/core/shared/config"
+	"github.com/workos/workos-go/v9"
 )
 
-// Server wires HTTP handlers to service dependencies and auth configuration.
-type Server struct {
+const (
+	maxRequestBodyBytes     = 1 << 20
+	serverReadHeaderTimeout = 5 * time.Second
+	serverWriteTimeout      = 30 * time.Second
+	serverIdleTimeout       = 120 * time.Second
+	userRateLimitRequests   = 200
+	userRateLimitWindow     = time.Minute
+)
 
-	// multi tenant service layer
+// Server wires HTTP handlers to tenant services, database access, and auth state.
+type Server struct {
 	users      *tenant.UserService
 	projects   *tenant.ProjectService
 	workspaces *tenant.WorkspaceService
 	bootstrap  *tenant.BootstrapService
-	apps       *tenant.AppService
+	workloads  *tenant.WorkloadService
 
 	// dependencies
-	dbPool                  *pgxpool.Pool
-	config                  config.Control
-	internalIdentityLimiter *httprate.RateLimiter
-	server                  *http.Server
+	dbPool *pgxpool.Pool
+	auth   *workOSAuth
+	server *http.Server
 
 	// fabric dependencies
 	dispatcher *fabric.Dispatcher
 }
 
-const (
-	internalGlobalLimiterKey        = "internal:global"
-	maxRequestBodyBytes             = 1 << 20
-	serverReadHeaderTimeout         = 5 * time.Second
-	serverWriteTimeout              = 30 * time.Second
-	serverIdleTimeout               = 120 * time.Second
-	userRateLimitRequests           = 200
-	userRateLimitWindow             = time.Minute
-	internalGlobalRateLimitRequests = 24000
-	internalGlobalRateLimitWindow   = time.Minute
-)
-
-// ServerDeps groups dependencies required to construct the API server.
-// It keeps startup and test wiring concise while making required inputs
-// explicit at one call site.
-type ServerDeps struct {
-	Services *service.Services
-	DBPool   *pgxpool.Pool
-	Config   config.Control
-
-	// fabric dependencies
-	Dispatcher *fabric.Dispatcher
+// Principal is the authenticated identity stored in request context.
+// Handlers use it instead of reading auth state directly.
+type Principal struct {
+	Subject     string
+	IdentityKey string
+	Email       string
+	Name        string
+	AvatarURL   string
 }
 
-// NewServer constructs a control API server from service dependencies.
-func NewServer(deps ServerDeps) *Server {
-	tenantServices := deps.Services.Tenant
-	apiServer := &Server{
-		users:                   tenantServices.Users,
-		projects:                tenantServices.Projects,
-		workspaces:              tenantServices.Workspaces,
-		bootstrap:               tenantServices.Bootstrap,
-		apps:                    tenantServices.Apps,
-		dbPool:                  deps.DBPool,
-		config:                  deps.Config,
-		internalIdentityLimiter: NewSyncIdentityLimiter(),
+type principalContextKey struct{}
 
-		// fabric dependencies
+// ServerDeps groups the dependencies required to construct the API server.
+// It keeps startup and test wiring explicit at one call site.
+type ServerDeps struct {
+	Users      *tenant.UserService
+	Projects   *tenant.ProjectService
+	Workspaces *tenant.WorkspaceService
+	Bootstrap  *tenant.BootstrapService
+	Workloads  *tenant.WorkloadService
+	DBPool     *pgxpool.Pool
+	Config     config.Control
+	Dispatcher *fabric.Dispatcher
+	WorkOSClient *workos.Client
+}
+
+// NewServer constructs a control API server from services and config.
+// It also preconfigures the underlying http.Server with body limits and
+// timeout settings.
+func NewServer(deps ServerDeps) *Server {
+	apiServer := &Server{
+		users:      deps.Users,
+		projects:   deps.Projects,
+		workspaces: deps.Workspaces,
+		bootstrap:  deps.Bootstrap,
+		workloads:  deps.Workloads,
+		dbPool:     deps.DBPool,
+		auth:       newWorkOSAuth(deps.Config, deps.Users, deps.WorkOSClient),
 		dispatcher: deps.Dispatcher,
-		server:     nil,
 	}
 	server := new(http.Server)
-	server.Addr = deps.Config.ListenAddr()
+	server.Addr = deps.Config.ListenAddr
 	server.Handler = http.MaxBytesHandler(apiServer.Router(), maxRequestBodyBytes)
 	server.ReadHeaderTimeout = serverReadHeaderTimeout
 	server.WriteTimeout = serverWriteTimeout
@@ -90,7 +97,7 @@ func NewServer(deps ServerDeps) *Server {
 	return apiServer
 }
 
-// Start listens for HTTP requests until the server is shut down.
+// Start listens for HTTP requests until the server stops or fails.
 func (s *Server) Start() error {
 	if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("http serve failed: %w", err)
@@ -99,7 +106,7 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// Shutdown gracefully stops the HTTP server.
+// Shutdown stops the HTTP server using the provided context.
 func (s *Server) Shutdown(ctx context.Context) error {
 	if err := s.server.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("http shutdown failed: %w", err)
@@ -108,35 +115,23 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// Router builds the full HTTP router and middleware stack.
-// It registers health and versioned API routes, then applies request-level
-// middleware for traceability, logging, panic recovery, and authentication.
+// Router builds the full HTTP handler tree for the control plane.
+// It installs request IDs, client IP capture, access logging, panic recovery,
+// auth handling, and route-level rate limiting before registering the endpoint
+// handlers.
 func (s *Server) Router() http.Handler {
 	router := chi.NewRouter()
-
-	// Base middleware stack.
 	router.Use(middleware.RequestID)
-	router.Use(middleware.ClientIPFromRemoteAddr)
-	router.Use(Middleware())
-	router.Use(Recoverer())
+	router.Use(AccessLogger())
+	router.Use(middleware.Recoverer)
 
-	// userLimiter applies per-authenticated-user request limits on API v1 routes.
-	// Keys come from KeyByIdentityKey, so limits are enforced by authenticated
-	// identity key instead of source IP. This keeps limits fair when requests
-	// are proxied through Next.js, CLI backends, or shared infrastructure.
-	// Exceeded requests receive a consistent HTTP 429 JSON error response.
 	userLimiter := httprate.Limit(userRateLimitRequests, userRateLimitWindow, httprate.WithKeyFuncs(KeyByIdentityKey),
 		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
 			rateLimitExceeded(w, r)
 		}),
 	)
 
-	internalGlobalLimiter := httprate.NewRateLimiter(
-		internalGlobalRateLimitRequests,
-		internalGlobalRateLimitWindow,
-		httprate.WithKeyFuncs(httprate.Key(internalGlobalLimiterKey)),
-		httprate.WithLimitHandler(rateLimitExceeded),
-	)
+	s.auth.registerRoutes(router)
 
 	// Health check route.
 	router.Get("/healthz", func(responseWriter http.ResponseWriter, r *http.Request) {
@@ -148,16 +143,8 @@ func (s *Server) Router() http.Handler {
 		responseWriter.WriteHeader(http.StatusOK)
 	})
 
-	// Internal routes are intended for private-network service-to-service traffic.
-	// They apply both a global circuit breaker and per-identity guardrails.
-	router.Route("/v1/internal", func(r chi.Router) {
-		r.Use(internalGlobalLimiter.Handler)
-		r.Use(InternalAuthMiddleware(s.config.InternalAuthSecret))
-		r.Post("/auth-sync", SyncUserHandler(s.users, s.internalIdentityLimiter))
-	})
-
 	router.Route("/v1", func(apiRouter chi.Router) {
-		apiRouter.Use(AuthMiddleware(s.config.Auth))
+		apiRouter.Use(s.auth.sessionMiddleware())
 		apiRouter.Use(userLimiter)
 
 		apiRouter.Post("/bootstrap-defaults", s.handleBootstrapDefaults)
@@ -168,7 +155,7 @@ func (s *Server) Router() http.Handler {
 	return router
 }
 
-// registerV1Routes registers the authenticated v1 routes on router.
+// registerV1Routes registers the authenticated v1 API routes.
 func (s *Server) registerV1Routes(router chi.Router) {
 	router.Post("/workspaces", s.handleCreateWorkspace)
 	router.Get("/workspaces", s.handleListWorkspaces)
@@ -182,11 +169,55 @@ func (s *Server) registerV1Routes(router chi.Router) {
 	router.Patch("/workspaces/{workspaceId}/projects/{projectId}", s.handleUpdateProject)
 	router.Delete("/workspaces/{workspaceId}/projects/{projectId}", s.handleDeleteProject)
 
-	router.Get("/workspaces/{workspaceId}/projects/{projectId}/apps", s.handleListApps)
-	router.Post("/workspaces/{workspaceId}/projects/{projectId}/apps", s.handleCreateApp)
+	router.Get("/workspaces/{workspaceId}/projects/{projectId}/workloads", s.handleListWorkloads)
+	router.Post("/workspaces/{workspaceId}/projects/{projectId}/workloads", s.handleCreateWorkload)
 }
 
-// rateLimitExceeded keeps 429 responses consistent across route groups.
+// rateLimitExceeded writes the shared 429 response used by route limiters.
 func rateLimitExceeded(w http.ResponseWriter, _ *http.Request) {
 	Error(w, http.StatusTooManyRequests, "rate limit exceeded")
+}
+
+// RequireCallerUser resolves the authenticated principal into a stored user row.
+// If the request is unauthenticated or the lookup fails, it writes the
+// canonical API error and returns false.
+func RequireCallerUser(responseWriter http.ResponseWriter, request *http.Request, users *tenant.UserService) (tenant.User, bool) {
+	principal, ok := PrincipalFromContext(request.Context())
+	if !ok {
+		Error(responseWriter, http.StatusUnauthorized, "unauthorized")
+		return tenant.User{}, false
+	}
+
+	user, err := users.GetUserByIdentityKey(request.Context(), principal.IdentityKey)
+	if err != nil {
+		switch {
+		case errors.Is(err, tenant.ErrInvalidInput):
+			Error(responseWriter, http.StatusBadRequest, "invalid input")
+		case errors.Is(err, tenant.ErrUnauthorized):
+			Error(responseWriter, http.StatusUnauthorized, "unauthorized")
+		default:
+			Error(responseWriter, http.StatusInternalServerError, "internal error")
+		}
+
+		return tenant.User{}, false
+	}
+
+	return user, true
+}
+
+// KeyByIdentityKey returns the rate-limit key for the current principal.
+// Unauthenticated requests fall back to a shared key.
+func KeyByIdentityKey(r *http.Request) (string, error) {
+	p, ok := PrincipalFromContext(r.Context())
+	if !ok || p.IdentityKey == "" {
+		return "identity:unknown", nil
+	}
+
+	return "identity:" + p.IdentityKey, nil
+}
+
+// PrincipalFromContext reads the authenticated principal from context.
+func PrincipalFromContext(ctx context.Context) (Principal, bool) {
+	p, ok := ctx.Value(principalContextKey{}).(Principal)
+	return p, ok
 }

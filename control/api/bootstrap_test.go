@@ -39,8 +39,8 @@ func TestBootstrapDefaultsCreatesDefaults(t *testing.T) {
 	syncAuthUserForTest(t, ts, identityKey)
 
 	resp, data := doRequest(t, ts, http.MethodPost, "/v1/bootstrap-defaults", []byte(`{}`), map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, identityKey),
-		"Content-Type":  "application/json",
+		"Cookie":       authCookieForIdentityKey(t, identityKey),
+		"Content-Type": "application/json",
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
 
@@ -51,7 +51,7 @@ func TestBootstrapDefaultsCreatesDefaults(t *testing.T) {
 	require.NotEmpty(t, out.ProjectID)
 
 	resp, data = doRequest(t, ts, http.MethodGet, "/v1/workspaces", nil, map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, identityKey),
+		"Cookie": authCookieForIdentityKey(t, identityKey),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
 
@@ -62,7 +62,7 @@ func TestBootstrapDefaultsCreatesDefaults(t *testing.T) {
 	require.Equal(t, "workspace-01", wsOut.Workspaces[0].Name)
 
 	resp, data = doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v1/workspaces/%s/projects", out.WorkspaceID), nil, map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, identityKey),
+		"Cookie": authCookieForIdentityKey(t, identityKey),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
 
@@ -82,8 +82,8 @@ func TestBootstrapDefaultsIsIdempotent(t *testing.T) {
 	syncAuthUserForTest(t, ts, identityKey)
 
 	resp, data := doRequest(t, ts, http.MethodPost, "/v1/bootstrap-defaults", []byte(`{}`), map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, identityKey),
-		"Content-Type":  "application/json",
+		"Cookie":       authCookieForIdentityKey(t, identityKey),
+		"Content-Type": "application/json",
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
 
@@ -94,7 +94,7 @@ func TestBootstrapDefaultsIsIdempotent(t *testing.T) {
 	require.NotEmpty(t, first.ProjectID)
 
 	resp, data = doRequest(t, ts, http.MethodPost, "/v1/bootstrap-defaults", nil, map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, identityKey),
+		"Cookie": authCookieForIdentityKey(t, identityKey),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
 
@@ -105,7 +105,7 @@ func TestBootstrapDefaultsIsIdempotent(t *testing.T) {
 	require.Empty(t, second.ProjectID)
 
 	resp, data = doRequest(t, ts, http.MethodGet, "/v1/workspaces", nil, map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, identityKey),
+		"Cookie": authCookieForIdentityKey(t, identityKey),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
 
@@ -114,7 +114,7 @@ func TestBootstrapDefaultsIsIdempotent(t *testing.T) {
 	require.Len(t, wsOut.Workspaces, 1)
 
 	resp, data = doRequest(t, ts, http.MethodGet, fmt.Sprintf("/v1/workspaces/%s/projects", wsOut.Workspaces[0].ID), nil, map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, identityKey),
+		"Cookie": authCookieForIdentityKey(t, identityKey),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
 
@@ -143,8 +143,8 @@ func TestBootstrapDefaultsRequiresSyncedUser(t *testing.T) {
 
 	identityKey := uniqueIdentityKey(t)
 	resp, data := doRequest(t, ts, http.MethodPost, "/v1/bootstrap-defaults", []byte(`{}`), map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, identityKey),
-		"Content-Type":  "application/json",
+		"Cookie":       authCookieForIdentityKey(t, identityKey),
+		"Content-Type": "application/json",
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode, string(data))
 
@@ -161,8 +161,8 @@ func TestBootstrapDefaultsInvalidJSON(t *testing.T) {
 	syncAuthUserForTest(t, ts, identityKey)
 
 	resp, data := doRequest(t, ts, http.MethodPost, "/v1/bootstrap-defaults", []byte("{"), map[string]string{
-		"Authorization": authHeaderForIdentityKey(t, identityKey),
-		"Content-Type":  "application/json",
+		"Cookie":       authCookieForIdentityKey(t, identityKey),
+		"Content-Type": "application/json",
 	})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, string(data))
 

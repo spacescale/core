@@ -12,23 +12,23 @@ import (
 )
 
 const createQueuedDeployment = `-- name: CreateQueuedDeployment :one
-INSERT INTO deployments (app_id, status, image_ref, runtime_port, public_url, created_at, updated_at)
+INSERT INTO deployments (workload_id, status, image_ref, runtime_port, public_url, created_at, updated_at)
 VALUES ($1, 'queued', $2, $3, NULL, now(), now())
-RETURNING id, app_id, status, image_ref, runtime_port, public_url, error_message, created_at, updated_at
+RETURNING id, workload_id, status, image_ref, runtime_port, public_url, error_message, created_at, updated_at
 `
 
 type CreateQueuedDeploymentParams struct {
-	AppID       uuid.UUID
+	WorkloadID  uuid.UUID
 	ImageRef    string
 	RuntimePort int32
 }
 
 func (q *Queries) CreateQueuedDeployment(ctx context.Context, arg CreateQueuedDeploymentParams) (Deployment, error) {
-	row := q.db.QueryRow(ctx, createQueuedDeployment, arg.AppID, arg.ImageRef, arg.RuntimePort)
+	row := q.db.QueryRow(ctx, createQueuedDeployment, arg.WorkloadID, arg.ImageRef, arg.RuntimePort)
 	var i Deployment
 	err := row.Scan(
 		&i.ID,
-		&i.AppID,
+		&i.WorkloadID,
 		&i.Status,
 		&i.ImageRef,
 		&i.RuntimePort,
@@ -46,7 +46,7 @@ SET status = 'deploying',
     error_message = NULL,
     updated_at = now()
 WHERE id = $1
-RETURNING id, app_id, status, image_ref, runtime_port, public_url, error_message, created_at, updated_at
+RETURNING id, workload_id, status, image_ref, runtime_port, public_url, error_message, created_at, updated_at
 `
 
 func (q *Queries) MarkDeploymentDeploying(ctx context.Context, id uuid.UUID) (Deployment, error) {
@@ -54,7 +54,7 @@ func (q *Queries) MarkDeploymentDeploying(ctx context.Context, id uuid.UUID) (De
 	var i Deployment
 	err := row.Scan(
 		&i.ID,
-		&i.AppID,
+		&i.WorkloadID,
 		&i.Status,
 		&i.ImageRef,
 		&i.RuntimePort,
@@ -72,7 +72,7 @@ SET status = 'failed',
     error_message = $2,
     updated_at = now()
 WHERE id = $1
-RETURNING id, app_id, status, image_ref, runtime_port, public_url, error_message, created_at, updated_at
+RETURNING id, workload_id, status, image_ref, runtime_port, public_url, error_message, created_at, updated_at
 `
 
 type MarkDeploymentFailedParams struct {
@@ -85,7 +85,7 @@ func (q *Queries) MarkDeploymentFailed(ctx context.Context, arg MarkDeploymentFa
 	var i Deployment
 	err := row.Scan(
 		&i.ID,
-		&i.AppID,
+		&i.WorkloadID,
 		&i.Status,
 		&i.ImageRef,
 		&i.RuntimePort,
@@ -103,7 +103,7 @@ SET status = 'running',
     error_message = NULL,
     updated_at = now()
 WHERE id = $1
-RETURNING id, app_id, status, image_ref, runtime_port, public_url, error_message, created_at, updated_at
+RETURNING id, workload_id, status, image_ref, runtime_port, public_url, error_message, created_at, updated_at
 `
 
 func (q *Queries) MarkDeploymentRunning(ctx context.Context, id uuid.UUID) (Deployment, error) {
@@ -111,7 +111,7 @@ func (q *Queries) MarkDeploymentRunning(ctx context.Context, id uuid.UUID) (Depl
 	var i Deployment
 	err := row.Scan(
 		&i.ID,
-		&i.AppID,
+		&i.WorkloadID,
 		&i.Status,
 		&i.ImageRef,
 		&i.RuntimePort,

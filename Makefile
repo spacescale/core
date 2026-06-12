@@ -9,6 +9,11 @@ controlp:
 	docker compose up controlp
 
 
+build-control:
+	mkdir -p dist
+	go build -trimpath -ldflags="-s -w" -o dist/controlp ./cmd/controlp
+
+
 build-scaled:
 	mkdir -p dist
 	GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/scaled ./cmd/scaled

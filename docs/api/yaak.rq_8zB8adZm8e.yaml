@@ -1,10 +1,10 @@
 type: http_request
 model: http_request
-id: rq_H9pTn4bLq2
-createdAt: 2026-03-02T12:00:00
-updatedAt: 2026-05-03T02:05:26.548287
+id: rq_8zB8adZm8e
+createdAt: 2026-06-12T00:12:22.522815
+updatedAt: 2026-06-12T00:12:22.522816
 workspaceId: wk_KJF6oyHis3
-folderId: fl_Wk9mQ2tXr8
+folderId: fl_jaDE9zCGLD
 authentication: {}
 authenticationType: null
 body:
@@ -54,54 +54,36 @@ description: |-
   - `isPublic` (optional): defaults to `false`
   - `registryCredentialId` (optional): must belong to same project when supplied
   - `envVars` (optional): list of env vars
-    - max items per request: `50`
-    - key format: shell-style uppercase identifier after normalization
-    - values are encrypted before DB write
-    - duplicate keys (after normalization) are rejected
-
-  ### Behavior Notes
-   - create operation persists workload, deployment, microvm, optional registry binding, and encrypted env vars atomically
-   - new workloads default to `targetReplicas = 1`, so create currently launches one microvm
-  - when dispatch is active, `control` immediately runs auction + targeted launch after create
-  - current manual node region is `eu-central`, so use `primaryRegion=eu-central` for the live end-to-end path
 
   ### Success Response
   - **Status**: `201 Created`
   - **Headers**: `Location: /v1/workspaces/{workspaceId}/projects/{projectId}/workloads/{workloadId}`
-  - **Body**:
-    - `id`
-    - `projectId`
-    - `name`
-    - `slug`
-    - `subdomain`
-    - `imageRef`
-    - `targetReplicas`
-    - `primaryRegion`
-    - `runtimePort`
-    - `status` (`deploying` when dispatch succeeds, `queued` only when no dispatcher is wired)
-    - `isPublic`
-    - `createdAt`
-    - `updatedAt`
-
-  ### Error Responses
-  - `400 Bad Request`: invalid JSON or invalid input
-  - `401 Unauthorized`: token invalid, caller missing, or ownership violation
-  - `409 Conflict`: slug/subdomain collision or duplicate env key conflict
-  - `503 Service Unavailable`: no auction bids / no capacity available
-  - `413 Request Entity Too Large`: body exceeds configured max bytes
-  - `429 Too Many Requests`: per-user API rate limit exceeded
-  - `500 Internal Server Error`: unexpected runtime error
 headers:
 - enabled: true
-    name: Cookie
-    value: spacescale_session=${[ WORKOS_SESSION ]}
-  id: hAppCrAuth01
+  name: Cookie
+  value: spacescale_session=${[ WORKOS_SESSION ]}
+  id: null
 - enabled: true
   name: Content-Type
   value: application/json
-  id: hAppCrType01
+  id: null
 method: POST
 name: Create Workload
 sortPriority: 0.0
 url: http://${[ BASE_URL ]}/v1/workspaces/${[ WORKSPACE_ID ]}/projects/${[ PROJECT_ID ]}/workloads
 urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

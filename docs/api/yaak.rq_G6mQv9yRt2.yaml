@@ -10,8 +10,6 @@ authenticationType: null
 body: {}
 bodyType: null
 description: |-
-  ## Health Check
-
   Lightweight liveness/readiness endpoint for the API process.
 
   ### Endpoint
@@ -35,7 +33,7 @@ description: |-
   - empty response body
 
   ### Notes
-  - this route is outside `/v1` and does not require bearer auth
+  - this route is outside `/v1` and does not require auth
   - use this first when debugging local startup
 headers: []
 method: GET

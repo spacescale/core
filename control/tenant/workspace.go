@@ -7,15 +7,11 @@ package tenant
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/spacescale/core/control/db/sqlc"
 )
-
-const maxWorkspaceNameChars = 255
 
 // Workspace represents one user-owned workspace.
 type Workspace struct {
@@ -53,12 +49,7 @@ func (s *WorkspaceService) CreateWorkspace(ctx context.Context, ownerUserID stri
 	if !ok {
 		return Workspace{}, ErrInvalidInput
 	}
-
-	name, ok := normalizeWorkspaceName(p.Name)
-	if !ok {
-		return Workspace{}, ErrInvalidInput
-	}
-	row, err := s.queries.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{OwnerUserID: ownerID, Name: name})
+	row, err := s.queries.CreateWorkspace(ctx, sqlc.CreateWorkspaceParams{OwnerUserID: ownerID, Name: p.Name})
 	if err != nil {
 		if isUniqueViolation(err) {
 			return Workspace{}, ErrConflict
@@ -121,14 +112,10 @@ func (s *WorkspaceService) UpdateWorkspace(ctx context.Context, ownerUserID, wor
 		return Workspace{}, ErrInvalidInput
 	}
 
-	name, ok := normalizeWorkspaceName(p.Name)
-	if !ok {
-		return Workspace{}, ErrInvalidInput
-	}
 	row, err := s.queries.UpdateWorkspaceByIDAndOwnerUserID(ctx, sqlc.UpdateWorkspaceByIDAndOwnerUserIDParams{
 		ID:          wsID,
 		OwnerUserID: ownerID,
-		Name:        name,
+		Name:        p.Name,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -173,15 +160,4 @@ func workspaceFromRow(r sqlc.Workspace) Workspace {
 		CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
 	}
-}
-
-func normalizeWorkspaceName(raw string) (string, bool) {
-	name := strings.TrimSpace(raw)
-	if name == "" {
-		return "", false
-	}
-	if utf8.RuneCountInString(name) > maxWorkspaceNameChars {
-		return "", false
-	}
-	return name, true
 }

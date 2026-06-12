@@ -14,21 +14,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
-	"net/mail"
-	"net/url"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/spacescale/core/control/db/sqlc"
-)
-
-const (
-	maxIdentityKeyChars = 512
-	maxEmailChars       = 320
-	maxNameChars        = 255
-	maxAvatarURLChars   = 2048
 )
 
 // User represents a persisted user identity.
@@ -70,8 +60,8 @@ type SyncAuthUserParams struct {
 // Missing rows are mapped to ErrUnauthorized so callers can treat unknown
 // identities as unauthorized request contexts.
 func (s *UserService) GetUserByIdentityKey(ctx context.Context, identityKey string) (User, error) {
-	identityKey, ok := normalizeIdentityKey(identityKey)
-	if !ok {
+	identityKey = strings.TrimSpace(identityKey)
+	if identityKey == "" {
 		return User{}, ErrInvalidInput
 	}
 
@@ -88,10 +78,6 @@ func (s *UserService) GetUserByIdentityKey(ctx context.Context, identityKey stri
 // SyncAuthUser persists a user profile by stable identity key and returns the
 // normalized service user model.
 //
-// Validation rules:
-// - IdentityKey is required after trimming.
-// - IdentityKey must not exceed maxIdentityKeyChars.
-//
 // Persistence behavior:
 //   - Upsert by identity key so repeated sign-ins are idempotent.
 //   - Existing non-empty profile fields are preserved; incoming data only
@@ -99,14 +85,14 @@ func (s *UserService) GetUserByIdentityKey(ctx context.Context, identityKey stri
 //     switches from overwriting user-preferred profile data.
 //   - Optional profile fields are sanitized before persistence.
 func (s *UserService) SyncAuthUser(ctx context.Context, p SyncAuthUserParams) (User, error) {
-	identityKey, ok := normalizeIdentityKey(p.IdentityKey)
-	if !ok {
+	identityKey := strings.TrimSpace(p.IdentityKey)
+	if identityKey == "" {
 		return User{}, ErrInvalidInput
 	}
 
-	incomingEmail := sanitizeEmail(p.Email)
-	incomingName := sanitizeName(p.Name)
-	incomingAvatarURL := sanitizeAvatarURL(p.AvatarURL)
+	incomingEmail := strings.TrimSpace(p.Email)
+	incomingName := strings.TrimSpace(p.Name)
+	incomingAvatarURL := strings.TrimSpace(p.AvatarURL)
 
 	// Preserve existing profile fields once set so switching OAuth providers does
 	// not continuously overwrite avatar/name on each login.
@@ -183,18 +169,6 @@ func keepExistingIfPresent(existing, incoming string) string {
 	return incoming
 }
 
-// normalizeIdentityKey validates and trims identity keys from trusted callers.
-func normalizeIdentityKey(raw string) (string, bool) {
-	identityKey := strings.TrimSpace(raw)
-	if identityKey == "" {
-		return "", false
-	}
-	if utf8.RuneCountInString(identityKey) > maxIdentityKeyChars {
-		return "", false
-	}
-	return identityKey, true
-}
-
 // identityKeyLogRef returns a stable opaque identifier for logs.
 // Raw identity keys may include emails, so logs must never emit them directly.
 func identityKeyLogRef(identityKey string) string {
@@ -204,77 +178,4 @@ func identityKeyLogRef(identityKey string) string {
 
 	sum := sha256.Sum256([]byte(identityKey))
 	return "identity-hash:" + hex.EncodeToString(sum[:])
-}
-
-// sanitizeEmail normalizes optional email input.
-// Invalid or oversized values are dropped instead of failing auth-sync.
-func sanitizeEmail(raw string) string {
-	email := strings.TrimSpace(raw)
-	if email == "" {
-		return ""
-	}
-	if utf8.RuneCountInString(email) > maxEmailChars {
-		return ""
-	}
-
-	parsed, err := mail.ParseAddress(email)
-	if err != nil {
-		return ""
-	}
-
-	email = strings.TrimSpace(parsed.Address)
-	if email == "" {
-		return ""
-	}
-	if utf8.RuneCountInString(email) > maxEmailChars {
-		return ""
-	}
-
-	return strings.ToLower(email)
-}
-
-// sanitizeName trims and bounds optional display names.
-func sanitizeName(raw string) string {
-	name := strings.TrimSpace(raw)
-	if name == "" {
-		return ""
-	}
-	return truncateRunes(name, maxNameChars)
-}
-
-// sanitizeAvatarURL validates optional avatar URLs.
-// Only absolute http/https URLs within max length are persisted.
-func sanitizeAvatarURL(raw string) string {
-	avatarURL := strings.TrimSpace(raw)
-	if avatarURL == "" {
-		return ""
-	}
-	if utf8.RuneCountInString(avatarURL) > maxAvatarURLChars {
-		return ""
-	}
-
-	u, err := url.Parse(avatarURL)
-	if err != nil {
-		return ""
-	}
-	if u.Host == "" {
-		return ""
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return ""
-	}
-
-	return avatarURL
-}
-
-// truncateRunes truncates to a maximum rune count.
-func truncateRunes(in string, limit int) string {
-	if limit <= 0 {
-		return ""
-	}
-	runes := []rune(in)
-	if len(runes) <= limit {
-		return in
-	}
-	return string(runes[:limit])
 }
