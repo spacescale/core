@@ -95,7 +95,7 @@ func TestPutProtoKV(t *testing.T) {
 	key := NodeHeartbeatKey("node-test")
 	seq, err := PutProtoKV(ctx, kv, key, want)
 	require.NoError(t, err)
-	require.Greater(t, seq, uint64(0))
+	require.NotZero(t, seq)
 
 	entry, err := kv.Get(ctx, key)
 	require.NoError(t, err)

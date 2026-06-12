@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,7 +26,7 @@ func TestWorkOSAuthAuthUnavailablePaths(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/auth/"+tc.name, nil)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/auth/"+tc.name, nil)
 
 			tc.fn(rec, req)
 
@@ -43,13 +44,13 @@ func TestSessionMiddlewareWithoutClientRejectsSession(t *testing.T) {
 	}))
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/workspaces", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/workspaces", nil)
 	handler.ServeHTTP(rec, req)
 
 	require.False(t, called)
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 	require.JSONEq(t, `{"error":"unauthorized"}`, rec.Body.String())
-	require.True(t, strings.Contains(strings.Join(rec.Header().Values("Set-Cookie"), "\n"), "spacescale_session=;"))
+	require.Contains(t, strings.Join(rec.Header().Values("Set-Cookie"), "\n"), "spacescale_session=;")
 }
 
 func TestNonEmptyStringPtrTrimsAndOmitsBlank(t *testing.T) {

@@ -23,13 +23,13 @@ import (
 	workos "github.com/workos/workos-go/v9"
 )
 
-	const (
-		testEnvEncryptionKeyID = "test-key-v1"
-		testEnvEncryptionKey   = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
-		testWorkOSAPIKey       = "workos-test-key"
-		testWorkOSClientID     = "client-test"
-		testWorkOSCookieName   = "spacescale_session"
-		testWorkOSCookieSecret = "12345678901234567890123456789012"
+const (
+	testEnvEncryptionKeyID = "test-key-v1"
+	testEnvEncryptionKey   = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+	testWorkOSAPIKey       = "workos-test-key"
+	testWorkOSClientID     = "client-test"
+	testWorkOSCookieName   = "spacescale_session"
+	testWorkOSCookieSecret = "12345678901234567890123456789012"
 )
 
 type testServer struct {
@@ -72,12 +72,12 @@ func newTestServerWithWorkOSClient(t *testing.T, workosClient *workos.Client) *t
 	bootstrap := tenant.NewBootstrapService(queries)
 	workloads := tenant.NewWorkloadService(queries, pool, envCipher)
 	server := api.NewServer(api.ServerDeps{
-		Users:      users,
-		Projects:   projects,
-		Workspaces: workspaces,
-		Bootstrap:  bootstrap,
-		Workloads:  workloads,
-		DBPool:     pool,
+		Users:        users,
+		Projects:     projects,
+		Workspaces:   workspaces,
+		Bootstrap:    bootstrap,
+		Workloads:    workloads,
+		DBPool:       pool,
 		WorkOSClient: workosClient,
 		Config: config.Control{
 			Environment: "development",
@@ -162,9 +162,9 @@ func doRequest(t *testing.T, ts *testServer, method, path string, body []byte, h
 	return testResponse{StatusCode: resp.StatusCode, Header: resp.Header}, data
 }
 
-func doRequestNoRedirect(t *testing.T, ts *testServer, method, path string, body []byte, headers map[string]string) (testResponse, []byte) {
+func doRequestNoRedirect(t *testing.T, ts *testServer, path string, headers map[string]string) (testResponse, []byte) {
 	t.Helper()
-	req, err := http.NewRequestWithContext(context.Background(), method, ts.server.URL+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.server.URL+path, nil)
 	require.NoError(t, err)
 	for k, v := range headers {
 		req.Header.Set(k, v)

@@ -51,7 +51,7 @@ func TestAccessLoggerEmitsAccessLog(t *testing.T) {
 	require.Equal(t, "http_access", entry["msg"])
 	require.Equal(t, "INFO", entry["level"])
 	require.Equal(t, "GET", entry["method"])
-	require.Equal(t, float64(http.StatusCreated), entry["status_code"])
+	require.InDelta(t, float64(http.StatusCreated), entry["status_code"], 0)
 	require.Equal(t, "192.168.97.1", entry["client_ip"])
 	require.Equal(t, "/v1/projects/{id}", entry["route"])
 	require.NotEmpty(t, entry["request_id"])
@@ -76,18 +76,4 @@ func decodeJSONLogEntries(t *testing.T, buf *bytes.Buffer) []map[string]any {
 	}
 	require.NotEmpty(t, entries)
 	return entries
-}
-
-func findEntryByEvent(t *testing.T, entries []map[string]any, event string) map[string]any {
-	t.Helper()
-	for _, entry := range entries {
-		if got, ok := entry["event"].(string); ok && got == event {
-			return entry
-		}
-		if got, ok := entry["msg"].(string); ok && got == event {
-			return entry
-		}
-	}
-	require.Failf(t, "missing event log", "event %q not found in captured logs", event)
-	return nil
 }

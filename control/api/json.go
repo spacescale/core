@@ -130,12 +130,12 @@ func newAPIValidator() *validator.Validate {
 			return false
 		}
 		first := field[0]
-		if !((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z') || first == '_') {
+		if (first < 'A' || first > 'Z') && (first < 'a' || first > 'z') && first != '_' {
 			return false
 		}
 		for i := 1; i < len(field); i++ {
 			ch := field[i]
-			if !((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_') {
+			if (ch < 'A' || ch > 'Z') && (ch < 'a' || ch > 'z') && (ch < '0' || ch > '9') && ch != '_' {
 				return false
 			}
 		}

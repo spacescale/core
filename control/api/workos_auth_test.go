@@ -20,7 +20,7 @@ func TestWorkOSLoginRedirectsAndSetsStateCookie(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
-	resp, _ := doRequestNoRedirect(t, ts, http.MethodGet, "/auth/login", nil, nil)
+	resp, _ := doRequestNoRedirect(t, ts, "/auth/login", nil)
 	require.Equal(t, http.StatusFound, resp.StatusCode)
 	require.Contains(t, resp.Header.Get("Location"), "/user_management/authorize")
 	require.Contains(t, strings.Join(resp.Header.Values("Set-Cookie"), "\n"), "spacescale_workos_state=")
@@ -30,7 +30,7 @@ func TestWorkOSCallbackRejectsMissingCode(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
-	resp, data := doRequestNoRedirect(t, ts, http.MethodGet, "/auth/callback?state=abc", nil, map[string]string{
+	resp, data := doRequestNoRedirect(t, ts, "/auth/callback?state=abc", map[string]string{
 		"Cookie": "spacescale_workos_state=abc",
 	})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
@@ -41,7 +41,7 @@ func TestWorkOSCallbackRejectsMismatchedState(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
-	resp, data := doRequestNoRedirect(t, ts, http.MethodGet, "/auth/callback?code=valid-code&state=wrong", nil, map[string]string{
+	resp, data := doRequestNoRedirect(t, ts, "/auth/callback?code=valid-code&state=wrong", map[string]string{
 		"Cookie": "spacescale_workos_state=right",
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
@@ -56,7 +56,7 @@ func TestWorkOSCallbackSetsSessionCookieAndSyncsUser(t *testing.T) {
 	ts := newTestServerWithWorkOSClient(t, client)
 	defer ts.close()
 
-	resp, _ := doRequestNoRedirect(t, ts, http.MethodGet, "/auth/callback?code=valid-code&state=state-123", nil, map[string]string{
+	resp, _ := doRequestNoRedirect(t, ts, "/auth/callback?code=valid-code&state=state-123", map[string]string{
 		"Cookie": "spacescale_workos_state=state-123",
 	})
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
@@ -85,7 +85,7 @@ func TestWorkOSSessionRefreshResealsCookie(t *testing.T) {
 	identityKey := "user_refresh"
 	syncAuthUserForTest(t, ts, identityKey)
 
-	resp, data := doRequestNoRedirect(t, ts, http.MethodGet, "/v1/workspaces", nil, map[string]string{
+	resp, data := doRequestNoRedirect(t, ts, "/v1/workspaces", map[string]string{
 		"Cookie": authCookieForIdentityKeyWithExpiry(t, identityKey, time.Now().Add(-time.Minute)),
 	})
 	require.Equal(t, http.StatusOK, resp.StatusCode, string(data))
@@ -97,7 +97,7 @@ func TestInvalidSessionCookieReturnsUnauthorized(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
-	resp, data := doRequestNoRedirect(t, ts, http.MethodGet, "/v1/workspaces", nil, map[string]string{
+	resp, data := doRequestNoRedirect(t, ts, "/v1/workspaces", map[string]string{
 		"Cookie": "spacescale_session=not-a-valid-cookie",
 	})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
@@ -113,7 +113,7 @@ func TestWorkOSLogoutClearsCookieAndRedirectsToWorkOS(t *testing.T) {
 	ts := newTestServerWithWorkOSClient(t, client)
 	defer ts.close()
 
-	resp, _ := doRequestNoRedirect(t, ts, http.MethodGet, "/auth/logout", nil, map[string]string{
+	resp, _ := doRequestNoRedirect(t, ts, "/auth/logout", map[string]string{
 		"Cookie": authCookieForSessionID(t, "user_logout", "sess_logout", time.Now().Add(time.Hour)),
 	})
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
@@ -150,25 +150,37 @@ func newFakeWorkOSServer(t *testing.T) *httptest.Server {
 	t.Helper()
 
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodPost, r.Method)
-		require.Equal(t, "/user_management/authenticate", r.URL.Path)
+		if r.Method != http.MethodPost {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		if r.URL.Path != "/user_management/authenticate" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
 
 		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
 
 		var req map[string]any
-		require.NoError(t, json.Unmarshal(body, &req))
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
 
 		grantType, _ := req["grant_type"].(string)
 		var sessionID string
 		var userID string
 		switch grantType {
 		case "authorization_code":
-			require.Equal(t, "valid-code", req["code"])
+			if req["code"] != "valid-code" {
+				t.Fatalf("unexpected code: %#v", req["code"])
+			}
 			sessionID = "sess_callback"
 			userID = "user_123"
 		case "refresh_token":
-			require.Equal(t, "refresh-token", req["refresh_token"])
+			if req["refresh_token"] != "refresh-token" {
+				t.Fatalf("unexpected refresh token: %#v", req["refresh_token"])
+			}
 			sessionID = "sess_refresh"
 			userID = "user_refresh"
 		default:
@@ -196,7 +208,9 @@ func newFakeWorkOSServer(t *testing.T) *httptest.Server {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		require.NoError(t, json.NewEncoder(w).Encode(response))
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
 	}))
 }
 
