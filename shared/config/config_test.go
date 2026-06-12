@@ -8,56 +8,85 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLoadControl(t *testing.T) {
-	t.Run("reads explicit config", func(t *testing.T) {
-		key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
-
-		t.Setenv("APP_ENV", " prod ")
-		t.Setenv("NATS_URL", " nats://10.0.0.1:4222 ")
-		t.Setenv("DATABASE_URL", " postgres://user:pass@db/spacescale ")
-		t.Setenv("PORT", " 9090 ")
-		t.Setenv("BFF_JWT_SECRET", " secret ")
-		t.Setenv("BFF_JWT_ISSUER", " issuer ")
-		t.Setenv("BFF_JWT_AUDIENCE", " audience ")
-		t.Setenv("INTERNAL_AUTH_SYNC_SECRET", " internal-secret ")
-		t.Setenv("API_ENV_ENCRYPTION_KEY_ID", " key-v1 ")
-		t.Setenv("API_ENV_ENCRYPTION_KEY", key)
-
-		cfg, err := LoadControl()
-		require.NoError(t, err)
-
-		assert.Equal(t, "production", cfg.Environment)
-		assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
-		assert.Equal(t, "postgres://user:pass@db/spacescale", cfg.DatabaseURL)
-		assert.Equal(t, "9090", cfg.Port)
-		assert.Equal(t, "secret", cfg.Auth.JWTSecret)
-		assert.Equal(t, "issuer", cfg.Auth.Issuer)
-		assert.Equal(t, "audience", cfg.Auth.Audience)
-		assert.Equal(t, "internal-secret", cfg.InternalAuthSecret)
-		assert.Equal(t, "key-v1", cfg.EnvEncryptionKeyID)
-		assert.Len(t, cfg.EnvEncryptionKey, 32)
-	})
+func setValidControlEnv(t *testing.T, key string) {
+	t.Helper()
+	t.Setenv("ENVIRONMENT", "development")
+	t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
+	t.Setenv("DATABASE_URL", "postgres://db")
+	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+	t.Setenv("WORKOS_API_KEY", "workos-key")
+	t.Setenv("WORKOS_CLIENT_ID", "client-test")
+	t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
+	t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
+	t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
+	t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
 }
 
-func TestLoadControlAppliesDefaults(t *testing.T) {
-	t.Run("fills optional defaults", func(t *testing.T) {
-		key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
+func TestLoadControlReadsExplicitConfig(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
 
-		t.Setenv("DATABASE_URL", "postgres://db")
-		t.Setenv("BFF_JWT_SECRET", "secret")
-		t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
-		t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
-		t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+	t.Setenv("ENVIRONMENT", "production")
+	t.Setenv("NATS_URL", "nats://10.0.0.1:4222")
+	t.Setenv("DATABASE_URL", "postgres://user:pass@db/spacescale")
+	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", " key-v1 ")
+	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+	t.Setenv("WORKOS_API_KEY", "workos-key")
+	t.Setenv("WORKOS_CLIENT_ID", "client-test")
+	t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
+	t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
+	t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
+	t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
 
-		cfg, err := LoadControl()
-		require.NoError(t, err)
+	cfg, err := LoadControl()
+	require.NoError(t, err)
 
-		assert.Equal(t, defaultEnvironment, cfg.Environment)
-		assert.Equal(t, defaultNATSURL, cfg.NATSURL)
-		assert.Equal(t, defaultPort, cfg.Port)
-		assert.Equal(t, defaultAuthIssuer, cfg.Auth.Issuer)
-		assert.Equal(t, defaultAuthAudience, cfg.Auth.Audience)
-	})
+	assert.Equal(t, "production", cfg.Environment)
+	assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
+	assert.Equal(t, "postgres://user:pass@db/spacescale", cfg.DatabaseURL)
+	assert.Equal(t, defaultListenAddr, cfg.ListenAddr)
+	assert.Equal(t, "key-v1", cfg.EnvEncryptionKeyID)
+	assert.Equal(t, key, cfg.EnvEncryptionKey)
+	assert.Equal(t, "workos-key", cfg.WorkOS.APIKey)
+	assert.Equal(t, "client-test", cfg.WorkOS.ClientID)
+	assert.Equal(t, "12345678901234567890123456789012", cfg.WorkOS.CookiePassword)
+	assert.Equal(t, "https://example.com/workos/callback", cfg.WorkOS.RedirectURI)
+	assert.Equal(t, "https://example.com/app", cfg.WorkOS.PostLoginRedirectURI)
+	assert.Equal(t, "https://example.com/logout", cfg.WorkOS.LogoutRedirectURI)
+	assert.Equal(t, workOSCookieName, cfg.WorkOS.CookieName)
+}
+
+func TestLoadControlReadsTrimmedConfig(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
+
+	t.Setenv("ENVIRONMENT", "development")
+	t.Setenv("NATS_URL", " nats://127.0.0.1:4222 ")
+	t.Setenv("DATABASE_URL", " postgres://db ")
+	t.Setenv("API_ENV_ENCRYPTION_KEY_ID", " key-v1 ")
+	t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+	t.Setenv("WORKOS_API_KEY", " workos-key ")
+	t.Setenv("WORKOS_CLIENT_ID", " client-test ")
+	t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
+	t.Setenv("WORKOS_REDIRECT_URI", " https://example.com/workos/callback ")
+	t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", " https://example.com/app ")
+	t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", " https://example.com/logout ")
+
+	cfg, err := LoadControl()
+	require.NoError(t, err)
+
+	assert.Equal(t, "development", cfg.Environment)
+	assert.Equal(t, "nats://127.0.0.1:4222", cfg.NATSURL)
+	assert.Equal(t, "postgres://db", cfg.DatabaseURL)
+	assert.Equal(t, defaultListenAddr, cfg.ListenAddr)
+	assert.Equal(t, "key-v1", cfg.EnvEncryptionKeyID)
+	assert.Equal(t, key, cfg.EnvEncryptionKey)
+	assert.Equal(t, "workos-key", cfg.WorkOS.APIKey)
+	assert.Equal(t, "client-test", cfg.WorkOS.ClientID)
+	assert.Equal(t, "12345678901234567890123456789012", cfg.WorkOS.CookiePassword)
+	assert.Equal(t, "https://example.com/workos/callback", cfg.WorkOS.RedirectURI)
+	assert.Equal(t, "https://example.com/app", cfg.WorkOS.PostLoginRedirectURI)
+	assert.Equal(t, "https://example.com/logout", cfg.WorkOS.LogoutRedirectURI)
+	assert.Equal(t, workOSCookieName, cfg.WorkOS.CookieName)
 }
 
 func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
@@ -69,59 +98,76 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 		wantErrMsg string
 	}{
 		{
+			name: "missing environment",
+			setenv: func(t *testing.T) {
+				t.Helper()
+				t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
+				t.Setenv("DATABASE_URL", "postgres://db")
+				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+				setValidControlEnv(t, key)
+				// unset environment last so the required tag sees it missing.
+				t.Setenv("ENVIRONMENT", "")
+			},
+			wantErrMsg: "Key: 'Control.Environment' Error:Field validation for 'Environment' failed on the 'required' tag",
+		},
+		{
+			name: "invalid environment",
+			setenv: func(t *testing.T) {
+				t.Helper()
+				setValidControlEnv(t, key)
+				t.Setenv("ENVIRONMENT", "staging")
+			},
+			wantErrMsg: "Key: 'Control.Environment' Error:Field validation for 'Environment' failed on the 'oneof' tag",
+		},
+		{
 			name: "missing database url",
 			setenv: func(t *testing.T) {
 				t.Helper()
-				t.Setenv("BFF_JWT_SECRET", "secret")
-				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
+				t.Setenv("ENVIRONMENT", "development")
+				t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
 				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
 				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+				setValidControlEnv(t, key)
+				t.Setenv("DATABASE_URL", "")
 			},
-			wantErrMsg: "missing required config DATABASE_URL",
+			wantErrMsg: "Key: 'Control.DatabaseURL' Error:Field validation for 'DatabaseURL' failed on the 'required' tag",
 		},
 		{
-			name: "missing jwt secret",
+			name: "missing workos api key",
 			setenv: func(t *testing.T) {
 				t.Helper()
-				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
-				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
-				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+				setValidControlEnv(t, key)
+				t.Setenv("WORKOS_API_KEY", "")
 			},
-			wantErrMsg: "missing required config BFF_JWT_SECRET",
+			wantErrMsg: "Key: 'Control.WorkOS.APIKey' Error:Field validation for 'APIKey' failed on the 'required' tag",
 		},
 		{
-			name: "missing internal auth secret",
+			name: "missing workos client id",
 			setenv: func(t *testing.T) {
 				t.Helper()
-				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("BFF_JWT_SECRET", "secret")
-				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
-				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+				setValidControlEnv(t, key)
+				t.Setenv("WORKOS_CLIENT_ID", "")
 			},
-			wantErrMsg: "missing required config INTERNAL_AUTH_SYNC_SECRET",
+			wantErrMsg: "Key: 'Control.WorkOS.ClientID' Error:Field validation for 'ClientID' failed on the 'required' tag",
 		},
 		{
-			name: "missing key id",
+			name: "missing workos cookie password",
 			setenv: func(t *testing.T) {
 				t.Helper()
-				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("BFF_JWT_SECRET", "secret")
-				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
-				t.Setenv("API_ENV_ENCRYPTION_KEY", key)
+				setValidControlEnv(t, key)
+				t.Setenv("WORKOS_COOKIE_PASSWORD", "")
 			},
-			wantErrMsg: "missing required config API_ENV_ENCRYPTION_KEY_ID",
+			wantErrMsg: "Key: 'Control.WorkOS.CookiePassword' Error:Field validation for 'CookiePassword' failed on the 'required' tag",
 		},
 		{
-			name: "missing key",
+			name: "short workos cookie password",
 			setenv: func(t *testing.T) {
 				t.Helper()
-				t.Setenv("DATABASE_URL", "postgres://db")
-				t.Setenv("BFF_JWT_SECRET", "secret")
-				t.Setenv("INTERNAL_AUTH_SYNC_SECRET", "internal-secret")
-				t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+				setValidControlEnv(t, key)
+				t.Setenv("WORKOS_COOKIE_PASSWORD", "too-short")
 			},
-			wantErrMsg: "missing required config API_ENV_ENCRYPTION_KEY",
+			wantErrMsg: "Key: 'Control.WorkOS.CookiePassword' Error:Field validation for 'CookiePassword' failed on the 'min' tag",
 		},
 	}
 
@@ -134,80 +180,56 @@ func TestLoadControlRejectsMissingRequiredConfig(t *testing.T) {
 	}
 }
 
-func TestLoadScaled(t *testing.T) {
-	t.Run("reads explicit config", func(t *testing.T) {
-		t.Setenv("ENVIRONMENT", " prod ")
-		t.Setenv("NATS_URL", " nats://10.0.0.1:4222 ")
+func TestLoadScaledReadsExplicitConfig(t *testing.T) {
+	t.Setenv("ENVIRONMENT", "production")
+	t.Setenv("NATS_URL", " nats://10.0.0.1:4222 ")
 
-		cfg := LoadScaled()
-		assert.Equal(t, "production", cfg.Environment)
-		assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
-	})
+	cfg, err := LoadScaled()
+	require.NoError(t, err)
+	assert.Equal(t, "production", cfg.Environment)
+	assert.Equal(t, "nats://10.0.0.1:4222", cfg.NATSURL)
 }
 
-func TestLoadScaledAppliesDefaults(t *testing.T) {
-	t.Run("fills defaults", func(t *testing.T) {
-		cfg := LoadScaled()
-		assert.Equal(t, defaultEnvironment, cfg.Environment)
-		assert.Equal(t, defaultNATSURL, cfg.NATSURL)
-	})
+func TestLoadScaledRejectsMissingEnvironment(t *testing.T) {
+	t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
+	_, err := LoadScaled()
+	require.EqualError(t, err, "Key: 'Scaled.Environment' Error:Field validation for 'Environment' failed on the 'required' tag")
 }
 
-func TestControlListenAddr(t *testing.T) {
+func TestLoadScaledRejectsInvalidEnvironment(t *testing.T) {
+	t.Setenv("ENVIRONMENT", "staging")
+	t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
+
+	_, err := LoadScaled()
+	require.EqualError(t, err, "Key: 'Scaled.Environment' Error:Field validation for 'Environment' failed on the 'oneof' tag")
+}
+
+func TestLoadControlRejectsInvalidEnvEncryptionKey(t *testing.T) {
 	tests := []struct {
-		name string
-		cfg  Control
-		want string
+		name       string
+		raw        string
+		wantErrMsg string
 	}{
-		{name: "bare port", cfg: Control{Port: "8081"}, want: ":8081"},
-		{name: "host and port", cfg: Control{Port: "127.0.0.1:8081"}, want: "127.0.0.1:8081"},
-		{name: "default port", cfg: Control{}, want: ":8080"},
+		{name: "invalid base64", raw: "%%%", wantErrMsg: "Key: 'Control.EnvEncryptionKey' Error:Field validation for 'EnvEncryptionKey' failed on the 'base64' tag"},
+		{name: "short encoded key", raw: base64.StdEncoding.EncodeToString([]byte("short")), wantErrMsg: "Key: 'Control.EnvEncryptionKey' Error:Field validation for 'EnvEncryptionKey' failed on the 'min' tag"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, tc.cfg.ListenAddr())
-		})
-	}
-}
+			t.Setenv("ENVIRONMENT", "development")
+			t.Setenv("NATS_URL", "nats://127.0.0.1:4222")
+			t.Setenv("DATABASE_URL", "postgres://db")
+			t.Setenv("API_ENV_ENCRYPTION_KEY_ID", "key-v1")
+			t.Setenv("API_ENV_ENCRYPTION_KEY", tc.raw)
+			t.Setenv("WORKOS_API_KEY", "workos-key")
+			t.Setenv("WORKOS_CLIENT_ID", "client-test")
+			t.Setenv("WORKOS_COOKIE_PASSWORD", "12345678901234567890123456789012")
+			t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
+			t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
+			t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
 
-func TestDecodeEnvEncryptionKey(t *testing.T) {
-	tests := []struct {
-		name        string
-		raw         string
-		wantErrMsg  string
-		wantKeySize int
-	}{
-		{
-			name:        "invalid base64",
-			raw:         "%%%",
-			wantErrMsg:  "invalid config API_ENV_ENCRYPTION_KEY: must be base64-encoded 32-byte key",
-			wantKeySize: 0,
-		},
-		{
-			name:        "wrong decoded size",
-			raw:         base64.StdEncoding.EncodeToString([]byte("short")),
-			wantErrMsg:  "invalid config API_ENV_ENCRYPTION_KEY: must decode to 32 bytes",
-			wantKeySize: 0,
-		},
-		{
-			name:        "valid key",
-			raw:         base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012")),
-			wantErrMsg:  "",
-			wantKeySize: 32,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			key, err := decodeEnvEncryptionKey(tc.raw, "API_ENV_ENCRYPTION_KEY")
-			if tc.wantErrMsg == "" {
-				require.NoError(t, err)
-				assert.Len(t, key, tc.wantKeySize)
-				return
-			}
+			_, err := LoadControl()
 			require.EqualError(t, err, tc.wantErrMsg)
-			assert.Nil(t, key)
 		})
 	}
 }

@@ -4,14 +4,12 @@ id: rq_7hLmV9cQs1
 createdAt: 2026-02-24T21:30:02
 updatedAt: 2026-02-24T22:10:01
 workspaceId: wk_KJF6oyHis3
-folderId: fl_zP4fK8sLm2
+folderId: null
 authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
 description: |-
-  ## List Workspaces
-
   Return all workspaces owned by the authenticated user.
 
   ### Endpoint
@@ -19,7 +17,7 @@ description: |-
   - **Path**: `/v1/workspaces`
 
   ### Authentication
-  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+  - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
 
   ### Behavior
   - response only includes caller-owned workspaces
@@ -43,13 +41,13 @@ description: |-
   ```
 
   ### Error Responses
-  - `401 Unauthorized`: missing/invalid bearer token
+  - `401 Unauthorized`: missing/invalid session cookie
   - `429 Too Many Requests`: per-user API rate limit exceeded
   - `500 Internal Server Error`: unexpected runtime error
 headers:
 - enabled: true
-  name: Authorization
-  value: Bearer ${[ BFF_TOKEN ]}
+    name: Cookie
+    value: spacescale_session=${[ WORKOS_SESSION ]}
   id: hWkLsAuth01
 method: GET
 name: List Workspaces

@@ -1,0 +1,70 @@
+type: http_request
+model: http_request
+id: rq_i6cJAdx7rD
+createdAt: 2026-06-12T00:12:22.524877
+updatedAt: 2026-06-12T00:12:22.524878
+workspaceId: wk_KJF6oyHis3
+folderId: fl_Li7KvtnFs3
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {
+      "name": "workspace-02"
+    }
+bodyType: application/json
+description: |-
+  Update one workspace display name.
+
+  ### Endpoint
+  - **Method**: `PATCH`
+  - **Path**: `/v1/workspaces/{workspaceId}`
+
+  ### Path Parameters
+  - `workspaceId` (required): UUID of the workspace to update
+
+  ### Authentication
+  - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
+
+  ### Body Contract
+  - `name` (required): new workspace name
+  - value is trimmed and must be non-empty
+
+  ### Success Response
+  - **Status**: `200 OK`
+
+  ### Error Responses
+  - `400 Bad Request`: invalid JSON, invalid input, or invalid `workspaceId`
+  - `401 Unauthorized`: token invalid or workspace not owned by caller
+  - `409 Conflict`: name conflicts with another caller-owned workspace
+  - `429 Too Many Requests`: per-user API rate limit exceeded
+  - `500 Internal Server Error`: unexpected runtime error
+headers:
+- enabled: true
+  name: Cookie
+  value: spacescale_session=${[ WORKOS_SESSION ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: PATCH
+name: Update Workspace
+sortPriority: 0.0
+url: http://${[ BASE_URL ]}/v1/workspaces/${[ WORKSPACE_ID ]}
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

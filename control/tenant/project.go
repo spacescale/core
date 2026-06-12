@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -64,11 +65,8 @@ func (s *ProjectService) CreateProject(ctx context.Context, ownerUserID, workspa
 		return Project{}, err
 	}
 
-	name, ok := normalizeProjectName(p.Name)
-	if !ok {
-		if p.Name != "" {
-			return Project{}, ErrInvalidInput
-		}
+	name := p.Name
+	if name == "" {
 		name, err = s.generateName(ctx)
 		if err != nil {
 			return Project{}, err
@@ -157,14 +155,10 @@ func (s *ProjectService) UpdateProject(
 	if _, err := s.getOwnedProjectInWorkspace(ctx, ownerUUID, workspaceUUID, projectUUID); err != nil {
 		return Project{}, err
 	}
-	normalizedName, ok := normalizeProjectName(p.Name)
-	if !ok {
-		return Project{}, ErrInvalidInput
-	}
 	row, err := s.queries.UpdateProjectByIDAndOwnerUserID(ctx, sqlc.UpdateProjectByIDAndOwnerUserIDParams{
 		ID:          projectUUID,
 		OwnerUserID: ownerUUID,
-		Name:        normalizedName,
+		Name:        p.Name,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -202,16 +196,16 @@ func (s *ProjectService) DeleteProject(ctx context.Context, ownerUserID, workspa
 }
 
 func (s *ProjectService) authorizeWorkspace(ctx context.Context, ownerUserID, workspaceID string) (uuid.UUID, uuid.UUID, error) {
-	ownerUUID, ok := parseUUID(ownerUserID)
-	if !ok {
+	ownerUUID, err := uuid.Parse(strings.TrimSpace(ownerUserID))
+	if err != nil {
 		return uuid.Nil, uuid.Nil, ErrInvalidInput
 	}
-	workspaceUUID, ok := parseUUID(workspaceID)
-	if !ok {
+	workspaceUUID, err := uuid.Parse(strings.TrimSpace(workspaceID))
+	if err != nil {
 		return uuid.Nil, uuid.Nil, ErrInvalidInput
 	}
 
-	_, err := s.queries.GetWorkspaceByIDAndOwnerUserID(ctx, sqlc.GetWorkspaceByIDAndOwnerUserIDParams{
+	_, err = s.queries.GetWorkspaceByIDAndOwnerUserID(ctx, sqlc.GetWorkspaceByIDAndOwnerUserIDParams{
 		ID:          workspaceUUID,
 		OwnerUserID: ownerUUID,
 	})
@@ -244,15 +238,9 @@ func (s *ProjectService) getOwnedProjectInWorkspace(
 	return row, nil
 }
 
-// buildProject validates raw project fields and derives a normalized slug.
-// It requires non-empty workspace and name fields.
-// Names that cannot produce a usable slug are rejected as invalid input.
+// buildProject derives a normalized slug.
 // CreatedAt and UpdatedAt are set in UTC to keep serialization consistent.
 func buildProject(workspaceID, name string) (Project, error) {
-	if name == "" {
-		return Project{}, errors.New("project name is required")
-	}
-
 	slug := slugifyProjectName(name)
 	if slug == "" {
 		return Project{}, errors.New("project name is invalid")

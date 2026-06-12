@@ -3,56 +3,36 @@ model: environment
 id: ev_hTkEdmm6xq
 workspaceId: wk_KJF6oyHis3
 createdAt: 2026-01-25T03:25:42.430059
-updatedAt: 2026-02-25T07:24:23.063069
+updatedAt: 2026-06-12T00:34:30.029325
 name: LOCAL
 public: true
 base: false
 parentModel: environment
 parentId: null
 variables:
-  - enabled: true
-    name: BASE_URL
-    value: '127.0.0.1:8080'
-    id: n9Au9fRs4f
-  - enabled: true
-    name: BFF_TOKEN
-    value: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzcGFjZXNjYWxlLXdlYi1iZmYiLCJhdWQiOiJzcGFjZXNjYWxlLWFwaSIsInN1YiI6ImdpdGh1YjplbWFpbDphcHByZW50aWNlX3B5QGljbG91ZC5jb20iLCJpZGVudGl0eV9rZXkiOiJlbWFpbDphcHByZW50aWNlX3B5QGljbG91ZC5jb20iLCJleHAiOjE3Nzc1NzU4NzksImlhdCI6MTc3NzU3MjIxOSwiZW1haWwiOiJhcHByZW50aWNlX3B5QGljbG91ZC5jb20iLCJuYW1lIjoiRGV2IFVzZXIiLCJhdmF0YXJfdXJsIjoiaHR0cHM6Ly9leGFtcGxlLmNvbS9hdmF0YXIucG5nIn0.kJ3XOWmP47asL33q4U-pr3C66EG88jZAbyIY_eeeH1Q'
-    id: authToken
-  - enabled: true
-    name: INTERNAL_AUTH_SYNC_SECRET
-    value: 'spacescale-dev-internal-secret'
-    id: internalAuthSyncSecret
-  - enabled: true
-    name: IDENTITY_KEY
-    value: 'email:apprentice_py@icloud.com'
-    id: identityKey
-  - enabled: true
-    name: USER_EMAIL
-    value: 'apprentice_py@icloud.com'
-    id: userEmail
-  - enabled: true
-    name: USER_NAME
-    value: 'Dev User'
-    id: userName
-  - enabled: true
-    name: AVATAR_URL
-    value: 'https://example.com/avatar.png'
-    id: avatarUrl
-  - enabled: true
-    name: WORKSPACE_ID
-    value: 'f3bd3545-bbef-4155-8f40-dd103313bd80'
-    id: workspaceId
-  - enabled: true
-    name: PROJECT_ID
-    value: 'f75f76aa-5734-4564-a651-f33d55f6f004'
-    id: projectId
-  - enabled: true
-    name: PRIMARY_REGION
-    value: 'eu-central'
-    id: primaryRegion
-  - enabled: true
-    name: APP_PLAN_ID
-    value: 'web-starter'
-    id: appPlanId
+- enabled: true
+  name: BASE_URL
+  value: 127.0.0.1:8080
+  id: n9Au9fRs4f
+- enabled: true
+  name: WORKOS_SESSION
+  value: lu6mt/8sE3sNuH4/I4k5nYWA7wwtoLOa7eLnbpHDoJKWNNFva5TaPxjM1Wt2UxMr/0aovu/e0haY5XswJ8ZrsENciHqohNCxDizbLQ2YFZ4Zc13OGCPdMrZA8nljNo9ULrLIB0n80F5nn/DbnvC63Feyd7cQKyO3W0L09uufPRGP8ImWJP0JmVGfZURLF64WXYkQWvoX0JyT6mhmuKFZ7g7+ojdfQqRjtPkdh7X+yEWYYNj7eITxTwRkjyzdpuMRSIYAgetSrRdslsdIvphk8/H9Sk5oGh+z6p2DLbgOZCrDpn09VYdNtKd8Ts8VROTNqy0Nz9Kj73FEnLZSQ+GRPpAUYotTOABHJFpCP8HF+K8GgqdeRBht4eWp/Gfi51gv7DzZU2QWOz6gpxqQQLWquLGGfW7vl5yER31CpolyvxUWcfhypoK668aU8yOFoor7mQe2uqrQGD3SCDLuBMLkHCggjNIYKaXz/LlzhaO2Jh0AFKPaTGca/4H2yTFKeePdkLgds5WxA6yfcJrYtKhOy9oNNE70mI4FXEK1qQ/XA82xrUT3zajz+gHrEQiRsgpEWv5llZ38CCc0SrsHIrniDAJVZN17WALdIXSKCTcOtCkzhWuEku7PdUkseCsqYklSYwYDaw/ZyGfLyiedJmN9IzSnZQSsk5aNAQwePlqk+TvlxWRqDSDQnbUfJrbyzPbZEkIL05egGouv0q5d+yzjORT6Lqro6Z4QZEr/8ipObJWrkki/dgd9c6FeZR8myf/2wAru91onrFawxBNjVtAcdpVSnzpkGAl+zEz2WXzbzvPOM1TQIsHc3oXGgOtOn7xljgZLZ4LdW2VFpRhUkX+ZjOios5/BoKf3EHaVEEW3FmvnOcHvQlZ8VQRXBtB1WQcI5Y8KMgcWPtUxrMwj0YBjaRn02sS2q6pmWhpsYuCNnPpQNwSTlPQTJs1B2FMFgtDL0fZqC+H/mepGzDUmtWbJBGnL/DJ0BO6g2pColPTxW1qW0BiZ0nbIjgitwNGj9FmHvR1aea0LUAoWvI7nE8KRTr0MuF+9ycAu/FWLr0Km+zsF/ZElPF5fTd2EuELSV1KVk7iLww2BNWRjkq3OQzPq+ZEC1Xys1xry3Q6nLOtI7QWmjDkeFDkALeVBM7BjWXhjHvQPDHj35R9nwUaM0s0Fv5xftbfPUOl0ralG1T/sFaBj7AXvx5MzO6LjCqcecfzdzvRjEcZ/oJ4xBjyx1Zcf4CeuJNLcLhiGlbM/p6lgKy+kGuq9MuVTD3oqzCtKTceeT2HdLVxTIOzvS8WdkrZIqL5Ve451MPKJlRi7DUTY67CpYef0/evqJRE1SHoUwV2+SKAv1/xtowEQ11oocS35rDO+NzxsdEIRhn6cNHEYhnW3/gxIGyNFqoNQ3epUI24hFFymWOTibXjnD2YjWJFfJCVNyPH1sNQt9oPn91Sw31lVhdN7dFiYi16q8IhQyO6F3OKUHhJGkTDGWBJMrDgZ5tBzL1xcXdekw3hK+/y+RnJMskYGZAFqdPldE2WQpzIW2QVQ1jRlqlAG14byjPZbOoKfsaEd5enGS+cU8sVpeqqDqedkAL8rZAIOednq1z2vXUGQJKk1K9/p+9wyiikMMK2hTIF0+ONvoXFPxfIfEdUzX+yCsQMIBKoJYuxPSL0G9LdQjrBVtFFmUgCToBE7zyLnK/eAcFy4wxYvo2c3XCXOoDIEahFd9+Z6ZV/gWXRT911NwAEQFxoWERMvm1awiDntYRDqWGsHKntkk46YMv0e4TAk/kxtxY+IiQ1FxvNj6j7gkNmwdZpbYP3x22Ot
+  id: authToken
+- enabled: true
+  name: WORKSPACE_ID
+  value: 09237974-f4fd-4a87-8206-51a04381cdc6
+  id: workspaceId
+- enabled: true
+  name: PROJECT_ID
+  value: f75f76aa-5734-4564-a651-f33d55f6f004
+  id: projectId
+- enabled: true
+  name: PRIMARY_REGION
+  value: eu-central
+  id: primaryRegion
+- enabled: true
+  name: APP_PLAN_ID
+  value: web-starter
+  id: appPlanId
 color: var(--primary)
 sortPriority: 0.0

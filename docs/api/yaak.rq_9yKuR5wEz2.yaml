@@ -14,8 +14,6 @@ body:
     }
 bodyType: application/json
 description: |-
-  ## Update Workspace
-
   Update one workspace display name.
 
   ### Endpoint
@@ -26,7 +24,7 @@ description: |-
   - `workspaceId` (required): UUID of the workspace to update
 
   ### Authentication
-  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+  - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
 
   ### Body Contract
   - `name` (required): new workspace name
@@ -56,8 +54,8 @@ description: |-
   - `500 Internal Server Error`: unexpected runtime error
 headers:
 - enabled: true
-  name: Authorization
-  value: Bearer ${[ BFF_TOKEN ]}
+    name: Cookie
+    value: spacescale_session=${[ WORKOS_SESSION ]}
   id: hWkUpAuth01
 - enabled: true
   name: Content-Type

@@ -44,6 +44,7 @@ linters:
     - misspell
     - perfsprint
     - predeclared
+    - testifylint # Helps catch expected/got reversals
     - reassign
     - revive
     - thelper

@@ -1,0 +1,89 @@
+type: http_request
+model: http_request
+id: rq_8zB8adZm8e
+createdAt: 2026-06-12T00:12:22.522815
+updatedAt: 2026-06-12T00:12:22.522816
+workspaceId: wk_KJF6oyHis3
+folderId: fl_jaDE9zCGLD
+authentication: {}
+authenticationType: null
+body:
+  text: |-
+    {
+      "name": "manual-e2e-6-d3331-8887890787867",
+      "imageRef": "ghcr.io/acme/spacescale-api:latestjh",
+      "compute": {
+        "vcpu": 2,
+        "memoryMb": 2048,
+        "dedicated": false
+      },
+      "primaryRegion": "${[ PRIMARY_REGION ]}",
+      "runtimePort": 8080,
+      "isPublic": false,
+      "registryCredentialId": "",
+      "envVars": [
+        {
+          "key": "DATABASE_URL",
+          "value": "postgres://app:pass@db:5432/app",
+          "isSecret": true
+        }
+      ]
+    }
+bodyType: application/json
+description: |-
+  Create one workload under a caller-owned workspace/project.
+
+  ### Endpoint
+  - **Method**: `POST`
+  - **Path**: `/v1/workspaces/{workspaceId}/projects/{projectId}/workloads`
+
+  ### Authentication
+  - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
+  - caller must already have a valid WorkOS session cookie
+
+  ### Path Parameters
+  - `workspaceId` (required): workspace UUID owned by caller
+  - `projectId` (required): project UUID owned by caller and scoped to workspace
+
+  ### Body Contract
+  - `imageRef` (required): OCI image reference
+  - `compute` (required): requested microVM shape with `vcpu`, `memoryMb`, and `dedicated`
+  - `primaryRegion` (required): placement region and must match an active node region for end-to-end dispatch
+  - `name` (optional): display name; when omitted service derives from image ref
+  - `runtimePort` (optional): defaults to `8080`
+  - `isPublic` (optional): defaults to `false`
+  - `registryCredentialId` (optional): must belong to same project when supplied
+  - `envVars` (optional): list of env vars
+
+  ### Success Response
+  - **Status**: `201 Created`
+  - **Headers**: `Location: /v1/workspaces/{workspaceId}/projects/{projectId}/workloads/{workloadId}`
+headers:
+- enabled: true
+  name: Cookie
+  value: spacescale_session=${[ WORKOS_SESSION ]}
+  id: null
+- enabled: true
+  name: Content-Type
+  value: application/json
+  id: null
+method: POST
+name: Create Workload
+sortPriority: 0.0
+url: http://${[ BASE_URL ]}/v1/workspaces/${[ WORKSPACE_ID ]}/projects/${[ PROJECT_ID ]}/workloads
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

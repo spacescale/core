@@ -1,0 +1,28 @@
+type: folder
+model: folder
+id: fl_jaDE9zCGLD
+createdAt: 2026-06-12T00:11:58.455755
+updatedAt: 2026-06-12T00:11:58.455755
+workspaceId: wk_KJF6oyHis3
+folderId: null
+authentication: {}
+authenticationType: none
+description: ''
+headers: []
+name: workloads
+sortPriority: 5500.0
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

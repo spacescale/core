@@ -17,7 +17,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -199,7 +198,7 @@ func TestAcceptUnixStopsWhenContextIsCanceled(t *testing.T) {
 
 	_, err = acceptUnix(ctx, listener)
 	require.Error(t, err)
-	require.True(t, errors.Is(err, context.Canceled))
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestWaitForHelloAcceptsValidControlFrame(t *testing.T) {

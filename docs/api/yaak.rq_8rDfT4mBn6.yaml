@@ -4,14 +4,12 @@ id: rq_8rDfT4mBn6
 createdAt: 2026-02-24T21:30:03
 updatedAt: 2026-02-25T06:37:11.028385
 workspaceId: wk_KJF6oyHis3
-folderId: fl_zP4fK8sLm2
+folderId: null
 authentication: {}
 authenticationType: null
 body: {}
 bodyType: null
 description: |-
-  ## Get Workspace
-
   Return one workspace by id when it belongs to the authenticated user.
 
   ### Endpoint
@@ -22,7 +20,7 @@ description: |-
   - `workspaceId` (required): UUID of the workspace to fetch
 
   ### Authentication
-  - `Authorization: Bearer <BFF_JWT_TOKEN>`
+  - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
 
   ### Success Response
   - **Status**: `200 OK`
@@ -39,8 +37,8 @@ description: |-
   - `500 Internal Server Error`: unexpected runtime error
 headers:
 - enabled: true
-  name: Authorization
-  value: Bearer ${[ BFF_TOKEN ]}
+    name: Cookie
+    value: spacescale_session=${[ WORKOS_SESSION ]}
   id: hWkGtAuth01
 method: GET
 name: Get Workspace

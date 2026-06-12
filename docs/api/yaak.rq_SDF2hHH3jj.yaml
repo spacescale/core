@@ -1,0 +1,71 @@
+type: http_request
+model: http_request
+id: rq_SDF2hHH3jj
+createdAt: 2026-06-12T00:12:22.425898
+updatedAt: 2026-06-12T00:12:22.425899
+workspaceId: wk_KJF6oyHis3
+folderId: fl_Li7KvtnFs3
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: |-
+  Return all workspaces owned by the authenticated user.
+
+  ### Endpoint
+  - **Method**: `GET`
+  - **Path**: `/v1/workspaces`
+
+  ### Authentication
+  - `Cookie: spacescale_session=${[ WORKOS_SESSION ]}`
+
+  ### Behavior
+  - response only includes caller-owned workspaces
+  - results are ordered by creation time (`created_at ASC`, then `id ASC`)
+
+  ### Success Response
+  - **Status**: `200 OK`
+  - **Body**:
+
+  ```json
+  {
+    "workspaces": [
+      {
+        "id": "uuid",
+        "name": "workspace-01",
+        "createdAt": "RFC3339",
+        "updatedAt": "RFC3339"
+      }
+    ]
+  }
+  ```
+
+  ### Error Responses
+  - `401 Unauthorized`: missing/invalid session cookie
+  - `429 Too Many Requests`: per-user API rate limit exceeded
+  - `500 Internal Server Error`: unexpected runtime error
+headers:
+- enabled: true
+  name: Cookie
+  value: spacescale_session=${[ WORKOS_SESSION ]}
+  id: null
+method: GET
+name: List Workspaces
+sortPriority: 0.0
+url: http://${[ BASE_URL ]}/v1/workspaces
+urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0

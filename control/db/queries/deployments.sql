@@ -1,5 +1,5 @@
 -- name: CreateQueuedDeployment :one
-INSERT INTO deployments (app_id, status, image_ref, runtime_port, public_url, created_at, updated_at)
+INSERT INTO deployments (workload_id, status, image_ref, runtime_port, public_url, created_at, updated_at)
 VALUES ($1, 'queued', $2, $3, NULL, now(), now())
 RETURNING *;
 

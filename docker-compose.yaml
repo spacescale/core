@@ -12,7 +12,7 @@ services:
       - pgdata:/var/lib/postgresql/18/docker
       - ./control/db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U spacescale -d postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U spacescale -d postgres" ]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -52,14 +52,17 @@ services:
       - gomodcache:/go/pkg/mod
       - gobuildcache:/root/.cache/go-build
     environment:
-      APP_ENV: development
-      PORT: "8080"
+      ENVIRONMENT: development
       NATS_URL: nats://nats:4222
       DATABASE_URL: postgres://spacescale:spacescale@db:5432/spacescale?sslmode=disable
-      BFF_JWT_SECRET: dev-bff-jwt-secret
-      BFF_JWT_ISSUER: spacescale-web-bff
-      BFF_JWT_AUDIENCE: spacescale-api
-      INTERNAL_AUTH_SYNC_SECRET: dev-internal-auth-secret
+
+      WORKOS_API_KEY: sk_test_a2V5XzAxS1RTUDU3NUNBVEhZMUZSNlNDQzRKVEs5LHQ0WDJ3c2lPNXE0dWc4dlEwS1dWZkpJd2c
+      WORKOS_CLIENT_ID: client_01KTSP56XH6GYPPXMWFR814T97
+      WORKOS_COOKIE_PASSWORD: tnxVjrTrfqG0BK7atcFdXACFXeWW0vnJy6jBw8MGakM=
+      WORKOS_REDIRECT_URI: http://localhost:8080/auth/callback
+      WORKOS_POST_LOGIN_REDIRECT_URI: http://localhost:8080/healthz
+      WORKOS_LOGOUT_REDIRECT_URI: http://localhost:8080/healthz
+
       API_ENV_ENCRYPTION_KEY_ID: dev-key
       API_ENV_ENCRYPTION_KEY: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
     depends_on:
@@ -83,10 +86,21 @@ services:
       - .:/workspace
       - gomodcache:/go/pkg/mod
       - gobuildcache:/root/.cache/go-build
+    environment:
+      HOME: /root
+      GOPATH: /go
+      GOCACHE: /root/.cache/go-build
+      GOMODCACHE: /go/pkg/mod
+      TEST_DATABASE_URL: postgres://spacescale:spacescale@db:5432/spacescale?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     command:
       - sh
       - -lc
-      - env -i HOME=/root PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin GOPATH=/go GOCACHE=/root/.cache/go-build GOMODCACHE=/go/pkg/mod /usr/local/go/bin/go test ./... -coverprofile=coverage.out
+      - /usr/local/go/bin/go test ./... -coverprofile=coverage.out
 
 volumes:
   pgdata:

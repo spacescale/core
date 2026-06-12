@@ -9,7 +9,6 @@ import (
 	"errors"
 	"math/big"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -18,13 +17,12 @@ import (
 const (
 	maxSlugRetries       = 8
 	suffixLength         = 6
-	projectNameMaxLength = 120
 	projectSlugMaxLength = 63
 )
 
 // parseUUID parses UUID strings used by service workflows.
 func parseUUID(raw string) (uuid.UUID, bool) {
-	id, err := uuid.Parse(raw)
+	id, err := uuid.Parse(strings.TrimSpace(raw))
 	if err != nil {
 		return uuid.Nil, false
 	}
@@ -68,18 +66,6 @@ func slugifyProjectName(name string) string {
 	}
 
 	return strings.Trim(slug[:projectSlugMaxLength], "-")
-}
-
-// normalizeProjectName trims and validates the display name length.
-func normalizeProjectName(raw string) (string, bool) {
-	name := strings.TrimSpace(raw)
-	if name == "" {
-		return "", false
-	}
-	if utf8.RuneCountInString(name) > projectNameMaxLength {
-		return "", false
-	}
-	return name, true
 }
 
 // slugWithSuffix appends a random suffix while keeping total slug length bounded.

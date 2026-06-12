@@ -9,13 +9,13 @@ import (
 	"context"
 )
 
-// iteratorForCreateAppEnvVars implements pgx.CopyFromSource.
-type iteratorForCreateAppEnvVars struct {
-	rows                 []CreateAppEnvVarsParams
+// iteratorForCreateWorkloadEnvVars implements pgx.CopyFromSource.
+type iteratorForCreateWorkloadEnvVars struct {
+	rows                 []CreateWorkloadEnvVarsParams
 	skippedFirstNextCall bool
 }
 
-func (r *iteratorForCreateAppEnvVars) Next() bool {
+func (r *iteratorForCreateWorkloadEnvVars) Next() bool {
 	if len(r.rows) == 0 {
 		return false
 	}
@@ -27,19 +27,19 @@ func (r *iteratorForCreateAppEnvVars) Next() bool {
 	return len(r.rows) > 0
 }
 
-func (r iteratorForCreateAppEnvVars) Values() ([]interface{}, error) {
+func (r iteratorForCreateWorkloadEnvVars) Values() ([]interface{}, error) {
 	return []interface{}{
-		r.rows[0].AppID,
+		r.rows[0].WorkloadID,
 		r.rows[0].Key,
 		r.rows[0].ValueEncrypted,
 		r.rows[0].IsSecret,
 	}, nil
 }
 
-func (r iteratorForCreateAppEnvVars) Err() error {
+func (r iteratorForCreateWorkloadEnvVars) Err() error {
 	return nil
 }
 
-func (q *Queries) CreateAppEnvVars(ctx context.Context, arg []CreateAppEnvVarsParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"app_env_vars"}, []string{"app_id", "key", "value_encrypted", "is_secret"}, &iteratorForCreateAppEnvVars{rows: arg})
+func (q *Queries) CreateWorkloadEnvVars(ctx context.Context, arg []CreateWorkloadEnvVarsParams) (int64, error) {
+	return q.db.CopyFrom(ctx, []string{"workload_env_vars"}, []string{"workload_id", "key", "value_encrypted", "is_secret"}, &iteratorForCreateWorkloadEnvVars{rows: arg})
 }
