@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_VDG8u2fKk1
 createdAt: 2026-02-18T21:10:00
-updatedAt: 2026-02-25T06:34:21.833135
+updatedAt: 2026-06-12T00:22:32.540807
 workspaceId: wk_KJF6oyHis3
 folderId: fl_Yy2sLBoCtW
 authentication: {}
@@ -27,6 +27,21 @@ description: |-
 headers: []
 method: GET
 name: WorkOS Login
-sortPriority: 0.0
+sortPriority: 1000.0
 url: http://${[ BASE_URL ]}/auth/login
 urlParameters: []
+settingSendCookies:
+  enabled: false
+  value: true
+settingStoreCookies:
+  enabled: false
+  value: true
+settingValidateCertificates:
+  enabled: false
+  value: true
+settingFollowRedirects:
+  enabled: false
+  value: true
+settingRequestTimeout:
+  enabled: false
+  value: 0
