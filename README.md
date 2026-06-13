@@ -9,8 +9,7 @@ The SpaceScale API is documented and testable via **Yaak** workspaces. The colle
 
 ## Local Development
 
-The normal control plane development flow runs inside Docker Compose. Compose provides the development values for
-Postgres, NATS, migrations, and `controlp`. Start the full control plane stack in the background.
+The normal control plane development flow runs inside Docker Compose. Read the compose to get the overview of dev setup. `. Start the full environment stack in the background.
 
 ```bash
 make compose-start
@@ -19,7 +18,7 @@ make compose-start
 ## Control
 The controlplane, also called `control` in this repo, owns the orchestration layer of this system and most of the product-facing entities, such as the tenant structure, identity, records, Baremetal Host Provisioning, Command and Control, alongside partial scheduling intent. `scheduling` responsibility is shared with both the control plane and mostly managed by the edge daemon using a decentralized, auction-based model over the [NATS](https://nats.io) messaging fabric. External SpaceScale clients will talk to this compute system through control. control exposes `Layer 7 API` that clients can consume. Application layer contracts might change often as product evolves, which means breaking changes are expected until this platform stabilizes.
 
-if you have docker compose installed, you can bring up control API server locally using the make target below
+you can bring up control API server locally using the make target below
 ```sh
 	make controlp
 ```
