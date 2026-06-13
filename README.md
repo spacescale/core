@@ -4,8 +4,10 @@
 
 This repository owns the `controlplane` and `edge daemon` used by [SpaceScale](https://spacescale.io) Systems, and it is organized into two primary functional layers we will see later. This document is written using an architectural-style explanation over implementation to break down boundaries and important concepts, which makes the implementation easy to follow and understand.
 
-## API Reference
-The SpaceScale API is documented and testable via **Yaak** workspaces. The collection files are located in `docs/api/`.you can download [Yaak](https://yaak.app/) and import the YAML workspace files to view the complete API specification and request examples.
+## Reference
+
+- **API**: Yaak workspaces in `docs/api/`. Download [Yaak](https://yaak.app/).
+- **Runtime**: [Guest kernel profile](docs/runtime/kernel-profile.md).
 
 ## Local Development
 
@@ -35,20 +37,3 @@ make build-scaled
 ```
 It is useful to read more of some important parts of the source code because this is only an intro.
 
-
-## Runtime Docs
-
-- [Guest kernel profile](docs/runtime/kernel-profile.md): production Firecracker guest kernel flags, rationale, and
-  exclusions for the `guestd` app-guest model.
-
-
-
-This brings up Postgres and NATS, waits for Postgres to become healthy, runs the database migrations once, and then
-starts `controlp`. The control plane listens on `http://127.0.0.1:8080` but If you want to run the same flow in the
-foreground and watch the logs directly, use this command.
-
-```bash
-make controlp
-```
-
-you can check the full `Makefile` for other important targets to be used during development.
