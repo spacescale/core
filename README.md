@@ -4,14 +4,17 @@
 
 This repository owns the `controlplane` and `edge daemon` used by [SpaceScale](https://spacescale.io) Systems, and it is organized into two primary functional layers we will see later. This document is written using an architectural-style explanation over implementation to break down boundaries and important concepts, which makes the implementation easy to follow and understand.
 
-## control
+## Control
 The controlplane, also called `control` in this repo, owns the orchestration layer of this system and most of the product-facing entities, such as the tenant structure, identity, records, Baremetal Host Provisioning, Patching and Management, alongside partial scheduling intent. `scheduling` responsibility is shared with both the control plane and mostly managed by the edge daemon using a decentralized, auction-based model over the [NATS](https://nats.io) messaging fabric. External SpaceScale clients will talk to this compute system through control. control exposes `Layer 7 API` that clients can consume. Application layer contracts might change often as product evolves, which means breaking changes are expected until this platform stabilizes.
 
+if you have docker compose installed you can bring up control API server locally using the make target below
+```sh
+	docker compose up controlp
+```
+The the folder `control` owns all home to its sub system folders and the root `Makefile` has other useful targets to get development up and running easily.
 
-The stateless control plane that serves the public API, manages tenant metadata, and orchestrates workload
-distribution. It leverages PostgreSQL for durable state and NATS for its decentralized communication fabric.
 
-## scaled
+## Scaled
 
 An autonomous edge daemon running on physical hardware. It manages local resource capacity, interacts directly with the
 KVM/Firecracker subsystem, and maintains workload continuity. It is designed to operate independently, ensuring
