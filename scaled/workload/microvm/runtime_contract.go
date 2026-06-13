@@ -33,8 +33,7 @@ func runtimeMetadataDocument(req LaunchRequest) map[string]any {
 	}
 
 	if req.RuntimePort != 0 {
-		port := req.RuntimePort
-		runtime.RuntimePort = &port
+		runtime.RuntimePort = new(req.RuntimePort)
 	}
 
 	return map[string]any{
