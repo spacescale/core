@@ -11,44 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const assignMicroVMToNode = `-- name: AssignMicroVMToNode :one
-UPDATE microvms
-SET node_id    = $2,
-    status     = 'assigned',
-    updated_at = NOW()
-WHERE id = $1
-RETURNING id, workspace_id, resource_type, resource_id, metadata, node_id, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message, created_at, updated_at
-`
-
-type AssignMicroVMToNodeParams struct {
-	ID     uuid.UUID
-	NodeID *uuid.UUID
-}
-
-func (q *Queries) AssignMicroVMToNode(ctx context.Context, arg AssignMicroVMToNodeParams) (Microvm, error) {
-	row := q.db.QueryRow(ctx, assignMicroVMToNode, arg.ID, arg.NodeID)
-	var i Microvm
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.ResourceType,
-		&i.ResourceID,
-		&i.Metadata,
-		&i.NodeID,
-		&i.Region,
-		&i.Vcpu,
-		&i.RamMb,
-		&i.CpuMode,
-		&i.RootDiskMb,
-		&i.VolumeMb,
-		&i.Status,
-		&i.ErrorMessage,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const createQueuedMicroVM = `-- name: CreateQueuedMicroVM :one
 INSERT INTO microvms (workspace_id,
                       resource_type,
@@ -72,7 +34,7 @@ VALUES ($1,
         $9,
         NOW(),
         NOW())
-RETURNING id, workspace_id, resource_type, resource_id, metadata, node_id, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message, created_at, updated_at
+RETURNING id, workspace_id, resource_type, resource_id, metadata, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message, created_at, updated_at
 `
 
 type CreateQueuedMicroVMParams struct {
@@ -106,7 +68,6 @@ func (q *Queries) CreateQueuedMicroVM(ctx context.Context, arg CreateQueuedMicro
 		&i.ResourceType,
 		&i.ResourceID,
 		&i.Metadata,
-		&i.NodeID,
 		&i.Region,
 		&i.Vcpu,
 		&i.RamMb,
@@ -122,7 +83,7 @@ func (q *Queries) CreateQueuedMicroVM(ctx context.Context, arg CreateQueuedMicro
 }
 
 const getMicroVMByID = `-- name: GetMicroVMByID :one
-SELECT id, workspace_id, resource_type, resource_id, metadata, node_id, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message, created_at, updated_at
+SELECT id, workspace_id, resource_type, resource_id, metadata, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message, created_at, updated_at
 FROM microvms
 WHERE id = $1
 `
@@ -136,7 +97,6 @@ func (q *Queries) GetMicroVMByID(ctx context.Context, id uuid.UUID) (Microvm, er
 		&i.ResourceType,
 		&i.ResourceID,
 		&i.Metadata,
-		&i.NodeID,
 		&i.Region,
 		&i.Vcpu,
 		&i.RamMb,
@@ -152,7 +112,7 @@ func (q *Queries) GetMicroVMByID(ctx context.Context, id uuid.UUID) (Microvm, er
 }
 
 const listMicroVMsByResource = `-- name: ListMicroVMsByResource :many
-SELECT id, workspace_id, resource_type, resource_id, metadata, node_id, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message, created_at, updated_at
+SELECT id, workspace_id, resource_type, resource_id, metadata, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message, created_at, updated_at
 FROM microvms
 WHERE resource_type = $1
   AND resource_id = $2
@@ -179,7 +139,6 @@ func (q *Queries) ListMicroVMsByResource(ctx context.Context, arg ListMicroVMsBy
 			&i.ResourceType,
 			&i.ResourceID,
 			&i.Metadata,
-			&i.NodeID,
 			&i.Region,
 			&i.Vcpu,
 			&i.RamMb,
@@ -207,7 +166,7 @@ SET status        = 'failed',
     error_message = $2,
     updated_at    = NOW()
 WHERE id = $1
-RETURNING id, workspace_id, resource_type, resource_id, metadata, node_id, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message, created_at, updated_at
+RETURNING id, workspace_id, resource_type, resource_id, metadata, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message, created_at, updated_at
 `
 
 type MarkMicroVMFailedParams struct {
@@ -224,7 +183,6 @@ func (q *Queries) MarkMicroVMFailed(ctx context.Context, arg MarkMicroVMFailedPa
 		&i.ResourceType,
 		&i.ResourceID,
 		&i.Metadata,
-		&i.NodeID,
 		&i.Region,
 		&i.Vcpu,
 		&i.RamMb,
@@ -245,7 +203,7 @@ SET status        = 'running',
     error_message = NULL,
     updated_at    = NOW()
 WHERE id = $1
-RETURNING id, workspace_id, resource_type, resource_id, metadata, node_id, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message, created_at, updated_at
+RETURNING id, workspace_id, resource_type, resource_id, metadata, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message, created_at, updated_at
 `
 
 func (q *Queries) MarkMicroVMRunning(ctx context.Context, id uuid.UUID) (Microvm, error) {
@@ -257,7 +215,6 @@ func (q *Queries) MarkMicroVMRunning(ctx context.Context, id uuid.UUID) (Microvm
 		&i.ResourceType,
 		&i.ResourceID,
 		&i.Metadata,
-		&i.NodeID,
 		&i.Region,
 		&i.Vcpu,
 		&i.RamMb,
@@ -278,7 +235,7 @@ SET status        = 'starting',
     error_message = NULL,
     updated_at    = NOW()
 WHERE id = $1
-RETURNING id, workspace_id, resource_type, resource_id, metadata, node_id, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message, created_at, updated_at
+RETURNING id, workspace_id, resource_type, resource_id, metadata, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message, created_at, updated_at
 `
 
 func (q *Queries) MarkMicroVMStarting(ctx context.Context, id uuid.UUID) (Microvm, error) {
@@ -290,7 +247,6 @@ func (q *Queries) MarkMicroVMStarting(ctx context.Context, id uuid.UUID) (Microv
 		&i.ResourceType,
 		&i.ResourceID,
 		&i.Metadata,
-		&i.NodeID,
 		&i.Region,
 		&i.Vcpu,
 		&i.RamMb,
