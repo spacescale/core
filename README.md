@@ -14,7 +14,7 @@ if you have docker compose installed, you can bring up control API server locall
 The  folder `control` owns all of its sub system folders and the root `Makefile` has other useful targets to get development up and running easily.
 
 
-## Scaled
+## ScaleD
 
 An autonomous edge daemon running on physical hardware. It manages local resource capacity, interacts directly with the
 KVM/Firecracker subsystem, and maintains workload continuity. It is designed to operate independently, ensuring
