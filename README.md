@@ -1,4 +1,4 @@
-[![CI](https://github.com/spacescale/core/actions/workflows/pipeline.yml/badge.svg)](https://github.com/spacescale/core/actions/workflows/pipeline.yml)
+[![CI](https://github.com/spacescale/core/actions/workflows/pipeline.yaml/badge.svg)](https://github.com/spacescale/core/actions/workflows/pipeline.yaml)
 # Core
 
 This repository is organized into two primary functional layers:
