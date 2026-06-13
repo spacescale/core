@@ -2,7 +2,7 @@
 # Core
 > ReadMe is 100% Human Written 
 
-This repository owns the `controlplane` and `edge daemon` used by [SpaceScale](https://spacescale.io) Systems, and it is organized into two primary functional layers we will see later. This document is written using an architectural-style explanation over implementation to break down boundaries and important concepts, which makes the implementation easy to follow and understand.
+This repository owns the `controlplane` and `edge daemon` used by [SpaceScale](https://spacescale.io) Systems, and it is organized into two primary functional layers we will see later. 
 
 ## Reference
 
