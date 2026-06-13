@@ -16,7 +16,7 @@ The normal control plane development flow runs inside Docker Compose. Read the c
 ```bash
 make compose-start
 ```
-Please see  [`Makefile`](Makefile) for other useful targets.
+Please see  [Makefile](Makefile) for other useful targets.
 
 ## Control
 The controlplane, also called `control` in this repo, owns the orchestration layer of this system and most of the product-facing entities, such as the tenant structure, identity, records, Baremetal Host Provisioning, Command and Control, alongside partial scheduling intent. `scheduling` responsibility is shared with both the control plane and mostly managed by the edge daemon using a decentralized, auction-based model over the [NATS](https://nats.io) messaging fabric. External SpaceScale clients will talk to this compute system through control. control exposes `Layer 7 API` that clients can consume. Application layer contracts might change often as product evolves, which means breaking changes are expected until this platform stabilizes.
