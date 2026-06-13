@@ -2,7 +2,8 @@
 # Core
 > ReadMe is 100% Human Written 
 
-This repository owns the `controlplane` and `edge daemon` used by [SpaceScale](https://spacescale.io) Systems, and it is organized into two primary functional layers we will see later. This document is written using an architectural-style explanation over implementation to break down boundaries and important concepts, which makes the implementation easy to follow and understand.
+This repository owns the `controlplane` and `edge daemon` used by [SpaceScale](https://spacescale.io) Systems, and it is organized into two primary functional layers we will see later. This document is written using an architectural-style explanation over implementation to break down boundaries and important concepts, which makes the implementation easy to follow and understand.The SpaceScale API is documented and testable via **Yaak** workspaces. The collection files are located in `docs/api/`.you can download [Yaak](https://yaak.app/) and import the YAML workspace files to view the complete API specification and request examples.
+
 
 ## Control
 The controlplane, also called `control` in this repo, owns the orchestration layer of this system and most of the product-facing entities, such as the tenant structure, identity, records, Baremetal Host Provisioning, Command and Control, alongside partial scheduling intent. `scheduling` responsibility is shared with both the control plane and mostly managed by the edge daemon using a decentralized, auction-based model over the [NATS](https://nats.io) messaging fabric. External SpaceScale clients will talk to this compute system through control. control exposes `Layer 7 API` that clients can consume. Application layer contracts might change often as product evolves, which means breaking changes are expected until this platform stabilizes.
@@ -24,16 +25,6 @@ make build-scaled
 ```
 It is useful to read more of some important parts of the source code because this is only an intro.
 
-
----
-
-
-## API Reference
-
-The SpaceScale API is documented and testable via **Yaak** workspaces. The collection files are located in `docs/api/`.
-
-1. Download [Yaak](https://yaak.app/).
-2. Import the YAML workspace files to view the complete API specification and request examples.
 
 ## Runtime Docs
 
