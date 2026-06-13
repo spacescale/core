@@ -29,7 +29,7 @@ The  folder `control` owns all of its sub system folders and the root `Makefile`
 
 
 ## ScaleD    
-The `Scale Daemon` is the autonomous edge daemon on every baremetal server that is provisioned by `control`. The controlplane's `provisioner` actually provisions each `Node` with a golden image that has ScaleD baked inside with its dependencies. In fact, before a Node joins, the daemon is  runs its preflight and to know if it is ready to start accepting workloads. Scheduling is intentionally pushed to the edge because the daemon can bid for workloads auctioned through a regional NATS subject if it has enough space to fit the workload. `scaled` is a Linux-only daemon, and its requirements require its native host with preflight requirements. 
+The `Scale Daemon` is the  edge daemon on every baremetal server that is provisioned by `control`. The controlplane's `provisioner` actually provisions each `Node` with a golden image that has ScaleD baked inside with its dependencies. Scheduling is intentionally pushed to the edge because the daemon can bid for workloads auctioned through a regional NATS subject if it has enough space to fit the workload. `scaled` is a Linux-only daemon, and its requirements require its native host with preflight requirements. 
 
 You can build a native AMD64 Linux binary using this make target:
 
