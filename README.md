@@ -4,7 +4,7 @@
 
 This repository owns the `controlplane` and `edge daemon` used by [SpaceScale](https://spacescale.io) Systems, and it is organized into two primary functional layers we will see later. This document is written using an architectural-style explanation over implementation to break down boundaries and important concepts, which makes the implementation easy to follow and understand.
 
-
+## API Reference
 The SpaceScale API is documented and testable via **Yaak** workspaces. The collection files are located in `docs/api/`.you can download [Yaak](https://yaak.app/) and import the YAML workspace files to view the complete API specification and request examples.
 
 
