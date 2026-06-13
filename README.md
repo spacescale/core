@@ -7,6 +7,14 @@ This repository owns the `controlplane` and `edge daemon` used by [SpaceScale](h
 ## API Reference
 The SpaceScale API is documented and testable via **Yaak** workspaces. The collection files are located in `docs/api/`.you can download [Yaak](https://yaak.app/) and import the YAML workspace files to view the complete API specification and request examples.
 
+## Local Development
+
+The normal control plane development flow runs inside Docker Compose. Compose provides the development values for
+Postgres, NATS, migrations, and `controlp`. Start the full control plane stack in the background.
+
+```bash
+make compose-start
+```
 
 ## Control
 The controlplane, also called `control` in this repo, owns the orchestration layer of this system and most of the product-facing entities, such as the tenant structure, identity, records, Baremetal Host Provisioning, Command and Control, alongside partial scheduling intent. `scheduling` responsibility is shared with both the control plane and mostly managed by the edge daemon using a decentralized, auction-based model over the [NATS](https://nats.io) messaging fabric. External SpaceScale clients will talk to this compute system through control. control exposes `Layer 7 API` that clients can consume. Application layer contracts might change often as product evolves, which means breaking changes are expected until this platform stabilizes.
@@ -34,14 +42,7 @@ It is useful to read more of some important parts of the source code because thi
 - [Guest kernel profile](docs/runtime/kernel-profile.md): production Firecracker guest kernel flags, rationale, and
   exclusions for the `guestd` app-guest model.
 
-## Local Development
 
-The normal control plane development flow runs inside Docker Compose. Compose provides the development values for
-Postgres, NATS, migrations, and `controlp`. Start the full control plane stack in the background.
-
-```bash
-make compose-start
-```
 
 This brings up Postgres and NATS, waits for Postgres to become healthy, runs the database migrations once, and then
 starts `controlp`. The control plane listens on `http://127.0.0.1:8080` but If you want to run the same flow in the
