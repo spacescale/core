@@ -92,7 +92,6 @@ func TestCreateWorkloadCreatesQueuedDeployment(t *testing.T) {
 	var microvmResourceType string
 	var microvmResourceID *uuid.UUID
 	var microvmWorkspaceID uuid.UUID
-	var microvmNodeID *uuid.UUID
 	var microvmRegion string
 	var microvmVCPU int32
 	var microvmRAMMB int64
@@ -103,15 +102,14 @@ func TestCreateWorkloadCreatesQueuedDeployment(t *testing.T) {
 	var microvmError *string
 	err = ts.pool.QueryRow(
 		context.Background(),
-		`SELECT workspace_id, resource_type, resource_id, node_id, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message FROM microvms WHERE resource_type = 'deployment' AND resource_id = $1 ORDER BY created_at DESC LIMIT 1`,
+		`SELECT workspace_id, resource_type, resource_id, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message FROM microvms WHERE resource_type = 'deployment' AND resource_id = $1 ORDER BY created_at DESC LIMIT 1`,
 		deploymentID,
-	).Scan(&microvmWorkspaceID, &microvmResourceType, &microvmResourceID, &microvmNodeID, &microvmRegion, &microvmVCPU, &microvmRAMMB, &microvmCPUMode, &microvmRootDiskMB, &microvmVolumeMB, &microvmStatus, &microvmError)
+	).Scan(&microvmWorkspaceID, &microvmResourceType, &microvmResourceID, &microvmRegion, &microvmVCPU, &microvmRAMMB, &microvmCPUMode, &microvmRootDiskMB, &microvmVolumeMB, &microvmStatus, &microvmError)
 	require.NoError(t, err)
 	require.Equal(t, workspaceID, microvmWorkspaceID.String())
 	require.Equal(t, "deployment", microvmResourceType)
 	require.NotNil(t, microvmResourceID)
 	require.Equal(t, deploymentID, *microvmResourceID)
-	require.Nil(t, microvmNodeID)
 	require.Equal(t, "ca-east", microvmRegion)
 	require.EqualValues(t, 4, microvmVCPU)
 	require.EqualValues(t, 4096, microvmRAMMB)
