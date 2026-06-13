@@ -130,7 +130,7 @@ func (s *Server) Router() http.Handler {
 			rateLimitExceeded(w, r)
 		}),
 	)
-
+	// register work os session routes so authentication happens so v1 routes can use session access
 	s.auth.registerRoutes(router)
 
 	// Health check route.
