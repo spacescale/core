@@ -37,13 +37,6 @@ WHERE resource_type = $1
 ORDER BY created_at ASC, id ASC;
 
 
--- name: AssignMicroVMToNode :one
-UPDATE microvms
-SET node_id    = $2,
-    status     = 'assigned',
-    updated_at = NOW()
-WHERE id = $1
-RETURNING *;
 
 
 -- name: MarkMicroVMStarting :one

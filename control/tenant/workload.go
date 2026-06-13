@@ -116,7 +116,7 @@ func NewWorkloadService(queries *sqlc.Queries, pool *pgxpool.Pool, envCipher *se
 	return &WorkloadService{queries: queries, pool: pool, envCipher: envCipher}
 }
 
-// CreateWorkload creates an workload under an owned workspace/project and applies defaults.
+// CreateWorkload creates a workload under an owned workspace/project and applies defaults.
 // If Name is empty, it is derived from image repository name.
 //
 // Atomic write contract:
@@ -250,8 +250,8 @@ func (s *WorkloadService) GetWorkload(ctx context.Context, ownerUserID, workspac
 	return workloadFromRow(row), nil
 }
 
-// AssignMicroVMToNodeAndMarkDeploying records placement and marks workload deployment in progress.
-func (s *WorkloadService) AssignMicroVMToNodeAndMarkDeploying(ctx context.Context, params DispatchAssignment) error {
+// MarkDeploying records placement and marks workload deployment in progress.
+func (s *WorkloadService) MarkDeploying(ctx context.Context, params DispatchAssignment) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -260,13 +260,6 @@ func (s *WorkloadService) AssignMicroVMToNodeAndMarkDeploying(ctx context.Contex
 		_ = tx.Rollback(ctx)
 	}()
 	txQueries := s.queries.WithTx(tx)
-
-	if _, err := txQueries.AssignMicroVMToNode(ctx, sqlc.AssignMicroVMToNodeParams{
-		ID:     params.MicroVMID,
-		NodeID: &params.NodeID,
-	}); err != nil {
-		return err
-	}
 
 	if _, err := txQueries.MarkDeploymentDeploying(ctx, params.DeploymentID); err != nil {
 		return err

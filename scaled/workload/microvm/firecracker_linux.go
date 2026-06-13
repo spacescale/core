@@ -103,10 +103,7 @@ func (l *Launcher) startFirecracker(ctx context.Context, req LaunchRequest, vm *
 	// boot metadata from inside the guest.
 	machine.Handlers.FcInit = machine.Handlers.FcInit.AppendAfter(
 		firecracker.ConfigMmdsHandlerName,
-		firecracker.NewSetMetadataHandler(map[string]any{
-			"version":    1,
-			"microvm_id": req.MicroVMID,
-		}),
+		firecracker.NewSetMetadataHandler(runtimeMetadataDocument(req)),
 	)
 
 	// Store the Machine before Start so cleanup can stop the VMM if startup

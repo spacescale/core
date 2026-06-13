@@ -102,9 +102,12 @@ func (h *launchHandler) handle(ctx context.Context, client *nats.Client, msg *na
 	defer cancel()
 
 	active, err := h.launcher.Launch(launchCtx, microvm.LaunchRequest{
-		MicroVMID: req.GetMicrovmId(),
-		VCPU:      committedSpec.VCPU,
-		RAMMB:     committedSpec.RAM,
+		MicroVMID:   req.GetMicrovmId(),
+		VCPU:        committedSpec.VCPU,
+		RAMMB:       committedSpec.RAM,
+		ImageRef:    req.GetImageRef(),
+		Env:         req.GetEnv(),
+		RuntimePort: req.GetRuntimePort(),
 	})
 	if err != nil {
 		h.capacity.Revert(committedSpec)

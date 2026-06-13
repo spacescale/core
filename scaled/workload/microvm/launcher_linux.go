@@ -32,6 +32,10 @@ type LaunchRequest struct {
 	MicroVMID string
 	VCPU      uint32
 	RAMMB     uint64
+
+	ImageRef    string
+	Env         map[string]string
+	RuntimePort uint32
 }
 
 // ActiveVM is the in-memory record for a VM launched by this scaled process.

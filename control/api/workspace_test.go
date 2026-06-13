@@ -1,7 +1,7 @@
 // This file verifies end-to-end behavior of authenticated workspace endpoints.
 // Tests assert externally visible contracts for CRUD actions and ownership rules.
 
-package api_test
+package api
 
 import (
 	"encoding/json"

@@ -28,7 +28,6 @@ type Microvm struct {
 	ResourceType string
 	ResourceID   *uuid.UUID
 	Metadata     []byte
-	NodeID       *uuid.UUID
 	Region       string
 	Vcpu         int32
 	RamMb        int64

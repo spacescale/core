@@ -1,4 +1,4 @@
-package api_test
+package api
 
 import (
 	"bytes"
@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/spacescale/core/control/api"
 	"github.com/spacescale/core/control/db/sqlc"
 	"github.com/spacescale/core/control/tenant"
 	"github.com/spacescale/core/shared/config"
@@ -71,7 +70,7 @@ func newTestServerWithWorkOSClient(t *testing.T, workosClient *workos.Client) *t
 	workspaces := tenant.NewWorkspaceService(queries)
 	bootstrap := tenant.NewBootstrapService(queries)
 	workloads := tenant.NewWorkloadService(queries, pool, envCipher)
-	server := api.NewServer(api.ServerDeps{
+	server := NewServer(ServerDeps{
 		Users:        users,
 		Projects:     projects,
 		Workspaces:   workspaces,

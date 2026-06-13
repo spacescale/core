@@ -134,7 +134,6 @@ CREATE TABLE microvms
     resource_type TEXT NOT NULL CHECK (resource_type = BTRIM(resource_type) AND CHAR_LENGTH(resource_type) BETWEEN 1 AND 64),
     resource_id UUID,
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-    node_id UUID REFERENCES nodes(id) ON DELETE RESTRICT,
     region TEXT NOT NULL,
     vcpu INT NOT NULL CHECK (vcpu > 0),
     ram_mb BIGINT NOT NULL CHECK (ram_mb > 0),

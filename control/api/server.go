@@ -25,7 +25,7 @@ const (
 	serverReadHeaderTimeout = 5 * time.Second
 	serverWriteTimeout      = 30 * time.Second
 	serverIdleTimeout       = 120 * time.Second
-	userRateLimitRequests   = 200
+	userRateLimitRequests   = 1000
 	userRateLimitWindow     = time.Minute
 )
 
@@ -61,14 +61,14 @@ type principalContextKey struct{}
 // ServerDeps groups the dependencies required to construct the API server.
 // It keeps startup and test wiring explicit at one call site.
 type ServerDeps struct {
-	Users      *tenant.UserService
-	Projects   *tenant.ProjectService
-	Workspaces *tenant.WorkspaceService
-	Bootstrap  *tenant.BootstrapService
-	Workloads  *tenant.WorkloadService
-	DBPool     *pgxpool.Pool
-	Config     config.Control
-	Dispatcher *fabric.Dispatcher
+	Users        *tenant.UserService
+	Projects     *tenant.ProjectService
+	Workspaces   *tenant.WorkspaceService
+	Bootstrap    *tenant.BootstrapService
+	Workloads    *tenant.WorkloadService
+	DBPool       *pgxpool.Pool
+	Config       config.Control
+	Dispatcher   *fabric.Dispatcher
 	WorkOSClient *workos.Client
 }
 
@@ -130,7 +130,7 @@ func (s *Server) Router() http.Handler {
 			rateLimitExceeded(w, r)
 		}),
 	)
-
+	// register work os session routes so authentication happens so v1 routes can use session access
 	s.auth.registerRoutes(router)
 
 	// Health check route.

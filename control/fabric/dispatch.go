@@ -88,7 +88,7 @@ func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 	if err != nil {
 		return err
 	}
-	if err := d.workloads.AssignMicroVMToNodeAndMarkDeploying(ctx, tenant.DispatchAssignment{
+	if err := d.workloads.MarkDeploying(ctx, tenant.DispatchAssignment{
 		WorkloadID:   req.WorkloadID,
 		DeploymentID: req.DeploymentID,
 		MicroVMID:    req.MicroVMID,
