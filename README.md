@@ -9,16 +9,18 @@ The controlplane, also called `control` in this repo, owns the orchestration lay
 
 if you have docker compose installed, you can bring up control API server locally using the make target below
 ```sh
-	docker compose up controlp
+	make controlp
 ```
 The  folder `control` owns all of its sub system folders and the root `Makefile` has other useful targets to get development up and running easily.
 
 
-## ScaleD
+## ScaleD    
+The `Scale Daemon` also known in short as `ScaleD` is the autonomous edge daemon on every baremetal  server that is provisioned by `control`.the controlplane's `provisioner` actually provisions each `server(Node)` with a golden image that has ScaleD baked inside with its dependencies and its own tiny `NATS` leaf node that it uses  for communication with upstream messaging fabric.The Security Boundary is MutualTLS. infact before a Node joins the daemon is smart enough to run its preflight and actually know its ready to start accepting workloads. scheduling is intentionally pushed to the edge because the daemon can bid for workloads auctioned through a regional NATs subject if it has enough space to fit the workload. although the current scheduling intent is built aroundspacescale ignite``. spacescale machines is still conceptul and not worked on but we hope to adopt this model as well.scaled is a linux only daemon and requirements requires its native host with preflight requirements.read the node packackge to learn more about its preflight system.
 
-An autonomous edge daemon running on physical hardware. It manages local resource capacity, interacts directly with the
-KVM/Firecracker subsystem, and maintains workload continuity. It is designed to operate independently, ensuring
-resilience during network partitions.
+you can build a native AMD64 linux binary using this make target 
+```sh
+make build-scaled:
+```
 
 ---
 
