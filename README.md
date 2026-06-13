@@ -7,7 +7,7 @@ This repository owns the `controlplane` and `edge daemon` used by [SpaceScale](h
 ## Control
 The controlplane, also called `control` in this repo, owns the orchestration layer of this system and most of the product-facing entities, such as the tenant structure, identity, records, Baremetal Host Provisioning, Patching and Management, alongside partial scheduling intent. `scheduling` responsibility is shared with both the control plane and mostly managed by the edge daemon using a decentralized, auction-based model over the [NATS](https://nats.io) messaging fabric. External SpaceScale clients will talk to this compute system through control. control exposes `Layer 7 API` that clients can consume. Application layer contracts might change often as product evolves, which means breaking changes are expected until this platform stabilizes.
 
-if you have docker compose installed you can bring up control API server locally using the make target below
+if you have docker compose installed, you can bring up control API server locally using the make target below
 ```sh
 	docker compose up controlp
 ```
