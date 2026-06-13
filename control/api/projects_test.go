@@ -2,8 +2,7 @@
 // Tests assert externally visible contract details such as status codes,
 // response payload shapes, ownership checks, and malformed input handling.
 
-// Package http_api_test exercises the public HTTP API.
-package api_test
+package api
 
 import (
 	"encoding/json"
@@ -15,23 +14,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 )
-
-type projectResponse struct {
-	ID          string `json:"id"`
-	WorkspaceID string `json:"workspaceId"`
-	Name        string `json:"name"`
-	Slug        string `json:"slug"`
-	CreatedAt   string `json:"createdAt"`
-	UpdatedAt   string `json:"updatedAt"`
-}
-
-type errorResponse struct {
-	Error string `json:"error"`
-}
-
-type listProjectsResponse struct {
-	Projects []projectResponse `json:"projects"`
-}
 
 func createProjectViaAPI(t *testing.T, ts *testServer, identityKey, workspaceID, name string) projectResponse {
 	t.Helper()

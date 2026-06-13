@@ -2,7 +2,7 @@
 // Tests assert first-time creation, idempotent no-op behavior, auth rules, and
 // malformed input handling for the authenticated bootstrap workflow.
 
-package api_test
+package api
 
 import (
 	"encoding/json"

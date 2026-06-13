@@ -8,11 +8,12 @@
 // These are DB-backed integration tests by design so transport + service + SQL
 // behavior are exercised together as one externally observable contract.
 
-package api_test
+package api
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -20,28 +21,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/spacescale/core/control/tenant"
 	"github.com/stretchr/testify/require"
 )
-
-type workloadResponse struct {
-	ID             string `json:"id"`
-	ProjectID      string `json:"projectId"`
-	Name           string `json:"name"`
-	Slug           string `json:"slug"`
-	Subdomain      string `json:"subdomain"`
-	ImageRef       string `json:"imageRef"`
-	TargetReplicas int32  `json:"targetReplicas"`
-	PrimaryRegion  string `json:"primaryRegion"`
-	RuntimePort    int32  `json:"runtimePort"`
-	Status         string `json:"status"`
-	IsPublic       bool   `json:"isPublic"`
-	CreatedAt      string `json:"createdAt"`
-	UpdatedAt      string `json:"updatedAt"`
-}
-
-type listWorkloadsResponse struct {
-	Workloads []workloadResponse `json:"workloads"`
-}
 
 // TestCreateWorkloadCreatesQueuedDeployment verifies create-workload writes workload,
 // deployment, and microvm state, returns queued status, and stores env vars.
@@ -141,11 +123,11 @@ func TestCreateWorkloadCreatesQueuedDeployment(t *testing.T) {
 
 	var key string
 	var encryptedValue string
-		err = ts.pool.QueryRow(
-			context.Background(),
-			`SELECT key, value_encrypted FROM workload_env_vars WHERE workload_id = $1 ORDER BY created_at DESC LIMIT 1`,
-			workloadID,
-		).Scan(&key, &encryptedValue)
+	err = ts.pool.QueryRow(
+		context.Background(),
+		`SELECT key, value_encrypted FROM workload_env_vars WHERE workload_id = $1 ORDER BY created_at DESC LIMIT 1`,
+		workloadID,
+	).Scan(&key, &encryptedValue)
 	require.NoError(t, err)
 	require.Equal(t, "DATABASE_URL", key)
 	require.NotEqual(t, "postgres://local", encryptedValue)
@@ -263,6 +245,49 @@ func TestCreateWorkloadRequiresComputeAndPrimaryRegion(t *testing.T) {
 	var out errorResponse
 	require.NoError(t, json.Unmarshal(data, &out))
 	require.Equal(t, "invalid input", out.Error)
+}
+
+func TestResolveCreateWorkloadAfterDispatch(t *testing.T) {
+	t.Run("uses refreshed workload when available", func(t *testing.T) {
+		current := tenant.Workload{ID: "workload-1", Status: "queued"}
+		refreshed := tenant.Workload{ID: "workload-1", Status: "failed"}
+
+		resolved := resolveCreateWorkloadAfterDispatch(current, errors.New("dispatch failed"), refreshed, nil)
+
+		require.Equal(t, refreshed, resolved)
+	})
+
+	t.Run("marks deploying when dispatch succeeded and refresh failed", func(t *testing.T) {
+		current := tenant.Workload{ID: "workload-1", Status: "queued"}
+
+		resolved := resolveCreateWorkloadAfterDispatch(current, nil, tenant.Workload{}, errors.New("refresh failed"))
+
+		require.Equal(t, "deploying", resolved.Status)
+	})
+
+	t.Run("keeps current status when dispatch and refresh both fail", func(t *testing.T) {
+		current := tenant.Workload{ID: "workload-1", Status: "queued"}
+
+		resolved := resolveCreateWorkloadAfterDispatch(current, errors.New("dispatch failed"), tenant.Workload{}, errors.New("refresh failed"))
+
+		require.Equal(t, current, resolved)
+	})
+}
+
+func TestNewCreateWorkloadDispatchContext(t *testing.T) {
+	parent, cancelParent := context.WithCancel(context.Background())
+	cancelParent()
+
+	ctx, cancel := newCreateWorkloadDispatchContext(parent)
+	defer cancel()
+
+	require.NoError(t, ctx.Err())
+
+	select {
+	case <-ctx.Done():
+		require.Fail(t, "dispatch context should ignore parent cancellation")
+	case <-time.After(10 * time.Millisecond):
+	}
 }
 
 func TestListWorkloads(t *testing.T) {
