@@ -4,6 +4,7 @@ package workload
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -87,7 +88,7 @@ func resolveOCIConfig(ctx context.Context, imageRef string) (resolvedOCIConfig, 
 // behavior.
 func resolvedOCIConfigFromConfigFile(imageRef, imageDigest string, cfg *gcrv1.ConfigFile) (resolvedOCIConfig, error) {
 	if cfg == nil {
-		return resolvedOCIConfig{}, fmt.Errorf("image config is nil")
+		return resolvedOCIConfig{}, errors.New("image config is nil")
 	}
 	if err := ensureSupportedImagePlatform(cfg); err != nil {
 		return resolvedOCIConfig{}, err
