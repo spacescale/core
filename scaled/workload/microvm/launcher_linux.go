@@ -34,6 +34,10 @@ type LaunchRequest struct {
 	RAMMB     uint64
 
 	ImageRef    string
+	ImageDigest string
+	Command     []string
+	WorkingDir  string
+	User        string
 	Env         map[string]string
 	RuntimePort uint32
 }

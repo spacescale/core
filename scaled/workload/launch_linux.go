@@ -33,21 +33,29 @@ type launcher interface {
 	Stop(ctx context.Context, microvmID string) error
 }
 
+// imageConfigResolver names the host-side OCI lookup dependency used by launch.
+//
+// Keeping it as a field on launchHandler lets tests replace the registry lookup
+// with a small stub without pulling registry behavior into every launch test.
+type imageConfigResolver func(context.Context, string) (resolvedOCIConfig, error)
+
 // launchHandler handles targeted microVM launch commands after placement wins.
 type launchHandler struct {
-	logger   *slog.Logger
-	capacity *Capacity
-	bootID   string
-	launcher launcher
+	logger             *slog.Logger
+	capacity           *Capacity
+	bootID             string
+	launcher           launcher
+	resolveImageConfig imageConfigResolver
 }
 
 // newLaunchHandler constructs a launch handler for one node boot identity.
 func newLaunchHandler(logger *slog.Logger, capacity *Capacity, bootID string, launcher launcher) *launchHandler {
 	return &launchHandler{
-		logger:   logger,
-		capacity: capacity,
-		bootID:   bootID,
-		launcher: launcher,
+		logger:             logger,
+		capacity:           capacity,
+		bootID:             bootID,
+		launcher:           launcher,
+		resolveImageConfig: resolveOCIConfig,
 	}
 }
 
@@ -65,6 +73,12 @@ func (h *launchHandler) register(ctx context.Context, client *nats.Client) (stri
 	return subject, nil
 }
 
+// handle validates a targeted launch command, resolves OCI runtime metadata,
+// boots the local microVM, and only then acknowledges the request.
+//
+// The order matters: once capacity is committed, any failure in OCI lookup,
+// launch-request resolution, VM boot, or reply publication must revert that
+// capacity before returning.
 func (h *launchHandler) handle(ctx context.Context, client *nats.Client, msg *nats.Msg) error {
 	if msg.Reply == "" {
 		return errors.New("microvm launch request missing reply subject")
@@ -101,21 +115,26 @@ func (h *launchHandler) handle(ctx context.Context, client *nats.Client, msg *na
 	launchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), microVMLaunchBootTimeout)
 	defer cancel()
 
-	active, err := h.launcher.Launch(launchCtx, microvm.LaunchRequest{
-		MicroVMID:   req.GetMicrovmId(),
-		VCPU:        committedSpec.VCPU,
-		RAMMB:       committedSpec.RAM,
-		ImageRef:    req.GetImageRef(),
-		Env:         req.GetEnv(),
-		RuntimePort: req.GetRuntimePort(),
-	})
+	cfg, err := h.resolveImageConfig(launchCtx, req.GetImageRef())
 	if err != nil {
-		h.capacity.Revert(committedSpec)
-		publishErr := client.PublishProto(msg.Reply, &pb.MicroVMLaunchResponse{
-			Accepted:     false,
-			ErrorMessage: err.Error(),
-		})
-		return errors.Join(err, publishErr)
+		return h.rejectLaunch(client, msg.Reply, committedSpec, err)
+	}
+
+	launchReq, err := resolveLaunchRequest(
+		req.GetMicrovmId(),
+		committedSpec,
+		req.GetImageRef(),
+		req.GetEnv(),
+		req.GetRuntimePort(),
+		cfg,
+	)
+	if err != nil {
+		return h.rejectLaunch(client, msg.Reply, committedSpec, err)
+	}
+
+	active, err := h.launcher.Launch(launchCtx, launchReq)
+	if err != nil {
+		return h.rejectLaunch(client, msg.Reply, committedSpec, err)
 	}
 
 	reply := &pb.MicroVMLaunchResponse{
@@ -131,4 +150,14 @@ func (h *launchHandler) handle(ctx context.Context, client *nats.Client, msg *na
 	}
 
 	return nil
+}
+
+func (h *launchHandler) rejectLaunch(client *nats.Client, replySubject string, committedSpec HardwareSpec, err error) error {
+	h.capacity.Revert(committedSpec)
+	publishErr := client.PublishProto(replySubject, &pb.MicroVMLaunchResponse{
+		Accepted:     false,
+		ErrorMessage: err.Error(),
+	})
+
+	return errors.Join(err, publishErr)
 }

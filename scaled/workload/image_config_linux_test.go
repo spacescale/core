@@ -228,6 +228,117 @@ func TestEnsureSupportedImagePlatformAcceptsLinuxAMD64(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestResolveLaunchRequestUsesResolvedOCIConfig(t *testing.T) {
+	t.Parallel()
+
+	req, err := resolveLaunchRequest(
+		"vm-123",
+		HardwareSpec{VCPU: 2, RAM: 2048},
+		"ghcr.io/acme/app:latest",
+		map[string]string{
+			"FOO":          "request",
+			"REQUEST_ONLY": "yes",
+		},
+		0,
+		resolvedOCIConfig{
+			ImageDigest: "sha256:abc123",
+			Entrypoint:  []string{"node"},
+			Cmd:         []string{"server.js"},
+			Env: map[string]string{
+				"FOO":        "image",
+				"IMAGE_ONLY": "yes",
+			},
+			WorkingDir:   "/app",
+			User:         "node",
+			ExposedPorts: []uint16{3000},
+		},
+	)
+	require.NoError(t, err)
+
+	require.Equal(t, "vm-123", req.MicroVMID)
+	require.Equal(t, uint32(2), req.VCPU)
+	require.Equal(t, uint64(2048), req.RAMMB)
+	require.Equal(t, "ghcr.io/acme/app:latest", req.ImageRef)
+	require.Equal(t, "sha256:abc123", req.ImageDigest)
+	require.Equal(t, []string{"node", "server.js"}, req.Command)
+	require.Equal(t, "/app", req.WorkingDir)
+	require.Equal(t, "node", req.User)
+	require.Equal(t, map[string]string{
+		"FOO":          "request",
+		"IMAGE_ONLY":   "yes",
+		"REQUEST_ONLY": "yes",
+	}, req.Env)
+	require.Equal(t, uint32(3000), req.RuntimePort)
+}
+
+func TestResolveLaunchRequestPrefersRequestedRuntimePort(t *testing.T) {
+	t.Parallel()
+
+	req, err := resolveLaunchRequest(
+		"vm-123",
+		HardwareSpec{VCPU: 2, RAM: 2048},
+		"ghcr.io/acme/app:latest",
+		nil,
+		9090,
+		resolvedOCIConfig{
+			ImageDigest:  "sha256:abc123",
+			Entrypoint:   []string{"node"},
+			Cmd:          []string{"server.js"},
+			ExposedPorts: []uint16{3000},
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, uint32(9090), req.RuntimePort)
+}
+
+func TestResolveLaunchRequestLeavesRuntimePortUnknownWithoutSingleImagePort(t *testing.T) {
+	t.Parallel()
+
+	req, err := resolveLaunchRequest(
+		"vm-123",
+		HardwareSpec{VCPU: 2, RAM: 2048},
+		"ghcr.io/acme/app:latest",
+		nil,
+		0,
+		resolvedOCIConfig{
+			ImageDigest:  "sha256:abc123",
+			Entrypoint:   []string{"node"},
+			Cmd:          []string{"server.js"},
+			ExposedPorts: []uint16{3000, 8080},
+		},
+	)
+	require.NoError(t, err)
+	require.Zero(t, req.RuntimePort)
+}
+
+func TestResolveLaunchCommandRejectsMissingLaunchCommand(t *testing.T) {
+	t.Parallel()
+
+	_, err := resolveLaunchCommand(nil, nil)
+	require.ErrorIs(t, err, errImageHasNoLaunchCommand)
+}
+
+func TestMergeEnvReturnsNilForEmptyInputs(t *testing.T) {
+	t.Parallel()
+
+	require.Nil(t, mergeEnv(nil, nil))
+}
+
+func TestMergeEnvRequestOverridesImage(t *testing.T) {
+	t.Parallel()
+
+	got := mergeEnv(
+		map[string]string{"FOO": "image", "BAR": "image"},
+		map[string]string{"FOO": "request", "BAZ": "request"},
+	)
+
+	require.Equal(t, map[string]string{
+		"FOO": "request",
+		"BAR": "image",
+		"BAZ": "request",
+	}, got)
+}
+
 func assertResolvedConfig(t *testing.T, got resolvedOCIConfig) {
 	t.Helper()
 

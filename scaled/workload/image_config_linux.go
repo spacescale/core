@@ -13,12 +13,15 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/spacescale/core/scaled/workload/microvm"
 )
 
 const (
 	supportedImageOS   = "linux"
 	supportedImageArch = "amd64"
 )
+
+var errImageHasNoLaunchCommand = errors.New("image config does not define a launch command")
 
 type resolvedOCIConfig struct {
 	ImageRef     string
@@ -111,6 +114,11 @@ func resolvedOCIConfigFromConfigFile(imageRef, imageDigest string, cfg *gcrv1.Co
 	}, nil
 }
 
+// ensureSupportedImagePlatform enforces the current runtime support boundary.
+//
+// This keeps platform rejection close to config normalization so later launch
+// and artifact code can assume the image already matches the only platform the
+// current edge runtime knows how to boot.
 func ensureSupportedImagePlatform(cfg *gcrv1.ConfigFile) error {
 	if cfg.OS != supportedImageOS || cfg.Architecture != supportedImageArch {
 		return fmt.Errorf(
@@ -203,4 +211,96 @@ func cloneStrings(in []string) []string {
 	copy(out, in)
 
 	return out
+}
+
+// resolveLaunchRequest combines user request data with OCI-derived defaults to
+// produce the final launch payload handed to the microVM package.
+//
+// The workload package owns this merge step so the guest-facing runtime
+// contract only sees one coherent source of truth for command, env, user,
+// working directory, and runtime port.
+func resolveLaunchRequest(
+	microvmID string,
+	spec HardwareSpec,
+	imageRef string,
+	requestEnv map[string]string,
+	requestRuntimePort uint32,
+	cfg resolvedOCIConfig,
+) (microvm.LaunchRequest, error) {
+	command, err := resolveLaunchCommand(cfg.Entrypoint, cfg.Cmd)
+	if err != nil {
+		return microvm.LaunchRequest{}, err
+	}
+
+	return microvm.LaunchRequest{
+		MicroVMID:   microvmID,
+		VCPU:        spec.VCPU,
+		RAMMB:       spec.RAM,
+		ImageRef:    imageRef,
+		ImageDigest: cfg.ImageDigest,
+		Command:     command,
+		WorkingDir:  cfg.WorkingDir,
+		User:        cfg.User,
+		Env:         mergeEnv(cfg.Env, requestEnv),
+		RuntimePort: resolveRuntimePort(requestRuntimePort, cfg.ExposedPorts),
+	}, nil
+}
+
+// resolveLaunchCommand applies OCI launch-command semantics.
+//
+// OCI images can provide an Entrypoint, a Cmd, or both. When both exist, the
+// final command is Entrypoint followed by Cmd. When only one exists, that list
+// is the full command. If neither exists, scaled cannot tell guestd what to
+// execute, so launch must fail before the VM boots.
+func resolveLaunchCommand(entrypoint, cmd []string) ([]string, error) {
+	switch {
+	case len(entrypoint) > 0 && len(cmd) > 0:
+		command := cloneStrings(entrypoint)
+		command = append(command, cmd...)
+		return command, nil
+	case len(entrypoint) > 0:
+		return cloneStrings(entrypoint), nil
+	case len(cmd) > 0:
+		return cloneStrings(cmd), nil
+	default:
+		return nil, errImageHasNoLaunchCommand
+	}
+}
+
+// mergeEnv combines image-provided defaults with request-level overrides.
+//
+// Image environment variables define the baseline launch context. Request
+// variables are more specific to one deployment intent, so they overwrite image
+// values on key collision.
+func mergeEnv(imageEnv, requestEnv map[string]string) map[string]string {
+	if len(imageEnv) == 0 && len(requestEnv) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(imageEnv)+len(requestEnv))
+	for k, v := range imageEnv {
+		out[k] = v
+	}
+	for k, v := range requestEnv {
+		out[k] = v
+	}
+
+	return out
+}
+
+// resolveRuntimePort selects the best-known internal listen port for the
+// workload.
+//
+// A request-provided port wins because it is explicit user intent. If the user
+// did not provide a port, a single exposed image port is safe to adopt as the
+// default. Multi-port and no-port images stay unresolved here so later routing
+// logic can treat launchability and routability as separate concerns.
+func resolveRuntimePort(requestRuntimePort uint32, imagePorts []uint16) uint32 {
+	if requestRuntimePort != 0 {
+		return requestRuntimePort
+	}
+	if len(imagePorts) == 1 {
+		return uint32(imagePorts[0])
+	}
+
+	return 0
 }
