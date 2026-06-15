@@ -46,7 +46,16 @@ func newTestLaunchHandler(t *testing.T, launcher launcher) *launchHandler {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	capacity := NewCapacity(65536, 8)
-	return newLaunchHandler(log, capacity, "boot-123", launcher)
+	handler := newLaunchHandler(log, capacity, "boot-123", launcher)
+	handler.resolveImageConfig = func(context.Context, string) (resolvedOCIConfig, error) {
+		return resolvedOCIConfig{
+			ImageDigest: "sha256:test",
+			Entrypoint:  []string{"app"},
+			Cmd:         []string{"serve"},
+		}, nil
+	}
+
+	return handler
 }
 
 func TestLaunchHandlerHandleRejectedMissingReplySubject(t *testing.T) {
@@ -139,6 +148,41 @@ func TestLaunchHandlerHandleRejectsMissingReservation(t *testing.T) {
 	require.Equal(t, "reservation expired or not found", reply.GetErrorMessage())
 }
 
+func TestLaunchHandlerHandleRejectsOCIConfigResolutionFailure(t *testing.T) {
+	resolverErr := errors.New("resolve failed")
+	launcher := &fakeLauncher{}
+	handler := newTestLaunchHandler(t, launcher)
+	handler.resolveImageConfig = func(context.Context, string) (resolvedOCIConfig, error) {
+		return resolvedOCIConfig{}, resolverErr
+	}
+	client := newTestClient(t, startTestNATSServer(t))
+	replies := capturePublishedMsg(t, client)
+
+	_, ok := handler.capacity.Reserve("vm-1", HardwareSpec{
+		VCPU: 2,
+		RAM:  2048,
+	}, time.Second)
+	require.True(t, ok)
+
+	msg := launchMsg(t, "reply.subject", &pb.MicroVMLaunchRequest{
+		MicrovmId: "vm-1",
+		ImageRef:  "ghcr.io/acme/app:latest",
+		Shape: &pb.MicroVMShape{
+			Vcpu:    2,
+			RamMb:   2048,
+			CpuMode: pb.CpuMode_CPU_MODE_SHARED,
+		},
+	})
+
+	err := handler.handle(context.Background(), client, msg)
+	require.ErrorIs(t, err, resolverErr)
+	require.False(t, launcher.launchCalled)
+
+	reply := requireLaunchReply(t, receivePublishedMsg(t, replies))
+	require.False(t, reply.GetAccepted())
+	require.Equal(t, "resolve failed", reply.GetErrorMessage())
+}
+
 func TestLaunchHandlerHandleRevertsCapacityWhenLaunchFails(t *testing.T) {
 	launchErr := errors.New("launch failed")
 	launcher := &fakeLauncher{launchErr: launchErr}
@@ -154,6 +198,11 @@ func TestLaunchHandlerHandleRevertsCapacityWhenLaunchFails(t *testing.T) {
 
 	msg := launchMsg(t, "reply.subject", &pb.MicroVMLaunchRequest{
 		MicrovmId: "vm-1",
+		ImageRef:  "ghcr.io/acme/app:latest",
+		Env: map[string]string{
+			"FOO": "bar",
+		},
+		RuntimePort: 9090,
 		Shape: &pb.MicroVMShape{
 			Vcpu:    2,
 			RamMb:   2048,
@@ -168,6 +217,11 @@ func TestLaunchHandlerHandleRevertsCapacityWhenLaunchFails(t *testing.T) {
 	require.Equal(t, "vm-1", launcher.launchReq.MicroVMID)
 	require.Equal(t, uint32(2), launcher.launchReq.VCPU)
 	require.Equal(t, uint64(2048), launcher.launchReq.RAMMB)
+	require.Equal(t, "ghcr.io/acme/app:latest", launcher.launchReq.ImageRef)
+	require.Equal(t, "sha256:test", launcher.launchReq.ImageDigest)
+	require.Equal(t, []string{"app", "serve"}, launcher.launchReq.Command)
+	require.Equal(t, map[string]string{"FOO": "bar"}, launcher.launchReq.Env)
+	require.Equal(t, uint32(9090), launcher.launchReq.RuntimePort)
 	require.False(t, launcher.stopCalled)
 
 	reply := requireLaunchReply(t, receivePublishedMsg(t, replies))
