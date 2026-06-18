@@ -34,6 +34,17 @@ type resolvedOCIConfig struct {
 	ExposedPorts []uint16
 }
 
+// selectedOCIImage is the shared result of resolving one image reference to the
+// concrete linux/amd64 image object that scaled should reason about.
+//
+// Both config normalization and artifact materialization need this same host-side
+// selection step, so the registry/platform lookup lives in one helper instead of
+// being duplicated across files.
+type selectedOCIImage struct {
+	image       gcrv1.Image
+	imageDigest string
+}
+
 // resolveOCIConfig fetches one OCI image reference and normalizes the runtime
 // fields that later launch and packaging steps need.
 //
@@ -42,9 +53,29 @@ type resolvedOCIConfig struct {
 // before that data is written into the guest runtime contract or used for
 // artifact materialization.
 func resolveOCIConfig(ctx context.Context, imageRef string) (resolvedOCIConfig, error) {
+	selected, err := resolveSelectedOCIImage(ctx, imageRef)
+	if err != nil {
+		return resolvedOCIConfig{}, err
+	}
+
+	cfg, err := selected.image.ConfigFile()
+	if err != nil {
+		return resolvedOCIConfig{}, fmt.Errorf("read image config: %w", err)
+	}
+
+	return resolvedOCIConfigFromConfigFile(imageRef, selected.imageDigest, cfg)
+}
+
+// resolveSelectedOCIImage parses the user-provided image reference, fetches the
+// remote descriptor for the supported platform, resolves that descriptor to one
+// concrete image object, and reads the final image digest.
+//
+// This is the shared host-side selection step that must happen before either
+// config normalization or artifact materialization can continue.
+func resolveSelectedOCIImage(ctx context.Context, imageRef string) (selectedOCIImage, error) {
 	ref, err := name.ParseReference(strings.TrimSpace(imageRef), name.WeakValidation)
 	if err != nil {
-		return resolvedOCIConfig{}, fmt.Errorf("parse image reference: %w", err)
+		return selectedOCIImage{}, fmt.Errorf("parse image reference: %w", err)
 	}
 
 	desc, err := remote.Get(
@@ -55,14 +86,13 @@ func resolveOCIConfig(ctx context.Context, imageRef string) (resolvedOCIConfig, 
 			Architecture: supportedImageArch,
 		}),
 	)
-
 	if err != nil {
-		return resolvedOCIConfig{}, fmt.Errorf("fetch image descriptor: %w", err)
+		return selectedOCIImage{}, fmt.Errorf("fetch image descriptor: %w", err)
 	}
 
 	img, err := desc.Image()
 	if err != nil {
-		return resolvedOCIConfig{}, fmt.Errorf(
+		return selectedOCIImage{}, fmt.Errorf(
 			"resolve image for platform %s/%s: %w",
 			supportedImageOS,
 			supportedImageArch,
@@ -70,17 +100,15 @@ func resolveOCIConfig(ctx context.Context, imageRef string) (resolvedOCIConfig, 
 		)
 	}
 
-	digest, err := img.Digest()
+	imageDigest, err := img.Digest()
 	if err != nil {
-		return resolvedOCIConfig{}, fmt.Errorf("read image digest: %w", err)
+		return selectedOCIImage{}, fmt.Errorf("read image digest: %w", err)
 	}
 
-	cfg, err := img.ConfigFile()
-	if err != nil {
-		return resolvedOCIConfig{}, fmt.Errorf("read image config: %w", err)
-	}
-
-	return resolvedOCIConfigFromConfigFile(imageRef, digest.String(), cfg)
+	return selectedOCIImage{
+		image:       img,
+		imageDigest: imageDigest.String(),
+	}, nil
 }
 
 // resolvedOCIConfigFromConfigFile converts one OCI config file into the small,
