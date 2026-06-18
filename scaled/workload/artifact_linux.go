@@ -4,8 +4,8 @@
 // Firecracker guest boots a customer workload.
 //
 // For issue #38, that means turning an OCI image reference into a reusable,
-// immutable workload artifact on the node itself. The important concepts in this
-// file are:
+// workspace-scoped read-only EROFS workload image on the node itself. The
+// important concepts in this file are:
 //
 //  1. Image digest: the exact identity of the full OCI image we resolved.
 //     This is the cache key for a final immutable artifact because the fully
@@ -14,10 +14,10 @@
 //     images can share lower layers, so these are cached independently to avoid
 //     repeated downloads of common public bases such as Ubuntu.
 //  3. Materialization: the process of taking the ordered OCI layers, applying
-//     them with whiteout semantics, and producing one immutable artifact file.
-//  4. Cache scope: layer reuse and final artifact reuse are not identical. This
+//     them with whiteout semantics, and producing one immutable EROFS image.
+//  4. Cache scope: layer reuse and final image reuse are not identical. This
 //     file keeps public OCI layers in one node-global cache, but keeps final
-//     immutable artifacts scoped to one workspace so a customer mistake such as
+//     read-only images scoped to one workspace so a customer mistake such as
 //     baking secrets into an image does not become cross-workspace reuse by
 //     default.
 //
@@ -50,8 +50,8 @@ const (
 	workspaceCacheDirName     = "workspaces"
 	privateLayersDirName      = "privateOCILayers"
 	artifactCacheDirName      = "artifacts"
-	buildScratchDirName       = "tmp"
-	artifactFileName          = "artifact.squashfs"
+	artifactWorkDirName       = "tmp"
+	artifactFileName          = "artifact.erofs"
 	typeRegLegacy             = byte(0)
 )
 
@@ -135,11 +135,11 @@ type materializationPlan struct {
 	MissingLayerDigests []string
 }
 
-// materializedArtifact is a handle describing the on-disk SquashFS artifact
-// produced by this file. The artifact is a digest-addressed, workspace-scoped,
-// immutable rootfs built from the resolved OCI layers and ready for later
-// Firecracker attachment; this struct carries only its path, source image
-// digest, and ordered layer digests — not the file's bytes.
+// materializedArtifact is a handle describing the on-disk read-only EROFS
+// image produced by this file. The artifact is a digest-addressed,
+// workspace-scoped immutable workload image built from the resolved OCI layers
+// and ready for later Firecracker attachment; this struct carries only its
+// path, source image digest, and ordered layer digests, not the file's bytes.
 type materializedArtifact struct {
 	ImageDigest  string
 	ArtifactPath string
@@ -156,7 +156,7 @@ type materializedArtifact struct {
 //	└── workspaces/
 //	    └── <WorkspaceID>/                          <- workspaceRoot
 //	        ├── privateOCILayers/                   <- PrivateLayersDir      (this workspace's private layers)
-//	        ├── artifacts/                          <- ArtifactsDir          (final SquashFS files)
+//	        ├── artifacts/                          <- ArtifactsDir          (final read-only workload images)
 //	        └── tmp/                                <- TmpDir                (scratch space for builds)
 //
 // The split is deliberate:
@@ -183,7 +183,7 @@ func newArtifactCacheLayout(scope artifactCacheScope) (artifactCacheLayout, erro
 		SharedPublicLayersDir: filepath.Join(root, sharedPublicLayersDirName),
 		PrivateLayersDir:      filepath.Join(workspaceRoot, privateLayersDirName),
 		ArtifactsDir:          filepath.Join(workspaceRoot, artifactCacheDirName),
-		TmpDir:                filepath.Join(workspaceRoot, buildScratchDirName),
+		TmpDir:                filepath.Join(workspaceRoot, artifactWorkDirName),
 	}, nil
 }
 
@@ -249,7 +249,7 @@ func materializeArtifact(ctx context.Context, scope artifactCacheScope, imageRef
 //  4. returns immediately if the final artifact already exists
 //  5. caches any missing raw layer blobs
 //  6. applies the ordered layers into a temporary merged rootfs
-//  7. builds the final immutable SquashFS artifact in scratch space
+//  7. builds the final immutable read-only workload image in scratch space
 //  8. atomically publishes that artifact into the persistent workspace cache
 func materializeArtifactWithLayout(ctx context.Context, layout artifactCacheLayout, imageRef string) (materializedArtifact, error) {
 	if err := layout.ensureBaseDirs(); err != nil {
@@ -287,7 +287,8 @@ func materializeArtifactWithLayout(ctx context.Context, layout artifactCacheLayo
 	defer func() { _ = os.RemoveAll(buildDir) }()
 
 	// The merged rootfs is the plain directory tree produced after replaying every
-	// OCI layer in order. SquashFS is built from this directory later.
+	// OCI layer in order. The final read-only workload image is built from this
+	// directory later.
 	rootfsDir := filepath.Join(buildDir, "rootfs")
 	if err := os.MkdirAll(rootfsDir, 0o755); err != nil {
 		return materializedArtifact{}, fmt.Errorf("create merged rootfs dir: %w", err)
@@ -300,7 +301,7 @@ func materializeArtifactWithLayout(ctx context.Context, layout artifactCacheLayo
 	// The final immutable artifact is built in scratch space first, then atomically
 	// published into the cache so other launches only ever observe complete files.
 	tmpArtifactPath := filepath.Join(buildDir, artifactFileName)
-	if err := buildSquashFS(ctx, rootfsDir, tmpArtifactPath); err != nil {
+	if err := buildEROFS(ctx, rootfsDir, tmpArtifactPath); err != nil {
 		return materializedArtifact{}, err
 	}
 
@@ -738,29 +739,21 @@ func openZstdLayer(file *os.File) (io.ReadCloser, error) {
 	}, nil
 }
 
-// buildSquashFS turns the merged rootfs directory tree into the final immutable
-// artifact file using the host's native SquashFS toolchain.
-func buildSquashFS(ctx context.Context, rootfsDir, outPath string) error {
-	if _, err := exec.LookPath("mksquashfs"); err != nil {
-		return fmt.Errorf("mksquashfs not found: %w", err)
+// buildEROFS turns the merged rootfs directory tree into the final immutable
+// workload image.
+func buildEROFS(ctx context.Context, rootfsDir, outputPath string) error {
+	if _, err := exec.LookPath("mkfs.erofs"); err != nil {
+		return fmt.Errorf("mkfs.erofs not found: %w", err)
 	}
 
-	cmd := exec.CommandContext(
-		ctx,
-		"mksquashfs",
-		rootfsDir,
-		outPath,
-		"-comp", "zstd",
-		"-noappend",
-		"-no-progress",
-	)
-	output, err := cmd.CombinedOutput()
+	cmd := exec.CommandContext(ctx, "mkfs.erofs", "--all-root", "-T", "0", "--all-time", "-z", "lz4", outputPath, rootfsDir)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		trimmed := strings.TrimSpace(string(output))
-		if trimmed == "" {
-			return fmt.Errorf("run mksquashfs: %w", err)
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return fmt.Errorf("build erofs image: %w: %s", err, msg)
 		}
-		return fmt.Errorf("run mksquashfs: %w: %s", err, trimmed)
+		return fmt.Errorf("build erofs image: %w", err)
 	}
 
 	return nil

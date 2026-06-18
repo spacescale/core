@@ -114,7 +114,7 @@ CREATE INDEX workload_env_vars_cipher_claim_idx ON workload_env_vars (cipher_key
 -- from NATS and heartbeat storage instead.
 CREATE TABLE nodes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    provider TEXT NOT NULL CHECK (provider IN ('ovh', 'colo', 'heztner')),
+    provider TEXT NOT NULL CHECK (provider IN ('ovh', 'scaleway')),
     provider_server_id TEXT NOT NULL,
     region TEXT NOT NULL,
     UNIQUE (provider, provider_server_id),
