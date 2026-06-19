@@ -395,7 +395,17 @@ func TestMaterializeArtifactWithLayout(t *testing.T) {
 
 	binDir := t.TempDir()
 	counterFile := filepath.Join(t.TempDir(), "mkfs-count.txt")
-	script := "#!/bin/sh\nset -eu\nrootfs=\"$8\"\noutput=\"$7\"\n{\n  find \"$rootfs\" -mindepth 1 | sort\n  printf 'symlink:%s\\n' \"$(readlink \"$rootfs/usr/bin/tool-link\")\"\n  printf 'tool_inode:%s\\n' \"$(stat -c '%i' \"$rootfs/usr/bin/tool\")\"\n  printf 'hard_inode:%s\\n' \"$(stat -c '%i' \"$rootfs/usr/bin/tool-hard\")\"\n} > \"$output\"\nprintf 'run\\n' >> " + quoteShellPath(counterFile) + "\n"
+	script := `#!/bin/sh
+set -eu
+rootfs="$8"
+output="$7"
+{
+  find "$rootfs" -mindepth 1 | sort
+  printf 'symlink:%s\n' "$(readlink "$rootfs/usr/bin/tool-link")"
+  printf 'tool_inode:%s\n' "$(stat -c '%i' "$rootfs/usr/bin/tool")"
+  printf 'hard_inode:%s\n' "$(stat -c '%i' "$rootfs/usr/bin/tool-hard")"
+} > "$output"
+printf 'run\n' >> ` + quoteShellPath(counterFile) + "\n"
 	require.NoError(t, os.WriteFile(filepath.Join(binDir, "mkfs.erofs"), []byte(script), 0o755))
 	oldPath := os.Getenv("PATH")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+oldPath)
