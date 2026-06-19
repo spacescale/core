@@ -448,6 +448,9 @@ func mustLayerFromEntries(t *testing.T, entries []tarEntry) gcrv1.Layer {
 	tw := tar.NewWriter(&buf)
 	for _, entry := range entries {
 		hdr := entry.header
+		// Treat Mode==0 as "unspecified" in test fixtures and default to a
+		// regular file mode. Some callers intentionally pass Mode: 0 and rely
+		// on this helper to apply 0o644.
 		if hdr.Mode == 0 {
 			hdr.Mode = 0o644
 		}
