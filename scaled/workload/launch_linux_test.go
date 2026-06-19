@@ -45,7 +45,7 @@ func (f *fakeLauncher) Stop(ctx context.Context, microvmID string) error {
 func newTestLaunchHandler(t *testing.T, launcher launcher) *launchHandler {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	capacity := NewCapacity(65536, 8)
+	capacity := NewCapacity(65536, 16)
 	handler := newLaunchHandler(log, capacity, "boot-123", launcher)
 	handler.resolveImageConfig = func(context.Context, string) (resolvedOCIConfig, error) {
 		return resolvedOCIConfig{

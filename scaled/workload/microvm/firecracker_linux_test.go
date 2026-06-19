@@ -63,7 +63,7 @@ func firecrackerPlanFixture() firecrackerPlan {
 		LogPath:         "fc.log",
 		VCPUCount:       2,
 		MemSizeMib:      512,
-		Smt:             false,
+		Smt:             true,
 		VSockID:         "guestd",
 		VSockPath:       "v.sock",
 		VSockCID:        3,
@@ -97,7 +97,7 @@ func TestBuildFirecrackerPlanBuildsExpectedPlan(t *testing.T) {
 	require.Equal(t, workspace.FirecrackerLogPathInJail(), plan.LogPath)
 	require.Equal(t, int64(req.VCPU), plan.VCPUCount)
 	require.Equal(t, int64(req.RAMMB), plan.MemSizeMib)
-	require.False(t, plan.Smt)
+	require.True(t, plan.Smt)
 	require.Equal(t, "guestd", plan.VSockID)
 	require.Equal(t, workspace.VSockPathInJail(), plan.VSockPath)
 	require.Equal(t, uint32(3), plan.VSockCID)
@@ -142,7 +142,7 @@ func TestFirecrackerConfigFromPlanBuildsSDKConfig(t *testing.T) {
 
 	require.Equal(t, plan.VCPUCount, firecracker.Int64Value(cfg.MachineCfg.VcpuCount))
 	require.Equal(t, plan.MemSizeMib, firecracker.Int64Value(cfg.MachineCfg.MemSizeMib))
-	require.False(t, firecracker.BoolValue(cfg.MachineCfg.Smt))
+	require.True(t, firecracker.BoolValue(cfg.MachineCfg.Smt))
 
 	require.NotNil(t, cfg.JailerCfg)
 	require.Equal(t, plan.Jailer.UID, *cfg.JailerCfg.UID)
