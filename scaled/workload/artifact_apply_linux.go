@@ -1,5 +1,6 @@
 //go:build linux
 
+// Package workload prepares host-side workload artifacts for Firecracker guests.
 // This file holds the host-side mechanics for turning cached OCI layers into a
 // final read-only EROFS workload image.
 //
@@ -180,9 +181,7 @@ func applyLayerTar(rootfsDir string, reader io.Reader) error {
 			if err := ensureDirAt(targetPath, os.FileMode(hdr.Mode)); err != nil {
 				return fmt.Errorf("create dir %q: %w", rel, err)
 			}
-			if err := applyOwnership(targetPath, hdr); err != nil {
-				return fmt.Errorf("apply dir ownership %q: %w", rel, err)
-			}
+			applyOwnership(targetPath, hdr)
 		case tar.TypeReg, typeRegLegacy:
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 				return fmt.Errorf("create parent dir for %q: %w", rel, err)
@@ -193,9 +192,7 @@ func applyLayerTar(rootfsDir string, reader io.Reader) error {
 			if err := writeRegularFile(targetPath, tr, os.FileMode(hdr.Mode)); err != nil {
 				return fmt.Errorf("write file %q: %w", rel, err)
 			}
-			if err := applyOwnership(targetPath, hdr); err != nil {
-				return fmt.Errorf("apply file ownership %q: %w", rel, err)
-			}
+			applyOwnership(targetPath, hdr)
 		case tar.TypeSymlink:
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 				return fmt.Errorf("create parent dir for symlink %q: %w", rel, err)
@@ -206,9 +203,7 @@ func applyLayerTar(rootfsDir string, reader io.Reader) error {
 			if err := os.Symlink(hdr.Linkname, targetPath); err != nil {
 				return fmt.Errorf("create symlink %q -> %q: %w", rel, hdr.Linkname, err)
 			}
-			if err := applyOwnership(targetPath, hdr); err != nil {
-				return fmt.Errorf("apply symlink ownership %q: %w", rel, err)
-			}
+			applyOwnership(targetPath, hdr)
 		case tar.TypeLink:
 			linkRel, err := normalizeTarPath(hdr.Linkname)
 			if err != nil {
@@ -224,9 +219,7 @@ func applyLayerTar(rootfsDir string, reader io.Reader) error {
 			if err := os.Link(linkPath, targetPath); err != nil {
 				return fmt.Errorf("create hardlink %q -> %q: %w", rel, hdr.Linkname, err)
 			}
-			if err := applyOwnership(targetPath, hdr); err != nil {
-				return fmt.Errorf("apply hardlink ownership %q: %w", rel, err)
-			}
+			applyOwnership(targetPath, hdr)
 		case tar.TypeXGlobalHeader, tar.TypeXHeader:
 			continue
 		default:
@@ -284,6 +277,7 @@ func openCachedLayer(path string, mediaType types.MediaType) (_ io.ReadCloser, e
 		}
 	}()
 
+	//exhaustive:ignore Non-layer media types are rejected below.
 	switch mediaType {
 	case types.OCILayer, types.DockerLayer:
 		return file, nil
@@ -426,16 +420,14 @@ func writeRegularFile(path string, reader io.Reader, mode os.FileMode) error {
 }
 
 // applyOwnership best-effort applies tar header ownership information.
-func applyOwnership(path string, hdr *tar.Header) error {
+func applyOwnership(path string, hdr *tar.Header) {
 	if hdr == nil {
-		return nil
+		return
 	}
 
 	if err := os.Lchown(path, hdr.Uid, hdr.Gid); err != nil {
-		return nil
+		return
 	}
-
-	return nil
 }
 
 // normalizeTarPath turns one tar entry path into a safe rootfs-relative path

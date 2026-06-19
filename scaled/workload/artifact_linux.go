@@ -1,5 +1,6 @@
 //go:build linux
 
+// Package workload prepares host-side workload artifacts for Firecracker guests.
 // This file owns orchestration for host-side workload materialization.
 //
 // It takes a selected OCI image, resolves its ordered layers, decides what can

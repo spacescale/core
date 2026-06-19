@@ -51,7 +51,6 @@ func TestNormalizeTarPath(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -111,6 +110,7 @@ func TestApplyWhiteout(t *testing.T) {
 			name: "normal whiteout removes target",
 			rel:  "etc/.wh.hosts",
 			setup: func(t *testing.T, rootfs string) {
+				t.Helper()
 				require.NoError(t, os.MkdirAll(filepath.Join(rootfs, "etc"), 0o755))
 				require.NoError(t, os.WriteFile(filepath.Join(rootfs, "etc", "hosts"), []byte("old"), 0o644))
 			},
@@ -121,6 +121,7 @@ func TestApplyWhiteout(t *testing.T) {
 			name: "opaque whiteout clears directory",
 			rel:  "var/lib/.wh..wh..opq",
 			setup: func(t *testing.T, rootfs string) {
+				t.Helper()
 				require.NoError(t, os.MkdirAll(filepath.Join(rootfs, "var", "lib"), 0o755))
 				require.NoError(t, os.WriteFile(filepath.Join(rootfs, "var", "lib", "one"), []byte("1"), 0o644))
 				require.NoError(t, os.WriteFile(filepath.Join(rootfs, "var", "lib", "two"), []byte("2"), 0o644))
@@ -132,6 +133,7 @@ func TestApplyWhiteout(t *testing.T) {
 			name: "non whiteout leaves tree alone",
 			rel:  "etc/passwd",
 			setup: func(t *testing.T, rootfs string) {
+				t.Helper()
 				require.NoError(t, os.MkdirAll(filepath.Join(rootfs, "etc"), 0o755))
 				require.NoError(t, os.WriteFile(filepath.Join(rootfs, "etc", "passwd"), []byte("x"), 0o644))
 			},
@@ -141,7 +143,6 @@ func TestApplyWhiteout(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -269,7 +270,6 @@ func TestOpenCachedLayer(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -363,10 +363,7 @@ printf '%%s\n' "$@" > %q
 `, argsFile)
 	require.NoError(t, os.WriteFile(filepath.Join(binDir, "mkfs.erofs"), []byte(script), 0o755))
 	prevPath := os.Getenv("PATH")
-	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+prevPath))
-	t.Cleanup(func() {
-		_ = os.Setenv("PATH", prevPath)
-	})
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+prevPath)
 
 	err := buildEROFS(context.Background(), rootfs, output)
 	require.NoError(t, err)
