@@ -22,9 +22,10 @@ func newTestWorkloadLogger() *slog.Logger {
 func newTestNodeInfo() node.Info {
 	return node.Info{
 		Snapshot: node.Snapshot{
-			BootID:     "boot-123",
-			TotalCores: 8,
-			TotalRAMMb: 65536,
+			BootID:       "boot-123",
+			TotalCores:   8,
+			TotalThreads: 16,
+			TotalRAMMb:   65536,
 		},
 		Identity: node.Identity{
 			NodeID: "node-123",

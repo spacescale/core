@@ -47,14 +47,14 @@ type HardwareSpec struct {
 
 const (
 	// sharedVCPUOvercommitRatio defines how many shared guest vCPUs may be sold
-	// per remaining physical host core. This ratio applies only to the shared
+	// per remaining logical host thread. This ratio applies only to the shared
 	// pool after host reserved cores and dedicated pinned workloads have already
 	// been removed from the node capacity.
 	//
-	// Since SpaceScale operates on a Physical Core Truth model with SMT disabled,
-	// a ratio of 4 ensures that even under maximum contention, each virtual CPU
-	// is guaranteed at least 25% of a physical core's execution time. This balances
-	// high-density multi-tenancy with deterministic, "snappy" performance.
+	// SpaceScale operates with SMT enabled and Linux Core Scheduling enforcing
+	// per-tenant sibling isolation. The capacity ledger accounts in logical
+	// threads (2 per physical core with HT). A ratio of 4 on threads means each
+	// vCPU is guaranteed at least 25% of a logical thread's execution time.
 	sharedVCPUOvercommitRatio uint32 = 4
 	// Nodes up to and including this size reserve one host core.
 	singleHostReserveCoreCeiling uint32 = 64
@@ -132,13 +132,13 @@ func hostReservedCores(total uint32) uint32 {
 	}
 }
 
-// sellableCores calculates the final pool of physical host cores available for
-// customer workloads after the host reserve is removed.
+// sellableThreads calculates the final pool of logical host threads available
+// for customer workloads after the host reserve is removed.
 //
-// Callers pass the true physical core count discovered by host preflight, not
-// logical thread counts.
-func sellableCores(total uint32) uint32 {
-	reserved := hostReservedCores(total)
+// With SMT enabled and core scheduling active, callers pass the logical thread
+// count (physical cores * 2) discovered by host facts.
+func sellableThreads(total uint32) uint32 {
+	reserved := hostReservedCores(total/2) * 2
 	if total <= reserved {
 		return 0
 	}
@@ -180,8 +180,8 @@ type Capacity struct {
 	usedRAMMB     uint64
 	reservedRAMMB uint64
 
-	// Dedicated host core allocation.
-	sellableCores       uint32
+	// Logical thread allocation (with SMT enabled).
+	sellableThreads     uint32
 	usedPinnedCores     uint32
 	reservedPinnedCores uint32
 
@@ -194,11 +194,11 @@ type Capacity struct {
 }
 
 // NewCapacity initializes the node resource ledger from real host metrics.
-func NewCapacity(totalRAMMB uint64, totalCores uint32) *Capacity {
+func NewCapacity(totalRAMMB uint64, totalThreads uint32) *Capacity {
 	return &Capacity{
-		sellableRAMMB: sellableRAMMB(totalRAMMB),
-		sellableCores: sellableCores(totalCores),
-		reservations:  make(map[string]reservation),
+		sellableRAMMB:   sellableRAMMB(totalRAMMB),
+		sellableThreads: sellableThreads(totalThreads),
+		reservations:    make(map[string]reservation),
 	}
 }
 
@@ -343,10 +343,10 @@ func (c *Capacity) freeRAMMBLocked() uint64 {
 
 func (c *Capacity) freePinnedCoresLocked() uint32 {
 	allocated := c.usedPinnedCores + c.reservedPinnedCores
-	if allocated > c.sellableCores {
+	if allocated > c.sellableThreads {
 		return 0
 	}
-	return c.sellableCores - allocated
+	return c.sellableThreads - allocated
 }
 
 // freeSharedVCPULocked calculates available virtual capacity.
@@ -354,13 +354,13 @@ func (c *Capacity) freePinnedCoresLocked() uint32 {
 // the remaining cores by the overcommit ratio. It then subtracts currently
 // allocated shared virtual CPUs to find the remaining pool.
 func (c *Capacity) freeSharedVCPULocked() uint32 {
-	dedicatedCores := c.usedPinnedCores + c.reservedPinnedCores
-	if dedicatedCores > c.sellableCores {
+	dedicatedThreads := c.usedPinnedCores + c.reservedPinnedCores
+	if dedicatedThreads > c.sellableThreads {
 		return 0
 	}
-	sharedCores := c.sellableCores - dedicatedCores
+	sharedThreads := c.sellableThreads - dedicatedThreads
 
-	sharedCapacity := sharedCores * sharedVCPUOvercommitRatio
+	sharedCapacity := sharedThreads * sharedVCPUOvercommitRatio
 
 	allocatedShared := c.usedSharedVCPU + c.reservedSharedVCPU
 	if allocatedShared > sharedCapacity {

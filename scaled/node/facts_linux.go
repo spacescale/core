@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -31,6 +32,7 @@ const (
 type Snapshot struct {
 	BootID          string
 	TotalCores      uint32
+	TotalThreads    uint32
 	TotalRAMMb      uint64
 	TotalDiskMb     uint64
 	AvailableDiskMb uint64
@@ -69,6 +71,7 @@ func readSnapshot(bootIDPath, memInfoPath, cpuTopologyCoreIDGlob, rootMountDir s
 	return Snapshot{
 		BootID:          bootID,
 		TotalCores:      totalCores,
+		TotalThreads:    uint32(runtime.NumCPU()),
 		TotalRAMMb:      memory.TotalMb,
 		TotalDiskMb:     disk.TotalMb,
 		AvailableDiskMb: disk.AvailableMb,

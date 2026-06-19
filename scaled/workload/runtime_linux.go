@@ -31,7 +31,7 @@ const heartbeatInterval = 5 * time.Second
 func Start(ctx context.Context, logger *slog.Logger, info node.Info, nc *nats.Client) error {
 	logger = logger.With("component", "workload")
 
-	capacity := NewCapacity(info.Snapshot.TotalRAMMb, info.Snapshot.TotalCores)
+	capacity := NewCapacity(info.Snapshot.TotalRAMMb, info.Snapshot.TotalThreads)
 	microvmLauncher := microvm.NewLauncher(logger, info.RuntimePaths, info.JailerIdentity)
 	bidder := NewBidder(logger, capacity, info.Identity.NodeID, info.Snapshot.BootID, info.Identity.Region)
 	launchHandler := newLaunchHandler(logger, capacity, info.Snapshot.BootID, microvmLauncher)

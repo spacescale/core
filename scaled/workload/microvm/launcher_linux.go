@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
@@ -115,6 +116,17 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 
 	if err := l.startFirecracker(vmCtx, req, vm, jailerLog); err != nil {
 		return nil, err
+	}
+
+	// Assign a core scheduling cookie to the jailed Firecracker VMM process.
+	// The kernel will only allow sibling SMT threads to execute tasks sharing
+	// the same cookie simultaneously, preventing cross-tenant side channels.
+	pid, err := vm.machine.PID()
+	if err != nil {
+		return nil, fmt.Errorf("get firecracker pid for core scheduling: %w", err)
+	}
+	if err := assignCoreSchedCookie(pid); err != nil {
+		return nil, fmt.Errorf("assign core scheduling cookie: %w", err)
 	}
 
 	vmmExit := waitForMachine(vmCtx, vm.machine)
@@ -411,4 +423,23 @@ func (l *Launcher) cleanupActive(vm *ActiveVM, stopVMM bool, removeWorkspace boo
 	})
 
 	return err
+}
+
+// assignCoreSchedCookie creates a new core scheduling cookie and assigns it to
+// the given PID's thread group. The kernel will only allow sibling SMT threads
+// to execute tasks that share the same cookie simultaneously.
+func assignCoreSchedCookie(pid int) error {
+	_, _, errno := syscall.RawSyscall6(
+		syscall.SYS_PRCTL,
+		node.PRSchedCore,
+		node.PRSchedCoreCreate,
+		uintptr(pid),
+		node.PidTypeTGID,
+		0,
+		0,
+	)
+	if errno != 0 {
+		return fmt.Errorf("prctl PR_SCHED_CORE create for pid %d: %w", pid, errno)
+	}
+	return nil
 }

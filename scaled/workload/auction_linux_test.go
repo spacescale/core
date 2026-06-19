@@ -17,7 +17,7 @@ func newTestBidder(t *testing.T) *Bidder {
 	t.Helper()
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	capacity := NewCapacity(65536, 8)
+	capacity := NewCapacity(65536, 16)
 
 	return NewBidder(log, capacity, "node-123", "boot-123", "us-east")
 }
@@ -44,10 +44,10 @@ func requireAuctionReply(t *testing.T, msg *nats.Msg) *pb.AuctionReply {
 }
 
 func TestCapacityReserveSharedPoolLimit(t *testing.T) {
-	capacity := NewCapacity(131072, 8)
+	capacity := NewCapacity(131072, 16)
 	spec := HardwareSpec{VCPU: 4, RAM: 8192, IsPinned: false}
 
-	for i := range 7 {
+	for i := range 14 {
 		microvmID := "growth-" + string(rune('a'+i))
 		_, ok := capacity.Reserve(microvmID, spec, time.Second)
 		require.True(t, ok)
@@ -68,7 +68,7 @@ func TestCapacityReservePinnedLimit(t *testing.T) {
 }
 
 func TestCapacityCommitAndRevert(t *testing.T) {
-	capacity := NewCapacity(65536, 8)
+	capacity := NewCapacity(65536, 16)
 	spec := HardwareSpec{VCPU: 4, RAM: 8192, IsPinned: false}
 
 	_, ok := capacity.Reserve("microvm-1", spec, time.Second)
@@ -86,7 +86,7 @@ func TestCapacityCommitAndRevert(t *testing.T) {
 }
 
 func TestCapacityReleaseExpired(t *testing.T) {
-	capacity := NewCapacity(65536, 8)
+	capacity := NewCapacity(65536, 16)
 	spec := HardwareSpec{VCPU: 2, RAM: 4096, IsPinned: false}
 
 	_, ok := capacity.Reserve("microvm-1", spec, 10*time.Millisecond)
@@ -101,7 +101,7 @@ func TestCapacityReleaseExpired(t *testing.T) {
 }
 
 func TestCapacityFreeMathClampsAtZero(t *testing.T) {
-	capacity := NewCapacity(1024, 4)
+	capacity := NewCapacity(1024, 8)
 	capacity.usedRAMMB = 900
 	capacity.reservedRAMMB = 200
 	capacity.usedPinnedCores = 3
@@ -314,23 +314,23 @@ func TestSellableRAMMB(t *testing.T) {
 	}
 }
 
-func TestSellableCores(t *testing.T) {
+func TestSellableThreads(t *testing.T) {
 	tests := []struct {
 		name  string
 		total uint32
 		want  uint32
 	}{
 		{name: "zero", total: 0, want: 0},
-		{name: "one core node", total: 1, want: 0},
-		{name: "two core node", total: 2, want: 1},
-		{name: "thirty two core node", total: 32, want: 31},
-		{name: "forty eight core node", total: 48, want: 47},
-		{name: "sixty four core node", total: 64, want: 63},
-		{name: "sixty five core node", total: 65, want: 63},
-		{name: "one hundred twenty eight core node", total: 128, want: 126},
+		{name: "two thread node", total: 2, want: 0},
+		{name: "four thread node", total: 4, want: 2},
+		{name: "sixty four thread node", total: 64, want: 62},
+		{name: "ninety six thread node", total: 96, want: 94},
+		{name: "one hundred twenty eight thread node", total: 128, want: 126},
+		{name: "one hundred thirty thread node", total: 130, want: 126},
+		{name: "two hundred fifty six thread node", total: 256, want: 252},
 	}
 	for _, tc := range tests {
-		assert.Equal(t, tc.want, sellableCores(tc.total), tc.name)
+		assert.Equal(t, tc.want, sellableThreads(tc.total), tc.name)
 	}
 }
 

@@ -31,6 +31,7 @@ func TestReadSnapshot(t *testing.T) {
 
 		assert.Equal(t, "11111111-2222-3333-4444-555555555555", snapshot.BootID)
 		assert.Equal(t, uint32(2), snapshot.TotalCores)
+		assert.Positive(t, snapshot.TotalThreads)
 		assert.Equal(t, uint64(2048), snapshot.TotalRAMMb)
 		assert.Positive(t, snapshot.TotalDiskMb)
 		assert.GreaterOrEqual(t, snapshot.TotalDiskMb, snapshot.AvailableDiskMb)
