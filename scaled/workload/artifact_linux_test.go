@@ -108,7 +108,6 @@ func TestSanitizedDigestPrefix(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -159,7 +158,6 @@ func TestNewArtifactCacheLayout(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -397,7 +395,17 @@ func TestMaterializeArtifactWithLayout(t *testing.T) {
 
 	binDir := t.TempDir()
 	counterFile := filepath.Join(t.TempDir(), "mkfs-count.txt")
-	script := "#!/bin/sh\nset -eu\nrootfs=\"$8\"\noutput=\"$7\"\n{\n  find \"$rootfs\" -mindepth 1 | sort\n  printf 'symlink:%s\\n' \"$(readlink \"$rootfs/usr/bin/tool-link\")\"\n  printf 'tool_inode:%s\\n' \"$(stat -c '%i' \"$rootfs/usr/bin/tool\")\"\n  printf 'hard_inode:%s\\n' \"$(stat -c '%i' \"$rootfs/usr/bin/tool-hard\")\"\n} > \"$output\"\nprintf 'run\\n' >> " + quoteShellPath(counterFile) + "\n"
+	script := `#!/bin/sh
+set -eu
+rootfs="$8"
+output="$7"
+{
+  find "$rootfs" -mindepth 1 | sort
+  printf 'symlink:%s\n' "$(readlink "$rootfs/usr/bin/tool-link")"
+  printf 'tool_inode:%s\n' "$(stat -c '%i' "$rootfs/usr/bin/tool")"
+  printf 'hard_inode:%s\n' "$(stat -c '%i' "$rootfs/usr/bin/tool-hard")"
+} > "$output"
+printf 'run\n' >> ` + quoteShellPath(counterFile) + "\n"
 	require.NoError(t, os.WriteFile(filepath.Join(binDir, "mkfs.erofs"), []byte(script), 0o755))
 	oldPath := os.Getenv("PATH")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+oldPath)
@@ -450,6 +458,9 @@ func mustLayerFromEntries(t *testing.T, entries []tarEntry) gcrv1.Layer {
 	tw := tar.NewWriter(&buf)
 	for _, entry := range entries {
 		hdr := entry.header
+		// Treat Mode==0 as "unspecified" in test fixtures and default to a
+		// regular file mode. Some callers intentionally pass Mode: 0 and rely
+		// on this helper to apply 0o644.
 		if hdr.Mode == 0 {
 			hdr.Mode = 0o644
 		}

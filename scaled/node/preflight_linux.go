@@ -32,7 +32,27 @@ const (
 	defaultFirecrackerPath = "/usr/bin/firecracker"
 	defaultJailerPath      = "/usr/bin/jailer"
 	defaultKernelPath      = "/var/lib/spacescale/golden/vmlinux"
-	defaultRootFSPath      = "/var/lib/spacescale/golden/rootfs.ext4"
+	defaultRootFSPath = "/var/lib/spacescale/golden/rootfs.ext4"
+)
+
+const (
+	// PRSchedCore is the prctl operation number for Linux core scheduling (PR_SCHED_CORE).
+	PRSchedCore = 62
+
+	// PRSchedCoreGet queries the core scheduling cookie for a given process.
+	PRSchedCoreGet = 0
+
+	// PRSchedCoreCreate creates a new unique core scheduling cookie and assigns it to a process.
+	PRSchedCoreCreate = 1
+
+	// PRSchedCoreShareTo copies the caller's core scheduling cookie to another process.
+	PRSchedCoreShareTo = 2
+
+	// PidTypeTGID targets the thread group (all threads in a process) for prctl core scheduling ops.
+	PidTypeTGID = 0
+
+	// pidTypePGID targets a process group. Used internally by the preflight probe.
+	pidTypePGID = 1
 )
 
 var (
@@ -140,7 +160,7 @@ func preflight(ctx context.Context, logger *slog.Logger) (FirecrackerJailerIdent
 		return FirecrackerJailerIdentity{}, err
 	}
 
-	if err := disableSMT(); err != nil {
+	if err := ensureCoreSchedulingSupport(); err != nil {
 		return FirecrackerJailerIdentity{}, err
 	}
 
@@ -151,7 +171,7 @@ func preflight(ctx context.Context, logger *slog.Logger) (FirecrackerJailerIdent
 		"jailer_gid", jailerIdentity.GID,
 		"swap", "off",
 		"ksm", "off",
-		"smt", "off",
+		"smt", "on (core-scheduled)",
 	)
 
 	return jailerIdentity, nil
@@ -247,8 +267,10 @@ func disableKSM() error {
 	return nil
 }
 
-// disableSMT keeps capacity based on physical cores only.
-func disableSMT() error {
+// ensureCoreSchedulingSupport verifies the kernel supports PR_SCHED_CORE.
+// With core scheduling enabled, SMT remains on but the kernel guarantees
+// sibling threads only run tasks from the same trust group simultaneously.
+func ensureCoreSchedulingSupport() error {
 	current, err := readSysfsValue(smtControlPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -258,26 +280,35 @@ func disableSMT() error {
 		return fmt.Errorf("system preflight: read smt state: %w", err)
 	}
 
+	// SMT must be "on" for core scheduling to be useful.
 	switch current {
-	case "off", "forceoff", "notsupported":
+	case "on":
+		// Already enabled, nothing to do.
+	case "off", "forceoff":
+		if err := writeSysfsValue(smtControlPath, "on"); err != nil {
+			return fmt.Errorf("system preflight: enable smt: %w (ensure daemon has root or CAP_SYS_ADMIN)", err)
+		}
+	case "notsupported":
+		// Single-threaded CPU. Core scheduling is a no-op but harmless.
 		return nil
 	}
 
-	if err := writeSysfsValue(smtControlPath, "off"); err != nil {
-		return fmt.Errorf("system preflight: disable smt: %w (ensure daemon has root or CAP_SYS_ADMIN)", err)
+	// Probe whether the kernel supports PR_SCHED_CORE by attempting a no-op
+	// query on the current process.
+	_, _, errno := syscall.RawSyscall6(
+		syscall.SYS_PRCTL,
+		PRSchedCore,
+		PRSchedCoreGet,
+		0, // pid 0 = self
+		pidTypePGID,
+		0,
+		0,
+	)
+	if errors.Is(errno, syscall.EINVAL) {
+		return errors.New("system preflight: kernel does not support PR_SCHED_CORE (require Linux 5.14+ with CONFIG_SCHED_CORE=y)")
 	}
 
-	current, err = readSysfsValue(smtControlPath)
-	if err != nil {
-		return fmt.Errorf("system preflight: read smt state: %w", err)
-	}
-
-	switch current {
-	case "off", "forceoff", "notsupported":
-		return nil
-	default:
-		return fmt.Errorf("system preflight: smt still enabled with value %q (expected off/forceoff)", current)
-	}
+	return nil
 }
 
 // ensureFirecrackerJailerAccount makes sure the dedicated Firecracker jailer
