@@ -3,6 +3,8 @@
 package workload
 
 import (
+	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"errors"
@@ -13,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	gcrv1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
@@ -161,6 +164,61 @@ func TestApplyWhiteout(t *testing.T) {
 	}
 }
 
+// TestCacheMissingLayersErrorPaths covers the easy pre-download failure paths:
+// invalid digests and layer cache roots that cannot be statted.
+func TestCacheMissingLayersErrorPaths(t *testing.T) {
+	t.Parallel()
+
+	t.Run("invalid digest", func(t *testing.T) {
+		t.Parallel()
+
+		layout := artifactCacheLayout{SourceVisibility: imageSourcePublic, SharedPublicLayersDir: t.TempDir()}
+		err := cacheMissingLayers(context.Background(), layout, []resolvedLayer{{Digest: "not-a-digest"}})
+		require.EqualError(t, err, `invalid digest "not-a-digest"`)
+	})
+
+	t.Run("stat layer cache error", func(t *testing.T) {
+		t.Parallel()
+
+		root := t.TempDir()
+		blocked := filepath.Join(root, "blocked")
+		require.NoError(t, os.WriteFile(blocked, []byte("x"), 0o644))
+
+		layout := artifactCacheLayout{SourceVisibility: imageSourcePublic, SharedPublicLayersDir: filepath.Join(blocked, "layers")}
+		err := cacheMissingLayers(context.Background(), layout, []resolvedLayer{{Digest: "sha256:deadbeef"}})
+		require.ErrorContains(t, err, "stat layer cache for sha256:deadbeef")
+	})
+}
+
+// TestCacheOneLayerErrorPaths covers the failure branches before a cached blob
+// is successfully published.
+func TestCacheOneLayerErrorPaths(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing source handle", func(t *testing.T) {
+		t.Parallel()
+
+		err := cacheOneLayer(context.Background(), resolvedLayer{Digest: "sha256:deadbeef"}, filepath.Join(t.TempDir(), "blob"))
+		require.EqualError(t, err, "layer sha256:deadbeef has no source handle")
+	})
+
+	t.Run("compressed open error", func(t *testing.T) {
+		t.Parallel()
+
+		layer := resolvedLayer{Digest: "sha256:deadbeef", source: &errorLayer{compressedErr: errors.New("boom")}}
+		err := cacheOneLayer(context.Background(), layer, filepath.Join(t.TempDir(), "blob"))
+		require.ErrorContains(t, err, "open compressed layer sha256:deadbeef")
+	})
+
+	t.Run("copy error", func(t *testing.T) {
+		t.Parallel()
+
+		layer := resolvedLayer{Digest: "sha256:deadbeef", source: &errorLayer{compressedData: io.NopCloser(errReader{err: errors.New("read failed")})}}
+		err := cacheOneLayer(context.Background(), layer, filepath.Join(t.TempDir(), "blob"))
+		require.ErrorContains(t, err, "cache compressed layer sha256:deadbeef")
+	})
+}
+
 // TestOpenCachedLayer covers the compression-aware reopen path used when a
 // cached blob needs to be replayed back into tar form.
 func TestOpenCachedLayer(t *testing.T) {
@@ -171,6 +229,7 @@ func TestOpenCachedLayer(t *testing.T) {
 	gzipPath := filepath.Join(root, "gzip.layer")
 	zstdPath := filepath.Join(root, "zstd.layer")
 	unsupportedPath := filepath.Join(root, "other.layer")
+	badGzipPath := filepath.Join(root, "bad-gzip.layer")
 
 	require.NoError(t, os.WriteFile(plainPath, []byte("plain"), 0o644))
 
@@ -192,6 +251,7 @@ func TestOpenCachedLayer(t *testing.T) {
 	require.NoError(t, zw.Close())
 
 	require.NoError(t, os.WriteFile(unsupportedPath, []byte("other"), 0o644))
+	require.NoError(t, os.WriteFile(badGzipPath, []byte("not-gzip"), 0o644))
 
 	tests := []struct {
 		name      string
@@ -204,6 +264,7 @@ func TestOpenCachedLayer(t *testing.T) {
 		{name: "docker layer", path: plainPath, mediaType: types.DockerLayer, want: "plain"},
 		{name: "gzip layer", path: gzipPath, mediaType: types.MediaType("application/vnd.example.layer+gzip"), want: "gzip"},
 		{name: "zstd layer", path: zstdPath, mediaType: types.OCILayerZStd, want: "zstd"},
+		{name: "invalid gzip layer", path: badGzipPath, mediaType: types.MediaType("application/vnd.example.layer+gzip"), wantErr: "unexpected EOF"},
 		{name: "unsupported media type", path: unsupportedPath, mediaType: types.MediaType("application/vnd.example.unknown"), wantErr: `unsupported layer media type "application/vnd.example.unknown"`},
 	}
 
@@ -214,7 +275,7 @@ func TestOpenCachedLayer(t *testing.T) {
 
 			rc, err := openCachedLayer(tt.path, tt.mediaType)
 			if tt.wantErr != "" {
-				require.EqualError(t, err, tt.wantErr)
+				require.ErrorContains(t, err, tt.wantErr)
 				return
 			}
 
@@ -226,6 +287,65 @@ func TestOpenCachedLayer(t *testing.T) {
 			require.Equal(t, tt.want, string(got))
 		})
 	}
+}
+
+// TestApplyLayersFromCacheErrorPaths covers reopen and tar replay failures from
+// cached layer blobs.
+func TestApplyLayersFromCacheErrorPaths(t *testing.T) {
+	t.Parallel()
+
+	t.Run("unsupported media type", func(t *testing.T) {
+		t.Parallel()
+
+		root := t.TempDir()
+		layout := artifactCacheLayout{SourceVisibility: imageSourcePublic, SharedPublicLayersDir: filepath.Join(root, sharedPublicLayersDirName)}
+		layerPath, err := layout.layerBlobPath("sha256:deadbeef")
+		require.NoError(t, err)
+		require.NoError(t, os.MkdirAll(filepath.Dir(layerPath), 0o755))
+		require.NoError(t, os.WriteFile(layerPath, []byte("plain"), 0o644))
+
+		err = applyLayersFromCache(layout, []resolvedLayer{{Digest: "sha256:deadbeef", MediaType: types.MediaType("application/vnd.example.unknown")}}, filepath.Join(root, "rootfs"))
+		require.ErrorContains(t, err, "open cached layer sha256:deadbeef")
+	})
+
+	t.Run("invalid tar data", func(t *testing.T) {
+		t.Parallel()
+
+		root := t.TempDir()
+		layout := artifactCacheLayout{SourceVisibility: imageSourcePublic, SharedPublicLayersDir: filepath.Join(root, sharedPublicLayersDirName)}
+		layerPath, err := layout.layerBlobPath("sha256:deadbeef")
+		require.NoError(t, err)
+		require.NoError(t, os.MkdirAll(filepath.Dir(layerPath), 0o755))
+		require.NoError(t, os.WriteFile(layerPath, []byte("not a tar stream"), 0o644))
+
+		err = applyLayersFromCache(layout, []resolvedLayer{{Digest: "sha256:deadbeef", MediaType: types.OCILayer}}, filepath.Join(root, "rootfs"))
+		require.ErrorContains(t, err, "apply layer sha256:deadbeef")
+	})
+}
+
+// TestApplyLayerTarErrorPaths covers malformed tar streams and unsupported tar
+// entry types.
+func TestApplyLayerTarErrorPaths(t *testing.T) {
+	t.Parallel()
+
+	t.Run("malformed tar", func(t *testing.T) {
+		t.Parallel()
+
+		err := applyLayerTar(t.TempDir(), bytes.NewReader([]byte("not a tar stream")))
+		require.ErrorContains(t, err, "read tar entry")
+	})
+
+	t.Run("unsupported tar type", func(t *testing.T) {
+		t.Parallel()
+
+		var buf bytes.Buffer
+		tw := tar.NewWriter(&buf)
+		require.NoError(t, tw.WriteHeader(&tar.Header{Name: "weird", Typeflag: tar.TypeChar, Mode: 0o644}))
+		require.NoError(t, tw.Close())
+
+		err := applyLayerTar(t.TempDir(), bytes.NewReader(buf.Bytes()))
+		require.ErrorContains(t, err, `unsupported tar entry type`)
+	})
 }
 
 // TestBuildEROFS covers the mkfs.erofs command line wiring and output publish
@@ -258,6 +378,30 @@ printf '%%s\n' "$@" > %q
 	require.NoError(t, err)
 	args := strings.Split(strings.TrimSpace(string(content)), "\n")
 	require.Equal(t, []string{"--all-root", "-T", "0", "--all-time", "-z", "lz4", output, rootfs}, args)
+}
+
+// TestBuildEROFSErrorPaths covers the lookup and command failure branches of
+// mkfs.erofs invocation.
+func TestBuildEROFSErrorPaths(t *testing.T) {
+	t.Run("missing mkfs.erofs", func(t *testing.T) {
+		oldPath := os.Getenv("PATH")
+		t.Setenv("PATH", t.TempDir()+string(os.PathListSeparator)+oldPath)
+
+		err := buildEROFS(context.Background(), t.TempDir(), filepath.Join(t.TempDir(), "artifact.erofs"))
+		require.ErrorContains(t, err, "mkfs.erofs not found")
+	})
+
+	t.Run("mkfs.erofs command failure", func(t *testing.T) {
+		binDir := t.TempDir()
+		script := "#!/bin/sh\necho failed >&2\nexit 1\n"
+		require.NoError(t, os.WriteFile(filepath.Join(binDir, "mkfs.erofs"), []byte(script), 0o755))
+		oldPath := os.Getenv("PATH")
+		t.Setenv("PATH", binDir+string(os.PathListSeparator)+oldPath)
+
+		err := buildEROFS(context.Background(), t.TempDir(), filepath.Join(t.TempDir(), "artifact.erofs"))
+		require.ErrorContains(t, err, "build erofs image")
+		require.ErrorContains(t, err, "failed")
+	})
 }
 
 // TestPublishImmutableFile covers the publishing path that makes a temp file
@@ -302,3 +446,109 @@ func TestPublishImmutableFile(t *testing.T) {
 		})
 	}
 }
+
+// TestPublishImmutableFileCacheHitRemoveError covers the cache-hit branch where
+// removing the redundant temp path itself fails.
+func TestPublishImmutableFileCacheHitRemoveError(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	tmpPath := filepath.Join(root, "tmpdir")
+	finalPath := filepath.Join(root, "final.erofs")
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpPath, "child"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpPath, "child", "payload"), []byte("x"), 0o644))
+	require.NoError(t, os.WriteFile(finalPath, []byte("existing"), 0o444))
+
+	err := publishImmutableFile(tmpPath, finalPath)
+	require.ErrorContains(t, err, "remove temp file after cache hit")
+}
+
+// TestEnsureDirAt covers replacing a non-directory entry and the error branch
+// where the parent path shape is invalid.
+func TestEnsureDirAt(t *testing.T) {
+	t.Parallel()
+
+	t.Run("replaces file with directory", func(t *testing.T) {
+		t.Parallel()
+
+		root := t.TempDir()
+		target := filepath.Join(root, "target")
+		require.NoError(t, os.WriteFile(target, []byte("x"), 0o644))
+
+		require.NoError(t, ensureDirAt(target, 0o755))
+		info, err := os.Stat(target)
+		require.NoError(t, err)
+		require.True(t, info.IsDir())
+	})
+
+	t.Run("invalid parent", func(t *testing.T) {
+		t.Parallel()
+
+		root := t.TempDir()
+		blocked := filepath.Join(root, "blocked")
+		require.NoError(t, os.WriteFile(blocked, []byte("x"), 0o644))
+
+		err := ensureDirAt(filepath.Join(blocked, "child"), 0o755)
+		require.Error(t, err)
+	})
+}
+
+// TestRemovePathForReplace covers both successful removal and the error branch
+// when the parent path cannot be traversed.
+func TestRemovePathForReplace(t *testing.T) {
+	t.Parallel()
+
+	t.Run("removes existing path", func(t *testing.T) {
+		t.Parallel()
+
+		root := t.TempDir()
+		target := filepath.Join(root, "target")
+		require.NoError(t, os.WriteFile(target, []byte("x"), 0o644))
+
+		require.NoError(t, removePathForReplace(target))
+		_, err := os.Stat(target)
+		require.ErrorIs(t, err, os.ErrNotExist)
+	})
+
+	t.Run("invalid parent", func(t *testing.T) {
+		t.Parallel()
+
+		root := t.TempDir()
+		blocked := filepath.Join(root, "blocked")
+		require.NoError(t, os.WriteFile(blocked, []byte("x"), 0o644))
+
+		err := removePathForReplace(filepath.Join(blocked, "child"))
+		require.Error(t, err)
+	})
+}
+
+// TestWriteRegularFileError covers the stream-copy failure branch.
+func TestWriteRegularFileError(t *testing.T) {
+	t.Parallel()
+
+	err := writeRegularFile(filepath.Join(t.TempDir(), "file"), errReader{err: errors.New("read failed")}, 0o644)
+	require.ErrorContains(t, err, "read failed")
+}
+
+type errorLayer struct {
+	compressedErr  error
+	compressedData io.ReadCloser
+}
+
+func (l *errorLayer) Digest() (gcrv1.Hash, error) { return gcrv1.Hash{}, nil }
+func (l *errorLayer) DiffID() (gcrv1.Hash, error) { return gcrv1.Hash{}, nil }
+func (l *errorLayer) Uncompressed() (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
+}
+func (l *errorLayer) Size() (int64, error)                { return 0, nil }
+func (l *errorLayer) MediaType() (types.MediaType, error) { return types.OCILayer, nil }
+func (l *errorLayer) Compressed() (io.ReadCloser, error) {
+	if l.compressedErr != nil {
+		return nil, l.compressedErr
+	}
+	return l.compressedData, nil
+}
+
+type errReader struct{ err error }
+
+func (r errReader) Read(_ []byte) (int, error) { return 0, r.err }

@@ -215,6 +215,12 @@ func TestFileExists(t *testing.T) {
 	missing, err := fileExists(filepath.Join(root, "missing.txt"))
 	require.NoError(t, err)
 	require.False(t, missing)
+
+	blockedParent := filepath.Join(root, "blocked")
+	require.NoError(t, os.WriteFile(blockedParent, []byte("x"), 0o644))
+
+	_, err = fileExists(filepath.Join(blockedParent, "child"))
+	require.Error(t, err)
 }
 
 // TestCollectLayerDigests covers ordered projection of resolved layers into
@@ -269,6 +275,82 @@ func TestPlanMaterialization(t *testing.T) {
 	require.Equal(t, []string{"sha256:layer-b"}, plan.MissingLayerDigests)
 	require.Len(t, plan.Layers, 2)
 	require.Equal(t, resolved.Layers, plan.Layers)
+}
+
+// TestPlanMaterializationStatErrors covers planning failures when the cache
+// layout points into an invalid filesystem shape.
+func TestPlanMaterializationStatErrors(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	blocked := filepath.Join(root, "blocked")
+	require.NoError(t, os.WriteFile(blocked, []byte("x"), 0o644))
+
+	resolved := resolvedImageLayers{ImageDigest: "sha256:deadbeef", Layers: []resolvedLayer{{Digest: "sha256:layer-a"}}}
+
+	t.Run("artifact stat error", func(t *testing.T) {
+		t.Parallel()
+
+		layout := artifactCacheLayout{
+			SourceVisibility:      imageSourcePublic,
+			SharedPublicLayersDir: filepath.Join(root, sharedPublicLayersDirName),
+			ArtifactsDir:          filepath.Join(blocked, "artifacts"),
+		}
+
+		_, err := planMaterialization(layout, resolved)
+		require.ErrorContains(t, err, "stat artifact cache")
+	})
+
+	t.Run("layer stat error", func(t *testing.T) {
+		t.Parallel()
+
+		layout := artifactCacheLayout{
+			SourceVisibility:      imageSourcePublic,
+			SharedPublicLayersDir: filepath.Join(blocked, "layers"),
+			ArtifactsDir:          filepath.Join(root, "artifacts"),
+		}
+
+		_, err := planMaterialization(layout, resolved)
+		require.ErrorContains(t, err, "stat layer cache for sha256:layer-a")
+	})
+}
+
+// TestEnsureBaseDirsError covers directory creation failures when a cache root
+// resolves underneath a regular file.
+func TestEnsureBaseDirsError(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	blocked := filepath.Join(root, "blocked")
+	require.NoError(t, os.WriteFile(blocked, []byte("x"), 0o644))
+
+	layout := artifactCacheLayout{
+		SourceVisibility:      imageSourcePublic,
+		SharedPublicLayersDir: filepath.Join(blocked, "layers"),
+		ArtifactsDir:          filepath.Join(root, "artifacts"),
+		TmpDir:                filepath.Join(root, "tmp"),
+	}
+
+	err := layout.ensureBaseDirs()
+	require.ErrorContains(t, err, `create cache dir`)
+}
+
+// TestMaterializeArtifactRejectsInvalidScope covers the top-level wrapper
+// branch that fails before image resolution starts.
+func TestMaterializeArtifactRejectsInvalidScope(t *testing.T) {
+	t.Parallel()
+
+	_, err := materializeArtifact(context.Background(), artifactCacheScope{}, "ghcr.io/acme/app:latest")
+	require.EqualError(t, err, "workspace id is required for artifact cache scope")
+}
+
+// TestResolveImageLayersRejectsInvalidImageReference covers the image
+// resolution error path before any registry interaction succeeds.
+func TestResolveImageLayersRejectsInvalidImageReference(t *testing.T) {
+	t.Parallel()
+
+	_, err := resolveImageLayers(context.Background(), "://not-a-ref")
+	require.ErrorContains(t, err, "fetch image descriptor")
 }
 
 // TestMaterializeArtifactWithLayout exercises the full happy path from OCI
