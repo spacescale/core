@@ -104,8 +104,8 @@ func TestCapacityFreeMathClampsAtZero(t *testing.T) {
 	capacity := NewCapacity(1024, 8)
 	capacity.usedRAMMB = 900
 	capacity.reservedRAMMB = 200
-	capacity.usedPinnedCores = 3
-	capacity.reservedPinnedCores = 2
+	capacity.usedPinnedCores = 4
+	capacity.reservedPinnedCores = 3
 	capacity.usedSharedVCPU = 10
 	capacity.reservedSharedVCPU = 10
 
