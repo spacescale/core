@@ -7,11 +7,11 @@ This repository owns the `controlplane` and `edge daemon` used by [SpaceScale](h
 ## Reference
 
 - **API**: Yaak workspaces in `docs/api/`. Download [Yaak](https://yaak.app/).
-- **Runtime**: [Guest kernel profile](docs/runtime/kernel-profile.md).
+- **Runtime**: [Kernel profile](docs/runtime/kernel-profile.md), [Rootfs requirements](docs/runtime/rootfs-requirements.md).
 
 ## Local Development
 
-The normal control plane development flow runs inside Docker Compose. Read the compose to get the overview of dev setup. `. Start the full environment stack in the background.
+The normal control plane development flow runs inside Docker Compose. Read the compose to get the overview of dev setup. Start the full environment stack in the background.
 
 ```bash
 make compose-start
