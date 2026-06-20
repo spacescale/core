@@ -10,7 +10,7 @@ The guest rootfs is a read-only EROFS image booted by Firecracker. guestd runs a
 
 ## Pre-Created Directories
 
-guestd calls `create_dir_all` before mounting. On read-only EROFS these must already exist:
+These directories must exist in the EROFS image:
 
 ```text
 /proc
@@ -35,15 +35,6 @@ guestd calls `create_dir_all` before mounting. On read-only EROFS these must alr
 | /dev/shm | tmpfs | 64M | Shared memory |
 | /run | tmpfs | 16M | Runtime state, noexec |
 | /tmp | tmpfs | 64M | Scratch space, executable |
-
-## What guestd Does NOT Need
-
-- No `/etc` files (no resolv.conf, hostname, passwd)
-- No shell or helper binaries
-- No `/var/log` (logs stream to host via vsock)
-- No `/home` (no workload supervision yet)
-- No package manager state
-- No shared C library
 
 ## Kernel Cmdline Contract
 
