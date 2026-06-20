@@ -7,7 +7,7 @@ This repository owns the `controlplane` and `edge daemon` used by [SpaceScale](h
 ## Reference
 
 - **API**: Yaak workspaces in `docs/api/`. Download [Yaak](https://yaak.app/).
-- **Runtime**: [Guest kernel profile](docs/runtime/kernel-profile.md).
+- **Runtime**: [Guest kernel profile](docs/runtime/kernel-profile.md), [Guest rootfs requirements](docs/runtime/rootfs-requirements.md).
 
 ## Local Development
 
