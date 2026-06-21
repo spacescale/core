@@ -59,7 +59,7 @@ func (l *Launcher) buildFirecrackerPlan(req LaunchRequest, workspace Workspace, 
 		SocketPath:      workspace.FirecrackerSocketPathInJail(),
 		KernelImagePath: l.runtimePaths.KernelPath,
 		KernelArgs:      guestdKernelArgs,
-		RootFSPath:      workspace.RootFSPath,
+		RootFSPath:      l.runtimePaths.RootFSPath,
 		HostDevName:     network.TapName,
 		MacAddress:      network.GuestMAC,
 		AllowMMDS:       true,
@@ -121,7 +121,7 @@ func firecrackerConfigFromPlan(plan firecrackerPlan, jailerOutput io.Writer) fir
 		SocketPath:      plan.SocketPath,
 		KernelImagePath: plan.KernelImagePath,
 		KernelArgs:      plan.KernelArgs,
-		Drives:          firecracker.NewDrivesBuilder(plan.RootFSPath).Build(),
+		Drives:          firecracker.DrivesBuilder{}.WithRootDrive(plan.RootFSPath, firecracker.WithReadOnly(true)).Build(),
 		NetworkInterfaces: firecracker.NetworkInterfaces{{
 			StaticConfiguration: &firecracker.StaticNetworkConfiguration{
 				HostDevName: plan.HostDevName,
