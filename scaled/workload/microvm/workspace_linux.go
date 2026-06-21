@@ -16,8 +16,6 @@ package microvm
 
 import (
 	"errors"
-	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 )
@@ -63,11 +61,6 @@ type Workspace struct {
 	// JailerRootDir is the final host path that becomes Firecracker's / after the
 	// jailer performs chroot.
 	JailerRootDir string
-
-	// RootFSPath is the copied per-VM root disk that we prepare before launch.
-	// It lives in the outer workspace. Launcher code passes this host path to the
-	// SDK, and the naive chroot strategy makes it visible inside the jail.
-	RootFSPath string
 }
 
 // newWorkspace calculates paths for one microVM without creating them.
@@ -89,7 +82,6 @@ func newWorkspace(rootDir, jailerStateDir, microvmID, firecrackerBinPath string)
 		JailerBaseDir: jailerBaseDir,
 		JailerDir:     jailerDir,
 		JailerRootDir: jailerRootDir,
-		RootFSPath:    filepath.Join(vmRoot, "rootfs.ext4"),
 	}
 }
 
@@ -130,41 +122,13 @@ func (w Workspace) FirecrackerLogPathInJail() string {
 
 // Prepare creates the directories that must exist before launch.
 //
-// The outer workspace holds the copied rootfs and host-managed files. The jail
-// root holds Firecracker-visible runtime paths after chroot.
+// The outer workspace holds host-managed files. The jail root holds
+// Firecracker-visible runtime paths after chroot.
 func (w Workspace) Prepare() error {
 	if err := os.MkdirAll(w.RootDir, 0o755); err != nil {
 		return err
 	}
 	return os.MkdirAll(w.JailerRootDir, 0o755)
-}
-
-// prepareRootFS copies the platform-managed guestd rootfs into the workspace.
-func prepareRootFS(templatePath, targetPath string) error {
-	if err := copyFile(templatePath, targetPath); err != nil {
-		return fmt.Errorf("copy rootfs template: %w", err)
-	}
-	return nil
-}
-
-func copyFile(src, dst string) error {
-	source, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("open source file: %w", err)
-	}
-	defer func() { _ = source.Close() }()
-	dest, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-	if err != nil {
-		return fmt.Errorf("open destination file: %w", err)
-	}
-	defer func() { _ = dest.Close() }()
-	if _, err := io.Copy(dest, source); err != nil {
-		return fmt.Errorf("copy bytes: %w", err)
-	}
-	if err := dest.Sync(); err != nil {
-		return fmt.Errorf("sync destination file: %w", err)
-	}
-	return nil
 }
 
 // Cleanup removes the full UUID workspace and this VM's jailer directory.

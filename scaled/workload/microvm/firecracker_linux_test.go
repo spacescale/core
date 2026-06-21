@@ -90,7 +90,6 @@ func TestBuildFirecrackerPlanBuildsExpectedPlan(t *testing.T) {
 	require.Equal(t, workspace.FirecrackerSocketPathInJail(), plan.SocketPath)
 	require.Equal(t, paths.KernelPath, plan.KernelImagePath)
 	require.Equal(t, guestdKernelArgs, plan.KernelArgs)
-	require.Equal(t, workspace.RootFSPath, plan.RootFSPath)
 	require.Equal(t, network.TapName, plan.HostDevName)
 	require.Equal(t, network.GuestMAC, plan.MacAddress)
 	require.True(t, plan.AllowMMDS)
@@ -139,7 +138,7 @@ func TestFirecrackerConfigFromPlanBuildsSDKConfig(t *testing.T) {
 
 	require.Len(t, cfg.Drives, 1)
 	require.Equal(t, plan.RootFSPath, firecracker.StringValue(cfg.Drives[0].PathOnHost))
-
+	require.True(t, firecracker.BoolValue(cfg.Drives[0].IsReadOnly))
 	require.Equal(t, plan.VCPUCount, firecracker.Int64Value(cfg.MachineCfg.VcpuCount))
 	require.Equal(t, plan.MemSizeMib, firecracker.Int64Value(cfg.MachineCfg.MemSizeMib))
 	require.True(t, firecracker.BoolValue(cfg.MachineCfg.Smt))

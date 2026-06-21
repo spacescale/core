@@ -31,7 +31,6 @@ func TestNewWorkspaceBuildsExpectedPaths(t *testing.T) {
 		"/var/lib/spacescale/j/firecracker-v1.15.1-x86_64/vm-123/root",
 		w.JailerRootDir,
 	)
-	require.Equal(t, "/var/lib/spacescale/microvms/vm-123/rootfs.ext4", w.RootFSPath)
 	require.Equal(
 		t,
 		"/var/lib/spacescale/j/firecracker-v1.15.1-x86_64/vm-123/root/api.sock",
@@ -105,10 +104,6 @@ func TestWorkspacePrepareAndCleanup(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, jailInfo.IsDir())
 
-	// RootFSPath is still a file path to be populated later, not a directory.
-	_, err = os.Stat(w.RootFSPath)
-	require.True(t, os.IsNotExist(err))
-
 	testFile := filepath.Join(w.RootDir, "marker")
 	require.NoError(t, os.WriteFile(testFile, []byte("ok"), 0o644))
 	require.NoError(t, w.Cleanup())
@@ -118,53 +113,6 @@ func TestWorkspacePrepareAndCleanup(t *testing.T) {
 
 	_, err = os.Stat(w.JailerDir)
 	require.True(t, os.IsNotExist(err))
-}
-
-func TestPrepareRootFSCopiesTemplateAsIs(t *testing.T) {
-	tmp := t.TempDir()
-	templatePath := filepath.Join(tmp, "template.ext4")
-	targetPath := filepath.Join(tmp, "rootfs.ext4")
-	templateBytes := []byte("guestd-rootfs-template")
-	require.NoError(t, os.WriteFile(templatePath, templateBytes, 0o644))
-
-	require.NoError(t, prepareRootFS(templatePath, targetPath))
-
-	targetBytes, err := os.ReadFile(targetPath)
-	require.NoError(t, err)
-	require.Equal(t, templateBytes, targetBytes)
-
-	targetInfo, err := os.Stat(targetPath)
-	require.NoError(t, err)
-	require.Equal(t, int64(len(templateBytes)), targetInfo.Size())
-
-	templateInfo, err := os.Stat(templatePath)
-	require.NoError(t, err)
-	require.Equal(t, int64(len(templateBytes)), templateInfo.Size())
-}
-
-func TestPrepareRootFSReturnsCopyErrorWhenTemplateMissing(t *testing.T) {
-	tmp := t.TempDir()
-	templatePath := filepath.Join(tmp, "missing-template.ext4")
-	targetPath := filepath.Join(tmp, "rootfs.ext4")
-
-	err := prepareRootFS(templatePath, targetPath)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "copy rootfs template")
-	require.Contains(t, err.Error(), "open source file")
-}
-
-func TestCopyFileOverwritesExistingTarget(t *testing.T) {
-	tmp := t.TempDir()
-	sourcePath := filepath.Join(tmp, "source")
-	targetPath := filepath.Join(tmp, "target")
-	require.NoError(t, os.WriteFile(sourcePath, []byte("new-rootfs"), 0o644))
-	require.NoError(t, os.WriteFile(targetPath, []byte("old-rootfs-data"), 0o644))
-
-	require.NoError(t, copyFile(sourcePath, targetPath))
-
-	targetBytes, err := os.ReadFile(targetPath)
-	require.NoError(t, err)
-	require.Equal(t, []byte("new-rootfs"), targetBytes)
 }
 
 func TestCleanupStaleStateRemovesMicroVMAndJailerState(t *testing.T) {

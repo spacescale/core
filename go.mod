@@ -16,7 +16,7 @@ require (
 	github.com/nats-io/nats.go v1.52.0
 	github.com/stretchr/testify v1.11.1
 	github.com/vishvananda/netlink v1.3.1
-	github.com/workos/workos-go/v9 v9.2.0
+	github.com/workos/workos-go/v9 v9.3.0
 	golang.org/x/crypto v0.53.0
 	google.golang.org/protobuf v1.36.11
 )
@@ -28,7 +28,7 @@ require (
 	github.com/containernetworking/cni v1.3.0 // indirect
 	github.com/containernetworking/plugins v1.9.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/docker/cli v29.5.3+incompatible // indirect
+	github.com/docker/cli v29.6.0+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.8 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -38,8 +38,8 @@ require (
 	github.com/go-openapi/jsonpointer v0.23.1 // indirect
 	github.com/go-openapi/jsonreference v0.21.6 // indirect
 	github.com/go-openapi/loads v0.24.0 // indirect
-	github.com/go-openapi/runtime v0.32.3 // indirect
-	github.com/go-openapi/runtime/server-middleware v0.32.3 // indirect
+	github.com/go-openapi/runtime v0.32.4 // indirect
+	github.com/go-openapi/runtime/server-middleware v0.32.4 // indirect
 	github.com/go-openapi/spec v0.22.6 // indirect
 	github.com/go-openapi/strfmt v0.26.3 // indirect
 	github.com/go-openapi/swag v0.26.1 // indirect
