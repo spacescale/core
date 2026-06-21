@@ -19,6 +19,8 @@ github.com/docker/cli v29.4.3+incompatible h1:u+UliYm2J/rYrIh2FqHQg32neRG8GjbvNu
 github.com/docker/cli v29.4.3+incompatible/go.mod h1:JLrzqnKDaYBop7H2jaqPtU4hHvMKP+vjCwu2uszcLI8=
 github.com/docker/cli v29.5.3+incompatible h1:nbEFfz774vBwQ5KRYv7c/AghjReqnGISvrRhzjV0evs=
 github.com/docker/cli v29.5.3+incompatible/go.mod h1:JLrzqnKDaYBop7H2jaqPtU4hHvMKP+vjCwu2uszcLI8=
+github.com/docker/cli v29.6.0+incompatible h1:nw9himxMMZ7eIeherJNlKQq+acnlzGgHd+4uf10QRSc=
+github.com/docker/cli v29.6.0+incompatible/go.mod h1:JLrzqnKDaYBop7H2jaqPtU4hHvMKP+vjCwu2uszcLI8=
 github.com/docker/docker-credential-helpers v0.9.3 h1:gAm/VtF9wgqJMoxzT3Gj5p4AqIjCBS4wrsOh9yRqcz8=
 github.com/docker/docker-credential-helpers v0.9.3/go.mod h1:x+4Gbw9aGmChi3qTLZj8Dfn0TD20M/fuWy0E5+WDeCo=
 github.com/docker/docker-credential-helpers v0.9.8 h1:bIREROb7So6PRlq6KTtdS9MPEjC29OQRkFNlvK2OX8Q=
@@ -48,8 +50,12 @@ github.com/go-openapi/loads v0.24.0 h1:4LLorXRPTzIN9V6ngMUZbAscsBOUBk3Oa8cClu/bF
 github.com/go-openapi/loads v0.24.0/go.mod h1:xQMgX+hw5xRAhGrcDXxeMw78IFqUpIzhleu3HqPhyF4=
 github.com/go-openapi/runtime v0.32.3 h1:J7Ycy5DJmhhP1By3NifhRUjnkXTrk21qbeqSULjwX8U=
 github.com/go-openapi/runtime v0.32.3/go.mod h1:/WTQi0fa5DiGnnCXQKsTkSm15OzJp8Uz3H2t+67TBr4=
+github.com/go-openapi/runtime v0.32.4 h1:8ElGj/3goG0itt0nBPP6Cm57ehcYyuHoI3O20nxgvkw=
+github.com/go-openapi/runtime v0.32.4/go.mod h1:Bz6keOZw1NX4T6f+m42OoT1MBPDt6Re13dbccHyGH/4=
 github.com/go-openapi/runtime/server-middleware v0.32.3 h1:Y/6h9ix9NCoMG04XazRwX6eA3alh4+JZ6qXdar5yd24=
 github.com/go-openapi/runtime/server-middleware v0.32.3/go.mod h1:fYPep4GdTwg/XqZUjR40uIM/8C12Ba5M+MrGCiwpTHo=
+github.com/go-openapi/runtime/server-middleware v0.32.4 h1:AU6eLMq9CXwh8f6kC1pivtkz+7lfo3TmakMBbUisKME=
+github.com/go-openapi/runtime/server-middleware v0.32.4/go.mod h1:fYPep4GdTwg/XqZUjR40uIM/8C12Ba5M+MrGCiwpTHo=
 github.com/go-openapi/spec v0.22.5 h1:KhO7RBlKQfonUWX2WzQCoLIXVA6AcNqDGZ3a1Dutdlo=
 github.com/go-openapi/spec v0.22.5/go.mod h1:vxpOtMya5TXtENXKE5bKqv5NjocVhyhxHrlZfvKnZ74=
 github.com/go-openapi/spec v0.22.6 h1:Tyy1pLaNCM8GBCFLoGYLonjJi6zykqyLCjXLc19ZPic=
@@ -183,6 +189,8 @@ github.com/workos/workos-go/v9 v9.1.0 h1:idEreIDXAUDsmGvgTUShU/FSKQvGeQ1/fBLDgix
 github.com/workos/workos-go/v9 v9.1.0/go.mod h1:LmCsltyof8Hn6evswUhMWzWPj4jM41MKUpsb4LuRV4E=
 github.com/workos/workos-go/v9 v9.2.0 h1:1r+NfYtJP2QeXhKrI4SSFbR0XrR7KeU3kcVBObz6QCg=
 github.com/workos/workos-go/v9 v9.2.0/go.mod h1:LmCsltyof8Hn6evswUhMWzWPj4jM41MKUpsb4LuRV4E=
+github.com/workos/workos-go/v9 v9.3.0 h1:BWaWKGmuU0EAvvMK1/trf9cMtoco68x5Q1cIewnQgs0=
+github.com/workos/workos-go/v9 v9.3.0/go.mod h1:LmCsltyof8Hn6evswUhMWzWPj4jM41MKUpsb4LuRV4E=
 github.com/zeebo/assert v1.3.0 h1:g7C04CbJuIDKNPFHmsk4hwZDO5O+kntRxzaUoNXj+IQ=
 github.com/zeebo/assert v1.3.0/go.mod h1:Pq9JiuJQpG8JLJdtkwrJESF0Foym2/D9XMU5ciN/wJ0=
 github.com/zeebo/xxh3 v1.1.0 h1:s7DLGDK45Dyfg7++yxI0khrfwq9661w9EN78eP/UZVs=

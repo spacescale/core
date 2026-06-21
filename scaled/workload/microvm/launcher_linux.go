@@ -22,7 +22,7 @@ import (
 // guest. It keeps the Firecracker device model small, leaves panic/error output
 // on the serial console, mounts the root disk, and gives guestd enough bootstrap
 // network metadata to finish initialization.
-const guestdKernelArgs = "console=ttyS0 quiet loglevel=3 reboot=k panic=-1 pci=off acpi=off nomodule rw root=/dev/vda guestd.ipv4=172.16.0.2/30 guestd.gateway=172.16.0.1 guestd.mmds=169.254.169.254"
+const guestdKernelArgs = "console=ttyS0 quiet loglevel=3 reboot=k panic=-1 pci=off acpi=off nomodule ro root=/dev/vda guestd.ipv4=172.16.0.2/30 guestd.gateway=172.16.0.1 guestd.mmds=169.254.169.254"
 
 // LaunchRequest is the local, transport-free guestd boot request.
 //
@@ -182,24 +182,10 @@ func (l *Launcher) newActiveVM(ctx context.Context, req LaunchRequest) (*ActiveV
 }
 
 // prepareVM creates every host-side resource that must exist before Firecracker
-// starts: workspace directories, rootfs copy, jailer ownership, CID, vsock
-// listeners, and TAP networking.
+// starts: workspace directories, CID, vsock listeners, and TAP networking.
 func (l *Launcher) prepareVM(vm *ActiveVM) error {
 	if err := vm.Workspace.Prepare(); err != nil {
 		return fmt.Errorf("prepare workspace: %w", err)
-	}
-
-	if err := prepareRootFS(l.runtimePaths.RootFSPath, vm.Workspace.RootFSPath); err != nil {
-		return err
-	}
-
-	// The copied rootfs is opened by Firecracker after the jailer drops privileges.
-	// Give the fixed jailer account ownership while keeping the image private.
-	if err := os.Chown(vm.Workspace.RootFSPath, l.jailerUID, l.jailerGID); err != nil {
-		return fmt.Errorf("chown rootfs for jailer user: %w", err)
-	}
-	if err := os.Chmod(vm.Workspace.RootFSPath, 0o640); err != nil {
-		return fmt.Errorf("chmod rootfs for jailer user: %w", err)
 	}
 
 	cid, err := l.cids.Acquire()

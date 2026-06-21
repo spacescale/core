@@ -32,7 +32,7 @@ const (
 	defaultFirecrackerPath = "/usr/bin/firecracker"
 	defaultJailerPath      = "/usr/bin/jailer"
 	defaultKernelPath      = "/var/lib/spacescale/golden/vmlinux"
-	defaultRootFSPath = "/var/lib/spacescale/golden/rootfs.ext4"
+	defaultRootFSPath      = "/var/lib/spacescale/golden/rootfs.erofs"
 )
 
 const (
