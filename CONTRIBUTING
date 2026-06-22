@@ -38,6 +38,6 @@ Contributing Guidelines
 
       Write concise commit messages that describe what changed and why.
       Use the imperative mood. Prefix with a type when appropriate:
- feat, fix, docs, ci, chore.
+      feat, fix, docs, ci, chore.
 
    END OF GUIDELINES
