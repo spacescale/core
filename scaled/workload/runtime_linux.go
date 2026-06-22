@@ -34,14 +34,14 @@ func Start(ctx context.Context, logger *slog.Logger, info node.Info, nc *nats.Cl
 	capacity := NewCapacity(info.Snapshot.TotalRAMMb, info.Snapshot.TotalThreads)
 	microvmLauncher := microvm.NewLauncher(logger, info.RuntimePaths, info.JailerIdentity)
 	bidder := NewBidder(logger, capacity, info.Identity.NodeID, info.Snapshot.BootID, info.Identity.Region)
-	launchHandler := newLaunchHandler(logger, capacity, info.Snapshot.BootID, microvmLauncher)
+	executor := newExecutor(logger, capacity, info.Snapshot.BootID, microvmLauncher)
 
 	auctionSubject, err := bidder.Register(ctx, nc)
 	if err != nil {
 		return fmt.Errorf("register bidder: %w", err)
 	}
 
-	launchSubject, err := launchHandler.register(ctx, nc)
+	launchSubject, err := executor.register(ctx, nc)
 	if err != nil {
 		return fmt.Errorf("register launch handler: %w", err)
 	}

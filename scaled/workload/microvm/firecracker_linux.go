@@ -19,21 +19,22 @@ import (
 // the plan with (*Launcher).buildFirecrackerPlan, then translate it to the
 // SDK Config with firecrackerConfigFromPlan.
 type firecrackerPlan struct {
-	SocketPath      string
-	KernelImagePath string
-	KernelArgs      string
-	RootFSPath      string
-	HostDevName     string
-	MacAddress      string
-	AllowMMDS       bool
-	LogPath         string
-	VCPUCount       int64
-	MemSizeMib      int64
-	Smt             bool
-	VSockID         string
-	VSockPath       string
-	VSockCID        uint32
-	MMDSAddress     net.IP
+	SocketPath        string
+	KernelImagePath   string
+	KernelArgs        string
+	RootFSPath        string
+	WorkloadImagePath string
+	HostDevName       string
+	MacAddress        string
+	AllowMMDS         bool
+	LogPath           string
+	VCPUCount         int64
+	MemSizeMib        int64
+	Smt               bool
+	VSockID           string
+	VSockPath         string
+	VSockCID          uint32
+	MMDSAddress       net.IP
 
 	Jailer firecrackerPlanJailer
 }
@@ -56,21 +57,22 @@ type firecrackerPlanJailer struct {
 // exact configuration that was sent to Firecracker.
 func (l *Launcher) buildFirecrackerPlan(req LaunchRequest, workspace Workspace, cid uint32, network *Network) firecrackerPlan {
 	return firecrackerPlan{
-		SocketPath:      workspace.FirecrackerSocketPathInJail(),
-		KernelImagePath: l.runtimePaths.KernelPath,
-		KernelArgs:      guestdKernelArgs,
-		RootFSPath:      l.runtimePaths.RootFSPath,
-		HostDevName:     network.TapName,
-		MacAddress:      network.GuestMAC,
-		AllowMMDS:       true,
-		LogPath:         workspace.FirecrackerLogPathInJail(),
-		VCPUCount:       int64(req.VCPU),
-		MemSizeMib:      int64(req.RAMMB),
-		Smt:             true,
-		VSockID:         "guestd",
-		VSockPath:       workspace.VSockPathInJail(),
-		VSockCID:        cid,
-		MMDSAddress:     network.MMDSIP,
+		SocketPath:        workspace.FirecrackerSocketPathInJail(),
+		KernelImagePath:   l.runtimePaths.KernelPath,
+		KernelArgs:        guestdKernelArgs,
+		RootFSPath:        l.runtimePaths.RootFSPath,
+		WorkloadImagePath: req.WorkloadImagePath,
+		HostDevName:       network.TapName,
+		MacAddress:        network.GuestMAC,
+		AllowMMDS:         true,
+		LogPath:           workspace.FirecrackerLogPathInJail(),
+		VCPUCount:         int64(req.VCPU),
+		MemSizeMib:        int64(req.RAMMB),
+		Smt:               true,
+		VSockID:           "guestd",
+		VSockPath:         workspace.VSockPathInJail(),
+		VSockCID:          cid,
+		MMDSAddress:       network.MMDSIP,
 		Jailer: firecrackerPlanJailer{
 			UID:           l.jailerUID,
 			GID:           l.jailerGID,
@@ -121,7 +123,10 @@ func firecrackerConfigFromPlan(plan firecrackerPlan, jailerOutput io.Writer) fir
 		SocketPath:      plan.SocketPath,
 		KernelImagePath: plan.KernelImagePath,
 		KernelArgs:      plan.KernelArgs,
-		Drives:          firecracker.DrivesBuilder{}.WithRootDrive(plan.RootFSPath, firecracker.WithReadOnly(true)).Build(),
+		Drives: firecracker.DrivesBuilder{}.
+			WithRootDrive(plan.RootFSPath, firecracker.WithReadOnly(true)).
+			AddDrive(plan.WorkloadImagePath, true, firecracker.WithDriveID("workload")).
+			Build(),
 		NetworkInterfaces: firecracker.NetworkInterfaces{{
 			StaticConfiguration: &firecracker.StaticNetworkConfiguration{
 				HostDevName: plan.HostDevName,

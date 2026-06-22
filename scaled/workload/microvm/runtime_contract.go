@@ -50,6 +50,13 @@ func runtimeMetadataDocument(req LaunchRequest) map[string]any {
 		runtime.RuntimePort = new(req.RuntimePort)
 	}
 
+	if req.WorkloadImagePath != "" {
+		runtime.Artifact = &workloadArtifactRef{
+			Digest: req.ImageDigest,
+			Format: "erofs",
+		}
+	}
+
 	return map[string]any{
 		"version":    uint32(1),
 		"microvm_id": req.MicroVMID,

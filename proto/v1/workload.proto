@@ -41,6 +41,7 @@ message MicroVMLaunchRequest {
   string image_ref = 3;
   map<string, string> env = 4;
   uint32 runtime_port = 5;
+  string workspace_id = 6;
 }
 
 // Returned by the scaled daemon to acknowledge the launch intent.

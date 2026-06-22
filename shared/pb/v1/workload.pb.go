@@ -257,6 +257,7 @@ type MicroVMLaunchRequest struct {
 	ImageRef      string                 `protobuf:"bytes,3,opt,name=image_ref,json=imageRef,proto3" json:"image_ref,omitempty"`
 	Env           map[string]string      `protobuf:"bytes,4,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	RuntimePort   uint32                 `protobuf:"varint,5,opt,name=runtime_port,json=runtimePort,proto3" json:"runtime_port,omitempty"`
+	WorkspaceId   string                 `protobuf:"bytes,6,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -324,6 +325,13 @@ func (x *MicroVMLaunchRequest) GetRuntimePort() uint32 {
 		return x.RuntimePort
 	}
 	return 0
+}
+
+func (x *MicroVMLaunchRequest) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
 }
 
 // Returned by the scaled daemon to acknowledge the launch intent.
@@ -395,14 +403,15 @@ const file_proto_v1_workload_proto_rawDesc = "" +
 	"\x05shape\x18\x02 \x01(\v2\x1b.spacescale.v1.MicroVMShapeR\x05shape\"@\n" +
 	"\fAuctionReply\x12\x17\n" +
 	"\anode_id\x18\x02 \x01(\tR\x06nodeId\x12\x17\n" +
-	"\aboot_id\x18\x03 \x01(\tR\x06bootId\"\xa0\x02\n" +
+	"\aboot_id\x18\x03 \x01(\tR\x06bootId\"\xc3\x02\n" +
 	"\x14MicroVMLaunchRequest\x12\x1d\n" +
 	"\n" +
 	"microvm_id\x18\x01 \x01(\tR\tmicrovmId\x121\n" +
 	"\x05shape\x18\x02 \x01(\v2\x1b.spacescale.v1.MicroVMShapeR\x05shape\x12\x1b\n" +
 	"\timage_ref\x18\x03 \x01(\tR\bimageRef\x12>\n" +
 	"\x03env\x18\x04 \x03(\v2,.spacescale.v1.MicroVMLaunchRequest.EnvEntryR\x03env\x12!\n" +
-	"\fruntime_port\x18\x05 \x01(\rR\vruntimePort\x1a6\n" +
+	"\fruntime_port\x18\x05 \x01(\rR\vruntimePort\x12!\n" +
+	"\fworkspace_id\x18\x06 \x01(\tR\vworkspaceId\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"X\n" +
