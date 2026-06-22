@@ -240,6 +240,7 @@ func TestResolveLaunchRequestUsesResolvedOCIConfig(t *testing.T) {
 			"REQUEST_ONLY": "yes",
 		},
 		0,
+		"/path/to/artifact.erofs",
 		resolvedOCIConfig{
 			ImageDigest: "sha256:abc123",
 			Entrypoint:  []string{"node"},
@@ -280,6 +281,7 @@ func TestResolveLaunchRequestPrefersRequestedRuntimePort(t *testing.T) {
 		"ghcr.io/acme/app:latest",
 		nil,
 		9090,
+		"/path/to/artifact.erofs",
 		resolvedOCIConfig{
 			ImageDigest:  "sha256:abc123",
 			Entrypoint:   []string{"node"},
@@ -300,6 +302,7 @@ func TestResolveLaunchRequestLeavesRuntimePortUnknownWithoutSingleImagePort(t *t
 		"ghcr.io/acme/app:latest",
 		nil,
 		0,
+		"/path/to/artifact.erofs",
 		resolvedOCIConfig{
 			ImageDigest:  "sha256:abc123",
 			Entrypoint:   []string{"node"},

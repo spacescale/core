@@ -253,6 +253,7 @@ func resolveLaunchRequest(
 	imageRef string,
 	requestEnv map[string]string,
 	requestRuntimePort uint32,
+	artifactPath string,
 	cfg resolvedOCIConfig,
 ) (microvm.LaunchRequest, error) {
 	command, err := resolveLaunchCommand(cfg.Entrypoint, cfg.Cmd)
@@ -261,16 +262,17 @@ func resolveLaunchRequest(
 	}
 
 	return microvm.LaunchRequest{
-		MicroVMID:   microvmID,
-		VCPU:        spec.VCPU,
-		RAMMB:       spec.RAM,
-		ImageRef:    imageRef,
-		ImageDigest: cfg.ImageDigest,
-		Command:     command,
-		WorkingDir:  cfg.WorkingDir,
-		User:        cfg.User,
-		Env:         mergeEnv(cfg.Env, requestEnv),
-		RuntimePort: resolveRuntimePort(requestRuntimePort, cfg.ExposedPorts),
+		MicroVMID:         microvmID,
+		VCPU:              spec.VCPU,
+		RAMMB:             spec.RAM,
+		ImageRef:          imageRef,
+		ImageDigest:       cfg.ImageDigest,
+		WorkloadImagePath: artifactPath,
+		Command:           command,
+		WorkingDir:        cfg.WorkingDir,
+		User:              cfg.User,
+		Env:               mergeEnv(cfg.Env, requestEnv),
+		RuntimePort:       resolveRuntimePort(requestRuntimePort, cfg.ExposedPorts),
 	}, nil
 }
 
