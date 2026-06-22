@@ -34,13 +34,14 @@ type LaunchRequest struct {
 	VCPU      uint32
 	RAMMB     uint64
 
-	ImageRef    string
-	ImageDigest string
-	Command     []string
-	WorkingDir  string
-	User        string
-	Env         map[string]string
-	RuntimePort uint32
+	ImageRef          string
+	ImageDigest       string
+	WorkloadImagePath string
+	Command           []string
+	WorkingDir        string
+	User              string
+	Env               map[string]string
+	RuntimePort       uint32
 }
 
 // ActiveVM is the in-memory record for a VM launched by this scaled process.

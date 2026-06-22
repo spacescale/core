@@ -56,7 +56,8 @@ func firecrackerPlanFixture() firecrackerPlan {
 		SocketPath:      "api.sock",
 		KernelImagePath: "/var/lib/spacescale/golden/vmlinux",
 		KernelArgs:      guestdKernelArgs,
-		RootFSPath:      "/var/lib/spacescale/microvms/vm-123/rootfs.ext4",
+		RootFSPath:        "/var/lib/spacescale/golden/rootfs.erofs",
+		WorkloadImagePath: "/var/lib/spacescale/workloads/workspaces/ws-1/artifacts/sha256/abc123/artifact.erofs",
 		HostDevName:     "tapvm123",
 		MacAddress:      "02:53:aa:bb:cc:dd",
 		AllowMMDS:       true,
@@ -136,9 +137,13 @@ func TestFirecrackerConfigFromPlanBuildsSDKConfig(t *testing.T) {
 	require.Equal(t, plan.MMDSAddress, cfg.MmdsAddress)
 	require.Equal(t, firecracker.MMDSv2, cfg.MmdsVersion)
 
-	require.Len(t, cfg.Drives, 1)
-	require.Equal(t, plan.RootFSPath, firecracker.StringValue(cfg.Drives[0].PathOnHost))
+	require.Len(t, cfg.Drives, 2)
+	require.Equal(t, plan.WorkloadImagePath, firecracker.StringValue(cfg.Drives[0].PathOnHost))
 	require.True(t, firecracker.BoolValue(cfg.Drives[0].IsReadOnly))
+	require.False(t, firecracker.BoolValue(cfg.Drives[0].IsRootDevice))
+	require.Equal(t, plan.RootFSPath, firecracker.StringValue(cfg.Drives[1].PathOnHost))
+	require.True(t, firecracker.BoolValue(cfg.Drives[1].IsReadOnly))
+	require.True(t, firecracker.BoolValue(cfg.Drives[1].IsRootDevice))
 	require.Equal(t, plan.VCPUCount, firecracker.Int64Value(cfg.MachineCfg.VcpuCount))
 	require.Equal(t, plan.MemSizeMib, firecracker.Int64Value(cfg.MachineCfg.MemSizeMib))
 	require.True(t, firecracker.BoolValue(cfg.MachineCfg.Smt))
