@@ -1,0 +1,64 @@
+name: Kernel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/runtime/vmlinux.config
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  KERNEL_VERSION: 6.1.169
+
+jobs:
+  build:
+    name: build kernel
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libncurses-dev \
+            bison \
+            flex \
+            libssl-dev \
+            libelf-dev \
+            bc \
+            cpio \
+            python3
+
+      - name: Cache kernel source
+        uses: actions/cache@v4
+        with:
+          path: linux-${{ env.KERNEL_VERSION }}.tar.xz
+          key: kernel-src-${{ env.KERNEL_VERSION }}
+
+      - name: Download kernel source
+        run: |
+          if [ ! -f linux-${KERNEL_VERSION}.tar.xz ]; then
+            wget -q https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${KERNEL_VERSION}.tar.xz
+          fi
+          tar xf linux-${KERNEL_VERSION}.tar.xz
+
+      - name: Configure kernel
+        run: |
+          cp docs/runtime/vmlinux.config linux-${KERNEL_VERSION}/.config
+          make -C linux-${KERNEL_VERSION} ARCH=x86_64 olddefconfig
+
+      - name: Build vmlinux
+        run: make -C linux-${KERNEL_VERSION} ARCH=x86_64 -j$(nproc) vmlinux
+
+      - name: Upload vmlinux artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: vmlinux
+          path: linux-${{ env.KERNEL_VERSION }}/vmlinux
