@@ -280,7 +280,10 @@ func openCachedLayer(path string, mediaType types.MediaType) (_ io.ReadCloser, e
 	//exhaustive:ignore Non-layer media types are rejected below.
 	switch mediaType {
 	case types.OCILayer, types.DockerLayer:
-		return file, nil
+		// Both OCILayer (application/vnd.oci.image.layer.v1.tar+gzip) and
+		// DockerLayer (application/vnd.docker.image.rootfs.diff.tar.gzip) are
+		// gzip-compressed tars. Decompress before handing to the tar reader.
+		return openGzipLayer(file)
 	case types.OCILayerZStd:
 		return openZstdLayer(file)
 	default:
@@ -330,7 +333,7 @@ func buildEROFS(ctx context.Context, rootfsDir, outputPath string) error {
 		return fmt.Errorf("mkfs.erofs not found: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "mkfs.erofs", "--all-root", "-T", "0", "--all-time", "-z", "lz4", outputPath, rootfsDir)
+	cmd := exec.CommandContext(ctx, "mkfs.erofs", "--all-root", "-T", "0", "-z", "lz4", outputPath, rootfsDir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
