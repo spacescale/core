@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_i6cJAdx7rD
 createdAt: 2026-06-12T00:12:22.524877
-updatedAt: 2026-06-12T00:12:22.524878
+updatedAt: 2026-06-23T16:20:43.566173
 workspaceId: wk_KJF6oyHis3
 folderId: fl_Li7KvtnFs3
 authentication: {}
@@ -10,7 +10,7 @@ authenticationType: null
 body:
   text: |-
     {
-      "name": "workspace-02"
+      "name": "current-session"
     }
 bodyType: application/json
 description: |-

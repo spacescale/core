@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_8zB8adZm8e
 createdAt: 2026-06-12T00:12:22.522815
-updatedAt: 2026-06-12T00:12:22.522816
+updatedAt: 2026-06-23T16:23:03.856569
 workspaceId: wk_KJF6oyHis3
 folderId: fl_jaDE9zCGLD
 authentication: {}
@@ -10,8 +10,8 @@ authenticationType: null
 body:
   text: |-
     {
-      "name": "manual-e2e-6-d3331-8887890787867",
-      "imageRef": "ghcr.io/acme/spacescale-api:latestjh",
+      "name": "test",
+      "imageRef": "docker.io/library/nginx:alpine",
       "compute": {
         "vcpu": 2,
         "memoryMb": 2048,
@@ -19,15 +19,8 @@ body:
       },
       "primaryRegion": "${[ PRIMARY_REGION ]}",
       "runtimePort": 8080,
-      "isPublic": false,
-      "registryCredentialId": "",
-      "envVars": [
-        {
-          "key": "DATABASE_URL",
-          "value": "postgres://app:pass@db:5432/app",
-          "isSecret": true
-        }
-      ]
+      "isPublic": true,
+
     }
 bodyType: application/json
 description: |-
