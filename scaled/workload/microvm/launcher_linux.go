@@ -127,7 +127,15 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 		return nil, fmt.Errorf("get firecracker pid for core scheduling: %w", err)
 	}
 	if err := assignCoreSchedCookie(pid); err != nil {
-		return nil, fmt.Errorf("assign core scheduling cookie: %w", err)
+		if os.Getenv("ENVIRONMENT") == "development" {
+			l.logger.Warn("core scheduling cookie not assigned, skipping in development mode",
+				"microvm_id", req.MicroVMID,
+				"pid", pid,
+				"error", err,
+			)
+		} else {
+			return nil, fmt.Errorf("assign core scheduling cookie: %w", err)
+		}
 	}
 
 	vmmExit := waitForMachine(vmCtx, vm.machine)
@@ -375,7 +383,10 @@ func (l *Launcher) watchVM(vm *ActiveVM, vmmExit <-chan error) {
 
 	l.removeActiveIfSame(vm)
 
-	if err := l.cleanupActive(vm, false, true); err != nil {
+	// In development mode keep the workspace so guestd.log and jailer.log
+	// survive for inspection after the VM exits.
+	removeWorkspace := os.Getenv("ENVIRONMENT") != "development"
+	if err := l.cleanupActive(vm, false, removeWorkspace); err != nil {
 		l.logger.Warn("cleanup exited microvm",
 			"microvm_id", vm.MicroVMID,
 			"error", err,
