@@ -142,6 +142,7 @@ func (s *Server) handleCreateWorkload(responseWriter http.ResponseWriter, reques
 			WorkloadID:   result.WorkloadID,
 			DeploymentID: result.DeploymentID,
 			MicroVMID:    result.MicroVMID,
+			WorkspaceID:  workspaceID,
 			Region:       result.Workload.PrimaryRegion,
 			Shape:        result.Shape,
 			ImageRef:     result.Workload.ImageRef,

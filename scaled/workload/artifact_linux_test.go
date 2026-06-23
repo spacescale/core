@@ -5,6 +5,7 @@ package workload
 import (
 	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"io"
 	"net/http/httptest"
@@ -397,8 +398,8 @@ func TestMaterializeArtifactWithLayout(t *testing.T) {
 	counterFile := filepath.Join(t.TempDir(), "mkfs-count.txt")
 	script := `#!/bin/sh
 set -eu
-rootfs="$8"
-output="$7"
+rootfs="$7"
+output="$6"
 {
   find "$rootfs" -mindepth 1 | sort
   printf 'symlink:%s\n' "$(readlink "$rootfs/usr/bin/tool-link")"
@@ -454,8 +455,9 @@ type tarEntry struct {
 func mustLayerFromEntries(t *testing.T, entries []tarEntry) gcrv1.Layer {
 	t.Helper()
 
-	var buf bytes.Buffer
-	tw := tar.NewWriter(&buf)
+	// Build the uncompressed tar in memory.
+	var rawBuf bytes.Buffer
+	tw := tar.NewWriter(&rawBuf)
 	for _, entry := range entries {
 		hdr := entry.header
 		// Treat Mode==0 as "unspecified" in test fixtures and default to a
@@ -478,13 +480,26 @@ func mustLayerFromEntries(t *testing.T, entries []tarEntry) gcrv1.Layer {
 	}
 	require.NoError(t, tw.Close())
 
-	digest, _, err := gcrv1.SHA256(bytes.NewReader(buf.Bytes()))
+	// diffID is the digest of the uncompressed tar (OCI spec).
+	diffID, _, err := gcrv1.SHA256(bytes.NewReader(rawBuf.Bytes()))
+	require.NoError(t, err)
+
+	// OCILayer blobs are gzip-compressed. Compress the tar so the cached blob
+	// that openCachedLayer receives is a real gzip stream.
+	var gzBuf bytes.Buffer
+	gw := gzip.NewWriter(&gzBuf)
+	_, err = gw.Write(rawBuf.Bytes())
+	require.NoError(t, err)
+	require.NoError(t, gw.Close())
+
+	// digest is the digest of the compressed blob (what the registry stores).
+	digest, _, err := gcrv1.SHA256(bytes.NewReader(gzBuf.Bytes()))
 	require.NoError(t, err)
 
 	return &testLayer{
 		digest:    digest,
-		diffID:    digest,
-		data:      append([]byte(nil), buf.Bytes()...),
+		diffID:    diffID,
+		data:      append([]byte(nil), gzBuf.Bytes()...),
 		mediaType: gcrv1types.OCILayer,
 	}
 }

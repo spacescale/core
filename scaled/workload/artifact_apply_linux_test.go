@@ -261,9 +261,11 @@ func TestOpenCachedLayer(t *testing.T) {
 		want      string
 		wantErr   string
 	}{
-		{name: "plain layer", path: plainPath, mediaType: types.OCILayer, want: "plain"},
-		{name: "docker layer", path: plainPath, mediaType: types.DockerLayer, want: "plain"},
-		{name: "gzip layer", path: gzipPath, mediaType: types.MediaType("application/vnd.example.layer+gzip"), want: "gzip"},
+		{name: "oci layer decompresses gzip", path: gzipPath, mediaType: types.OCILayer, want: "gzip"},
+		{name: "docker layer decompresses gzip", path: gzipPath, mediaType: types.DockerLayer, want: "gzip"},
+		{name: "oci layer rejects non-gzip content", path: badGzipPath, mediaType: types.OCILayer, wantErr: "EOF"},
+		{name: "docker layer rejects non-gzip content", path: badGzipPath, mediaType: types.DockerLayer, wantErr: "EOF"},
+		{name: "gzip fallback via media type string", path: gzipPath, mediaType: types.MediaType("application/vnd.example.layer+gzip"), want: "gzip"},
 		{name: "zstd layer", path: zstdPath, mediaType: types.OCILayerZStd, want: "zstd"},
 		{name: "invalid gzip layer", path: badGzipPath, mediaType: types.MediaType("application/vnd.example.layer+gzip"), wantErr: "unexpected EOF"},
 		{name: "unsupported media type", path: unsupportedPath, mediaType: types.MediaType("application/vnd.example.unknown"), wantErr: `unsupported layer media type "application/vnd.example.unknown"`},
@@ -319,7 +321,7 @@ func TestApplyLayersFromCacheErrorPaths(t *testing.T) {
 		require.NoError(t, os.WriteFile(layerPath, []byte("not a tar stream"), 0o644))
 
 		err = applyLayersFromCache(layout, []resolvedLayer{{Digest: "sha256:deadbeef", MediaType: types.OCILayer}}, filepath.Join(root, "rootfs"))
-		require.ErrorContains(t, err, "apply layer sha256:deadbeef")
+		require.ErrorContains(t, err, "open cached layer sha256:deadbeef")
 	})
 }
 
@@ -359,7 +361,7 @@ func TestBuildEROFS(t *testing.T) {
 	script := fmt.Sprintf(`#!/bin/sh
 set -eu
 printf '%%s\n' "$@" > %q
-: > "$7"
+: > "$6"
 `, argsFile)
 	require.NoError(t, os.WriteFile(filepath.Join(binDir, "mkfs.erofs"), []byte(script), 0o755))
 	prevPath := os.Getenv("PATH")
@@ -374,7 +376,7 @@ printf '%%s\n' "$@" > %q
 	content, err := os.ReadFile(argsFile)
 	require.NoError(t, err)
 	args := strings.Split(strings.TrimSpace(string(content)), "\n")
-	require.Equal(t, []string{"--all-root", "-T", "0", "--all-time", "-z", "lz4", output, rootfs}, args)
+	require.Equal(t, []string{"--all-root", "-T", "0", "-z", "lz4", output, rootfs}, args)
 }
 
 // TestBuildEROFSErrorPaths covers the lookup and command failure branches of

@@ -42,6 +42,7 @@ type Request struct {
 	WorkloadID   uuid.UUID
 	DeploymentID uuid.UUID
 	MicroVMID    uuid.UUID
+	WorkspaceID  string
 
 	Region      string
 	Shape       *pb.MicroVMShape
@@ -102,6 +103,7 @@ func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 		nats.NodeMicroVMLaunchSubject(winner.BootID),
 		&pb.MicroVMLaunchRequest{
 			MicrovmId:   req.MicroVMID.String(),
+			WorkspaceId: req.WorkspaceID,
 			Shape:       req.Shape,
 			ImageRef:    req.ImageRef,
 			Env:         req.Env,
