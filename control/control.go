@@ -102,7 +102,7 @@ func openDB(ctx context.Context, cfg config.Control) (*pgxpool.Pool, error) {
 func runControlPlane(ctx context.Context, log *slog.Logger, listenAddr string, apiServer *api.Server) error {
 	serverErr := make(chan error, 1)
 	go func() {
-		log.Info("controlp listening", "component", "controlp", "addr", listenAddr)
+	log.Info("controlp listening", "addr", listenAddr)
 		serverErr <- apiServer.Start()
 	}()
 

@@ -141,7 +141,7 @@ type FirecrackerJailerIdentity struct {
 // preflight prepares the host before scaled joins the workload fabric. It returns
 // the jailer identity that later Firecracker launches should use.
 func preflight(ctx context.Context, logger *slog.Logger) (FirecrackerJailerIdentity, error) {
-	logger = logger.With("component", "preflight")
+	logger = logger.With("component", "node")
 
 	if err := ensureKVM(); err != nil {
 		return FirecrackerJailerIdentity{}, err

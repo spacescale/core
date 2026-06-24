@@ -28,7 +28,7 @@ func Run(ctx context.Context) error {
 		return fmt.Errorf("load scaled config: %w", err)
 	}
 
-	log := logger.Init(cfg.Environment).With("component", "scaled")
+	log := logger.Init(cfg.Environment)
 
 	natsClient, err := nats.New(cfg.NATSURL, "scaled", log)
 	if err != nil {
