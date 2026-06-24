@@ -22,7 +22,7 @@ func TestRuntimeMetadataDocumentIncludesRuntimeFields(t *testing.T) {
 
 	doc := runtimeMetadataDocument(req)
 
-	require.Equal(t, uint32(1), doc["version"])
+	require.Equal(t, "1", doc["version"])
 	require.Equal(t, req.MicroVMID, doc["microvm_id"])
 
 	runtime, ok := doc["runtime"].(guestRuntimeMetadata)

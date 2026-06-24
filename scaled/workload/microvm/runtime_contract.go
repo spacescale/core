@@ -58,7 +58,7 @@ func runtimeMetadataDocument(req LaunchRequest) map[string]any {
 	}
 
 	return map[string]any{
-		"version":    uint32(1),
+		"version":    "1",
 		"microvm_id": req.MicroVMID,
 		"runtime":    runtime,
 	}
