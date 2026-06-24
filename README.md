@@ -1,10 +1,8 @@
 [![CI](https://github.com/spacescale/core/actions/workflows/pipeline.yaml/badge.svg)](https://github.com/spacescale/core/actions/workflows/pipeline.yaml)
-[![License](https://img.shields.io/github/license/spacescale/core)](./LICENSE)
 
 # core
 
-This repository contains the SpaceScale platform runtime — the control plane,
-edge execution layer, and infrastructure tooling.
+This repository contains the SpaceScale platform runtime. The control plane,edge execution layer, and infrastructure tooling.
 
 ## Development
 
