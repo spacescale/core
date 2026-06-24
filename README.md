@@ -1,40 +1,17 @@
 [![CI](https://github.com/spacescale/core/actions/workflows/pipeline.yaml/badge.svg)](https://github.com/spacescale/core/actions/workflows/pipeline.yaml)
-# Core
-> ReadMe is 100% Human Written 
+[![License](https://img.shields.io/github/license/spacescale/core)](./LICENSE)
 
-This repository owns the `controlplane` and `edge daemon` used by [SpaceScale](https://spacescale.io) Systems, and it is organized into two primary functional layers we will see later. 
+# core
 
-## Reference
+This repository contains the SpaceScale platform runtime — the control plane,
+edge execution layer, and infrastructure tooling.
 
-- **API**: Yaak workspaces in `docs/api/`. Download [Yaak](https://yaak.app/).
-- **Runtime**: [Kernel profile](docs/runtime/kernel-profile.md), [Rootfs requirements](docs/runtime/rootfs-requirements.md).
-
-## Local Development
-
-The normal control plane development flow runs inside Docker Compose. Read the compose to get the overview of dev setup. Start the full environment stack in the background.
+## Development
 
 ```bash
-make compose-start
+make compose-start   # start local stack
+make controlp        # run control plane
+make build-scaled    # build edge daemon binary
 ```
-Please see  [Makefile](Makefile) for other useful targets.
 
-## Control
-The controlplane, owns the orchestration layer of this system and most of the product-facing entities, such as the tenant structure, identity, records, Baremetal Host Provisioning, Command and Control, alongside partial scheduling intent. `scheduling` responsibility is shared with both the control plane and mostly managed by the edge daemon using a decentralized, auction-based model over the [NATS](https://nats.io) messaging fabric.
-
-you can bring up control API server locally using the make target below
-```sh
-	make controlp
-```
-The  folder `control` owns all of its sub system folders and the root `Makefile` has other useful targets to get development up and running easily.
-
-
-## ScaleD    
-The `Scale Daemon` is the  edge daemon on every baremetal server that is provisioned by `control`. Scheduling is intentionally pushed to the edge because the daemon can bid for workloads auctioned through a regional NATS subject if it has enough space to fit the workload. `scaled` is a Linux-only daemon, and its requirements require its native host with preflight requirements. 
-
-You can build a native AMD64 Linux binary using this make target:
-
-```sh
-make build-scaled
-```
-It is useful to read more of some important parts of the source code because this is only an intro.
-
+See the [Makefile](Makefile) for all targets and [docs/](docs/) for runtime documentation.
