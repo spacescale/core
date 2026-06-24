@@ -63,7 +63,7 @@ func NewDispatcher(workloads *tenant.WorkloadService, client *nats.Client, logge
 	return &Dispatcher{
 		workloads: workloads,
 		nats:      client,
-		logger:    logger.With("component", "dispatch"),
+		logger:    logger.With("component", "fabric"),
 	}
 }
 

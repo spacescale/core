@@ -77,7 +77,7 @@ type Launcher struct {
 // resolved when the launcher is built.
 func NewLauncher(logger *slog.Logger, runtimePaths node.RuntimePaths, jailerIdentity node.FirecrackerJailerIdentity) *Launcher {
 	return &Launcher{
-		logger:       logger.With("component", "microvm"),
+		logger:       logger.With("component", "workload.microvm"),
 		runtimePaths: runtimePaths,
 		jailerUID:    jailerIdentity.UID,
 		jailerGID:    jailerIdentity.GID,
