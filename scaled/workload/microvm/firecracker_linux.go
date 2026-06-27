@@ -59,7 +59,7 @@ func (l *Launcher) buildFirecrackerPlan(req LaunchRequest, workspace Workspace, 
 	return firecrackerPlan{
 		SocketPath:        workspace.FirecrackerSocketPathInJail(),
 		KernelImagePath:   l.runtimePaths.KernelPath,
-		KernelArgs:        guestdKernelArgs,
+		KernelArgs:        buildGuestdKernelArgs(network.GuestCIDR, network.gatewayIP()),
 		RootFSPath:        l.runtimePaths.RootFSPath,
 		WorkloadImagePath: req.WorkloadImagePath,
 		HostDevName:       network.TapName,
@@ -162,4 +162,11 @@ func firecrackerConfigFromPlan(plan firecrackerPlan, jailerOutput io.Writer) fir
 			CgroupVersion:  plan.Jailer.CgroupVersion,
 		},
 	}
+}
+
+// gatewayIP returns the host-side IP (the guest's default gateway) without the
+// CIDR mask suffix.
+func (n *Network) gatewayIP() net.IP {
+	ip, _, _ := net.ParseCIDR(n.HostCIDR)
+	return ip.To4()
 }

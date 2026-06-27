@@ -204,9 +204,14 @@ func NewCapacity(totalRAMMB uint64, totalThreads uint32) *Capacity {
 
 // Reserve holds resources for a pending auction bid.
 //
-// It returns the remaining free RAM which acts as the auction tiebreaker
-// and true if successful. If a reservation for the microvm id already exists
-// or if there is insufficient physical capacity it returns false.
+// On success it returns the node's remaining free RAM and true. The free RAM
+// value is returned for logging and observability — the bidder includes it in
+// its bid log so node fullness is visible at auction time. It is not used to
+// break ties: placement is first-response-wins, so only the fastest reply
+// reaches the control plane.
+//
+// If a reservation for the microvm id already exists or there is insufficient
+// physical capacity, it returns 0 and false.
 func (c *Capacity) Reserve(microvmID string, spec HardwareSpec, ttl time.Duration) (uint64, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -312,13 +317,6 @@ func (c *Capacity) ReleaseExpired(now time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.releaseExpiredLocked(now)
-}
-
-// FreeRAMMB returns the unallocated RAM without mutating state.
-func (c *Capacity) FreeRAMMB() uint64 {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.freeRAMMBLocked()
 }
 
 func (c *Capacity) canFitLocked(spec HardwareSpec) bool {
