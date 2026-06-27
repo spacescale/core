@@ -43,8 +43,9 @@ func newTestLauncher() *Launcher {
 		runtimePaths: node.RuntimePaths{
 			FirecrackerPath: "/usr/bin/firecracker",
 		},
-		cids:   newCIDAllocator(),
-		active: make(map[string]*ActiveVM),
+		cids:    newCIDAllocator(),
+		subnets: newSubnetAllocator(),
+		active:  make(map[string]*ActiveVM),
 	}
 }
 

@@ -39,12 +39,14 @@ func firecrackerPlanInputsFixture() (*Launcher, Workspace, LaunchRequest, *Netwo
 		RAMMB:     512,
 	}
 
+	subnet := subnetForIndex(0)
 	network := &Network{
-		TapName:   tapNameForMicroVM(req.MicroVMID),
-		GuestMAC:  guestMACForMicroVM(req.MicroVMID),
-		HostCIDR:  hostIPv4CIDR,
-		GuestCIDR: guestIPv4CIDR,
-		MMDSIP:    net.ParseIP(mmdsIPv4).To4(),
+		TapName:     tapNameForMicroVM(req.MicroVMID),
+		GuestMAC:    guestMACForMicroVM(req.MicroVMID),
+		HostCIDR:    subnet.HostCIDR,
+		GuestCIDR:   subnet.GuestCIDR,
+		MMDSIP:      net.ParseIP(mmdsIPv4).To4(),
+		SubnetIndex: subnet.Index,
 	}
 
 	return launcher, workspace, req, network, paths
@@ -52,23 +54,24 @@ func firecrackerPlanInputsFixture() (*Launcher, Workspace, LaunchRequest, *Netwo
 
 // firecrackerPlanFixture returns a literal Firecracker plan for config translation tests.
 func firecrackerPlanFixture() firecrackerPlan {
+	subnet := subnetForIndex(0)
 	return firecrackerPlan{
-		SocketPath:      "api.sock",
-		KernelImagePath: "/var/lib/spacescale/golden/vmlinux",
-		KernelArgs:      guestdKernelArgs,
+		SocketPath:        "api.sock",
+		KernelImagePath:   "/var/lib/spacescale/golden/vmlinux",
+		KernelArgs:        buildGuestdKernelArgs(subnet.GuestCIDR, subnet.HostIP),
 		RootFSPath:        "/var/lib/spacescale/golden/rootfs.erofs",
 		WorkloadImagePath: "/var/lib/spacescale/workloads/workspaces/ws-1/artifacts/sha256/abc123/artifact.erofs",
-		HostDevName:     "tapvm123",
-		MacAddress:      "02:53:aa:bb:cc:dd",
-		AllowMMDS:       true,
-		LogPath:         "fc.log",
-		VCPUCount:       2,
-		MemSizeMib:      512,
-		Smt:             true,
-		VSockID:         "guestd",
-		VSockPath:       "v.sock",
-		VSockCID:        3,
-		MMDSAddress:     net.ParseIP(mmdsIPv4).To4(),
+		HostDevName:       "tapvm123",
+		MacAddress:        "02:53:aa:bb:cc:dd",
+		AllowMMDS:         true,
+		LogPath:           "fc.log",
+		VCPUCount:         2,
+		MemSizeMib:        512,
+		Smt:               true,
+		VSockID:           "guestd",
+		VSockPath:         "v.sock",
+		VSockCID:          3,
+		MMDSAddress:       net.ParseIP(mmdsIPv4).To4(),
 		Jailer: firecrackerPlanJailer{
 			UID:           123,
 			GID:           456,
@@ -90,7 +93,7 @@ func TestBuildFirecrackerPlanBuildsExpectedPlan(t *testing.T) {
 
 	require.Equal(t, workspace.FirecrackerSocketPathInJail(), plan.SocketPath)
 	require.Equal(t, paths.KernelPath, plan.KernelImagePath)
-	require.Equal(t, guestdKernelArgs, plan.KernelArgs)
+	require.Equal(t, buildGuestdKernelArgs(network.GuestCIDR, network.gatewayIP()), plan.KernelArgs)
 	require.Equal(t, network.TapName, plan.HostDevName)
 	require.Equal(t, network.GuestMAC, plan.MacAddress)
 	require.True(t, plan.AllowMMDS)
@@ -120,7 +123,7 @@ func TestFirecrackerConfigFromPlanBuildsSDKConfig(t *testing.T) {
 
 	require.Equal(t, plan.SocketPath, cfg.SocketPath)
 	require.Equal(t, plan.LogPath, cfg.LogPath)
-	require.Equal(t, guestdKernelArgs, cfg.KernelArgs)
+	require.Equal(t, plan.KernelArgs, cfg.KernelArgs)
 	require.Equal(t, plan.KernelImagePath, cfg.KernelImagePath)
 
 	require.Len(t, cfg.VsockDevices, 1)
