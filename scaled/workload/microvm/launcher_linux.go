@@ -159,7 +159,6 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 		"boot_ms", time.Since(startedAt).Milliseconds(),
 		"tap", vm.Network.TapName,
 		"guest_ip", vm.Network.GuestCIDR,
-		"guest_mac", vm.Network.GuestMAC,
 	)
 
 	return vm, nil
