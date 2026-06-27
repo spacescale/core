@@ -169,8 +169,7 @@ func preflight(ctx context.Context, logger *slog.Logger) (FirecrackerJailerIdent
 	}
 
 	logger.Info("node preflight ready",
-		"kvm", kvmDevicePath,
-		"jailer_user", FirecrackerJailerAccountName,
+		"kvm", true,
 		"jailer_uid", jailerIdentity.UID,
 		"jailer_gid", jailerIdentity.GID,
 		"smt", "on (core-scheduled)",
