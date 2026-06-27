@@ -173,8 +173,6 @@ func preflight(ctx context.Context, logger *slog.Logger) (FirecrackerJailerIdent
 		"jailer_user", FirecrackerJailerAccountName,
 		"jailer_uid", jailerIdentity.UID,
 		"jailer_gid", jailerIdentity.GID,
-		"swap", "off",
-		"ksm", "off",
 		"smt", "on (core-scheduled)",
 	)
 
