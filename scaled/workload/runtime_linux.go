@@ -36,8 +36,7 @@ func Start(ctx context.Context, logger *slog.Logger, info node.Info, nc *nats.Cl
 	bidder := NewBidder(workloadLog, capacity, info.Identity.NodeID, info.Snapshot.BootID, info.Identity.Region)
 	executor := newExecutor(workloadLog, capacity, info.Snapshot.BootID, microvmLauncher)
 
-	auctionSubject, err := bidder.Register(ctx, nc)
-	if err != nil {
+	if _, err := bidder.Register(ctx, nc); err != nil {
 		return fmt.Errorf("register bidder: %w", err)
 	}
 
@@ -57,7 +56,6 @@ func Start(ctx context.Context, logger *slog.Logger, info node.Info, nc *nats.Cl
 	go runHeartbeat(ctx, workloadLog, info, heartbeats)
 
 	workloadLog.Info("workload ready",
-		"auction_subject", auctionSubject,
 		"node_id", info.Identity.NodeID,
 		"region", info.Identity.Region,
 	)

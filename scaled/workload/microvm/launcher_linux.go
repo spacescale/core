@@ -135,10 +135,9 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 	}
 	if err := assignCoreSchedCookie(pid); err != nil {
 		if os.Getenv("ENVIRONMENT") == "development" {
-			l.logger.Warn("core scheduling cookie not assigned, skipping in development mode",
+			l.logger.Info("core scheduling skipped",
 				"microvm_id", req.MicroVMID,
 				"pid", pid,
-				"error", err,
 			)
 		} else {
 			return nil, fmt.Errorf("assign core scheduling cookie: %w", err)

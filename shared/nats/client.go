@@ -97,7 +97,7 @@ func New(url, name string, logger *slog.Logger) (*Client, error) {
 	}
 
 	client.conn = natsConn
-	client.logger.Info("nats connected", "component", "nats", "client", client.name, "url", natsConn.ConnectedUrl())
+	client.logger.Info("nats connected", "component", "nats", "url", natsConn.ConnectedUrl())
 
 	return client, nil
 }
