@@ -25,7 +25,7 @@ const (
 	firstSubnetIndex uint16 = 0
 )
 
-var errNoSubnetAvailable = errors.New("no vm subnet avilable")
+var errNoSubnetAvailable = errors.New("no vm subnet available")
 
 // Subnet is a computed /30 point-to-point link for one VM.
 type Subnet struct {
@@ -206,8 +206,8 @@ func subnetForIndex(index uint16) Subnet {
 
 	return Subnet{
 		Index:     index,
-		HostCIDR:  fmt.Sprintf("%s/30", hostIP.String()),
-		GuestCIDR: fmt.Sprintf("%s/30", guestIP.String()),
+		HostCIDR:  hostIP.String() + "/30",
+		GuestCIDR: guestIP.String() + "/30",
 		HostIP:    hostIP.To4(),
 		GuestIP:   guestIP.To4(),
 	}
