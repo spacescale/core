@@ -172,7 +172,6 @@ func preflight(ctx context.Context, logger *slog.Logger) (FirecrackerJailerIdent
 		"kvm", true,
 		"jailer_uid", jailerIdentity.UID,
 		"jailer_gid", jailerIdentity.GID,
-		"smt", "on (core-scheduled)",
 	)
 
 	return jailerIdentity, nil
