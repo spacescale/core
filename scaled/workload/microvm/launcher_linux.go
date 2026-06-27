@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -18,11 +19,15 @@ import (
 	"github.com/spacescale/core/scaled/node"
 )
 
-// guestdKernelArgs is the fixed first-boot command line for the minimal guestd
-// guest. It keeps the Firecracker device model small, leaves panic/error output
-// on the serial console, mounts the root disk, and gives guestd enough bootstrap
-// network metadata to finish initialization.
-const guestdKernelArgs = "console=ttyS0 quiet loglevel=3 reboot=k panic=-1 pci=off acpi=off nomodule ro root=/dev/vda guestd.ipv4=172.16.0.2/30 guestd.gateway=172.16.0.1 guestd.mmds=169.254.169.254"
+// buildGuestdKernelArgs constructs the kernel command line with the allocated
+// guest IP and gateway. The guestd contract (guestd.ipv4, guestd.gateway,
+// guestd.mmds) is stable — only the addresses change per VM.
+func buildGuestdKernelArgs(guestCIDR string, gateway net.IP) string {
+	return fmt.Sprintf(
+		"console=ttyS0 quiet loglevel=3 reboot=k panic=-1 pci=off acpi=off nomodule ro root=/dev/vda guestd.ipv4=%s guestd.gateway=%s guestd.mmds=%s",
+		guestCIDR, gateway, mmdsIPv4,
+	)
+}
 
 // LaunchRequest is the local, transport-free guestd boot request.
 //
@@ -66,6 +71,7 @@ type Launcher struct {
 	jailerUID    int
 	jailerGID    int
 	cids         *cidAllocator
+	subnets      *subnetAllocator
 
 	mu     sync.Mutex
 	active map[string]*ActiveVM
@@ -82,6 +88,7 @@ func NewLauncher(logger *slog.Logger, runtimePaths node.RuntimePaths, jailerIden
 		jailerUID:    jailerIdentity.UID,
 		jailerGID:    jailerIdentity.GID,
 		cids:         newCIDAllocator(),
+		subnets:      newSubnetAllocator(),
 		active:       make(map[string]*ActiveVM),
 	}
 }
@@ -209,8 +216,14 @@ func (l *Launcher) prepareVM(vm *ActiveVM) error {
 	}
 	vm.listeners = listeners
 
-	network, err := prepareNetwork(vm.MicroVMID, l.jailerUID, l.jailerGID)
+	subnet, err := l.subnets.Acquire()
 	if err != nil {
+		return err
+	}
+
+	network, err := prepareNetwork(vm.MicroVMID, subnet, l.jailerUID, l.jailerGID)
+	if err != nil {
+		l.subnets.Release(subnet.Index)
 		return fmt.Errorf("prepare network: %w", err)
 	}
 	vm.Network = network
@@ -412,6 +425,7 @@ func (l *Launcher) cleanupActive(vm *ActiveVM, stopVMM bool, removeWorkspace boo
 		}
 
 		if vm.Network != nil {
+			l.subnets.Release(vm.Network.SubnetIndex)
 			err = errors.Join(err, vm.Network.Cleanup())
 		}
 
