@@ -83,7 +83,7 @@ type Launcher struct {
 // resolved when the launcher is built.
 func NewLauncher(logger *slog.Logger, runtimePaths node.RuntimePaths, jailerIdentity node.FirecrackerJailerIdentity) *Launcher {
 	return &Launcher{
-		logger:       logger.With("component", "workload.microvm"),
+		logger:       logger.With("component", "microvm"),
 		runtimePaths: runtimePaths,
 		jailerUID:    jailerIdentity.UID,
 		jailerGID:    jailerIdentity.GID,
@@ -158,10 +158,9 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 		"microvm_id", req.MicroVMID,
 		"guest_cid", vm.GuestCID,
 		"boot_ms", time.Since(startedAt).Milliseconds(),
-		"workspace", vm.Workspace.RootDir,
 		"tap", vm.Network.TapName,
+		"guest_ip", vm.Network.GuestCIDR,
 		"guest_mac", vm.Network.GuestMAC,
-		"mmds", vm.Network.MMDSIP.String(),
 	)
 
 	return vm, nil

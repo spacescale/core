@@ -29,20 +29,19 @@ const heartbeatInterval = 5 * time.Second
 // already resolved and validated, so Start just wires the handlers, launcher,
 // and heartbeat together behind one package boundary.
 func Start(ctx context.Context, logger *slog.Logger, info node.Info, nc *nats.Client) error {
-	logger = logger.With("component", "workload")
+	workloadLog := logger.With("component", "workload")
 
 	capacity := NewCapacity(info.Snapshot.TotalRAMMb, info.Snapshot.TotalThreads)
 	microvmLauncher := microvm.NewLauncher(logger, info.RuntimePaths, info.JailerIdentity)
-	bidder := NewBidder(logger, capacity, info.Identity.NodeID, info.Snapshot.BootID, info.Identity.Region)
-	executor := newExecutor(logger, capacity, info.Snapshot.BootID, microvmLauncher)
+	bidder := NewBidder(workloadLog, capacity, info.Identity.NodeID, info.Snapshot.BootID, info.Identity.Region)
+	executor := newExecutor(workloadLog, capacity, info.Snapshot.BootID, microvmLauncher)
 
 	auctionSubject, err := bidder.Register(ctx, nc)
 	if err != nil {
 		return fmt.Errorf("register bidder: %w", err)
 	}
 
-	launchSubject, err := executor.register(ctx, nc)
-	if err != nil {
+	if _, err := executor.register(ctx, nc); err != nil {
 		return fmt.Errorf("register launch handler: %w", err)
 	}
 
@@ -55,11 +54,10 @@ func Start(ctx context.Context, logger *slog.Logger, info node.Info, nc *nats.Cl
 		return fmt.Errorf("init heartbeat kv: %w", err)
 	}
 
-	go runHeartbeat(ctx, logger, info, heartbeats)
+	go runHeartbeat(ctx, workloadLog, info, heartbeats)
 
-	logger.Info("workload ready",
+	workloadLog.Info("workload ready",
 		"auction_subject", auctionSubject,
-		"launch_subject", launchSubject,
 		"node_id", info.Identity.NodeID,
 		"region", info.Identity.Region,
 	)
