@@ -162,7 +162,7 @@ func preflight(ctx context.Context, logger *slog.Logger) (FirecrackerJailerIdent
 
 	if err := ensureCoreSchedulingSupport(); err != nil {
 		if os.Getenv("ENVIRONMENT") == "development" {
-			logger.Warn("core scheduling not supported, skipping in development mode", "error", err)
+			logger.Info("core scheduling skipped")
 		} else {
 			return FirecrackerJailerIdentity{}, err
 		}
