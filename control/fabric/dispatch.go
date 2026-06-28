@@ -78,11 +78,9 @@ func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 	launchArgs := make([]any, 0, launchLogAttrBaseCap+len(shapeAttrs))
 	launchArgs = append(launchArgs,
 		"workload_id", req.WorkloadID,
-		"deployment_id", req.DeploymentID,
 		"microvm_id", req.MicroVMID,
 		"region", req.Region,
 		"node_id", winner.NodeID,
-		"boot_id", winner.BootID,
 	)
 	launchArgs = append(launchArgs, shapeAttrs...)
 	nodeID, err := uuid.Parse(winner.NodeID)
@@ -145,10 +143,8 @@ func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 	if err := d.workloads.MarkMicroVMStarting(ctx, req.MicroVMID); err != nil {
 		d.logger.Error("failed to mark microvm starting",
 			"workload_id", req.WorkloadID,
-			"deployment_id", req.DeploymentID,
 			"microvm_id", req.MicroVMID,
 			"node_id", winner.NodeID,
-			"boot_id", winner.BootID,
 			"error", err,
 		)
 	}
@@ -192,7 +188,6 @@ func (d *Dispatcher) logNoAuctionBids(req Request) {
 	warnArgs := make([]any, 0, noAuctionBidLogBaseCap+len(shapeAttrs))
 	warnArgs = append(warnArgs,
 		"workload_id", req.WorkloadID,
-		"deployment_id", req.DeploymentID,
 		"microvm_id", req.MicroVMID,
 		"region", req.Region,
 	)
