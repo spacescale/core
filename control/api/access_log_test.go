@@ -54,7 +54,7 @@ func TestAccessLoggerEmitsAccessLog(t *testing.T) {
 	require.InDelta(t, float64(http.StatusCreated), entry["status_code"], 0)
 	require.Equal(t, "192.168.97.1", entry["client_ip"])
 	require.Equal(t, "/v1/projects/{id}", entry["route"])
-	require.NotEmpty(t, entry["request_id"])
+	require.Empty(t, entry["request_id"])
 }
 
 func TestClientIP(t *testing.T) {

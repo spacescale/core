@@ -27,7 +27,6 @@ func AccessLogger() func(http.Handler) http.Handler {
 
 			attrs := []any{
 				"component", "api",
-				"request_id", middleware.GetReqID(r.Context()),
 				"method", r.Method,
 				"status_code", status,
 				"duration_ms", time.Since(start).Milliseconds(),
