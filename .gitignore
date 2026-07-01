@@ -25,3 +25,4 @@ coverage/
 AGENTS.md
 pipe.sh
 context.txt
+.env
