@@ -58,7 +58,7 @@ jobs:
         run: make -C linux-${KERNEL_VERSION} ARCH=x86_64 -j$(nproc) vmlinux
 
       - name: Upload vmlinux artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: vmlinux
           path: linux-${{ env.KERNEL_VERSION }}/vmlinux
