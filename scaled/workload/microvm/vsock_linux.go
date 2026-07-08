@@ -3,6 +3,7 @@ package microvm
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -24,9 +25,11 @@ const (
 )
 
 const (
-	controlFrameHeaderSize      = 10
-	controlFrameVersion    byte = 1
-	controlFrameKindHello  byte = 1
+	controlFrameHeaderSize       = 10
+	controlFrameVersion     byte = 1
+	controlFrameKindHello   byte = 1
+	controlFrameKindFatal   byte = 2
+	controlFrameKindExit    byte = 3
 )
 
 const acceptDeadline = 250 * time.Millisecond
@@ -59,6 +62,30 @@ type controlFrameHeader struct {
 	Version       byte
 	Kind          byte
 	PayloadLength uint32
+}
+
+// WorkloadTerminalStatus is the host-side view of a workload's terminal state
+// reported by guestd over the control vsock channel.
+type WorkloadTerminalStatus struct {
+	ExitCode *int32
+	Signal   *int32
+	Fatal    string
+}
+
+// Succeeded reports whether the workload exited cleanly with status zero.
+func (s WorkloadTerminalStatus) Succeeded() bool {
+	return s.Fatal == "" && s.Signal == nil && s.ExitCode != nil && *s.ExitCode == 0
+}
+
+// Failed reports whether the workload ended in an error, signal, or fatal path.
+func (s WorkloadTerminalStatus) Failed() bool {
+	if s.Fatal != "" || s.Signal != nil {
+		return true
+	}
+	if s.ExitCode != nil {
+		return *s.ExitCode != 0
+	}
+	return false
 }
 
 func newCIDAllocator() *cidAllocator {
@@ -172,22 +199,61 @@ func allowJailerSocketAccess(path string, uid int, gid int) error {
 }
 
 // WaitForHello proves the guest reached guestd userspace on the control channel.
-func (v *VSockListeners) WaitForHello(ctx context.Context) error {
+// The returned connection stays open so scaled can read later Fatal or Exit frames
+// on the same guest control socket.
+func (v *VSockListeners) WaitForHello(ctx context.Context) (*net.UnixConn, error) {
 	if v == nil || v.control == nil {
-		return errors.New("control listener is not initialized")
+		return nil, errors.New("control listener is not initialized")
 	}
 
 	conn, err := acceptUnix(ctx, v.control)
 	if err != nil {
-		return fmt.Errorf("accept control connection: %w", err)
+		return nil, fmt.Errorf("accept control connection: %w", err)
 	}
-	defer func() { _ = conn.Close() }()
 
 	if err := expectHelloFrame(conn); err != nil {
-		return fmt.Errorf("read hello frame: %w", err)
+		_ = conn.Close()
+		return nil, fmt.Errorf("read hello frame: %w", err)
 	}
 
-	return nil
+	return conn, nil
+}
+
+// WatchControl reads terminal control frames from the hello connection until guestd
+// sends Exit or Fatal, the connection closes, or ctx is canceled.
+func WatchControl(ctx context.Context, conn *net.UnixConn, onTerminal func(WorkloadTerminalStatus)) {
+	if conn == nil {
+		return
+	}
+
+	defer func() { _ = conn.Close() }()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		header, payload, err := readControlFrame(conn)
+		if err != nil {
+			return
+		}
+
+		switch header.Kind {
+		case controlFrameKindExit:
+			status, err := parseExitPayload(payload)
+			if err == nil {
+				onTerminal(status)
+			}
+			return
+		case controlFrameKindFatal:
+			onTerminal(WorkloadTerminalStatus{Fatal: string(payload)})
+			return
+		default:
+			return
+		}
+	}
 }
 
 // AcceptLog waits for the guest raw log stream. The launcher writes it to disk.
@@ -284,11 +350,8 @@ func expectHelloFrame(r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	if header.Magic != controlFrameMagic {
-		return fmt.Errorf("invalid control frame magic: got %q", header.Magic)
-	}
-	if header.Version != controlFrameVersion {
-		return fmt.Errorf("unsupported control frame version: got %d", header.Version)
+	if err := validateControlFrameHeader(header); err != nil {
+		return err
 	}
 	if header.Kind != controlFrameKindHello {
 		return fmt.Errorf("unexpected control frame kind: got %d", header.Kind)
@@ -311,4 +374,59 @@ func readControlFrameHeader(r io.Reader) (controlFrameHeader, error) {
 	header.Kind = raw[5]
 	header.PayloadLength = binary.BigEndian.Uint32(raw[6:10])
 	return header, nil
+}
+
+func readControlFrame(r io.Reader) (controlFrameHeader, []byte, error) {
+	header, err := readControlFrameHeader(r)
+	if err != nil {
+		return controlFrameHeader{}, nil, err
+	}
+	if err := validateControlFrameHeader(header); err != nil {
+		return controlFrameHeader{}, nil, err
+	}
+	if header.PayloadLength == 0 {
+		return header, nil, nil
+	}
+
+	payload := make([]byte, header.PayloadLength)
+	if _, err := io.ReadFull(r, payload); err != nil {
+		return controlFrameHeader{}, nil, fmt.Errorf("read control frame payload: %w", err)
+	}
+
+	return header, payload, nil
+}
+
+func validateControlFrameHeader(header controlFrameHeader) error {
+	if header.Magic != controlFrameMagic {
+		return fmt.Errorf("invalid control frame magic: got %q", header.Magic)
+	}
+	if header.Version != controlFrameVersion {
+		return fmt.Errorf("unsupported control frame version: got %d", header.Version)
+	}
+	return nil
+}
+
+func parseExitPayload(payload []byte) (WorkloadTerminalStatus, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return WorkloadTerminalStatus{}, fmt.Errorf("parse exit payload: %w", err)
+	}
+
+	if signalJSON, ok := raw["signal"]; ok {
+		var signal int32
+		if err := json.Unmarshal(signalJSON, &signal); err != nil {
+			return WorkloadTerminalStatus{}, fmt.Errorf("parse exit signal: %w", err)
+		}
+		return WorkloadTerminalStatus{Signal: &signal}, nil
+	}
+
+	if exitCodeJSON, ok := raw["exit_code"]; ok {
+		var exitCode int32
+		if err := json.Unmarshal(exitCodeJSON, &exitCode); err != nil {
+			return WorkloadTerminalStatus{}, fmt.Errorf("parse exit code: %w", err)
+		}
+		return WorkloadTerminalStatus{ExitCode: &exitCode}, nil
+	}
+
+	return WorkloadTerminalStatus{}, errors.New("exit payload missing exit_code or signal")
 }

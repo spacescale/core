@@ -60,6 +60,9 @@ type ActiveVM struct {
 	listeners   *VSockListeners
 	cancel      context.CancelFunc
 	cleanupOnce sync.Once
+
+	terminalMu     sync.Mutex
+	terminalStatus *WorkloadTerminalStatus
 }
 
 // Launcher owns local Firecracker process lifecycle for this scaled process.
@@ -145,9 +148,12 @@ func (l *Launcher) Launch(ctx context.Context, req LaunchRequest) (active *Activ
 	}
 
 	vmmExit := waitForMachine(vmCtx, vm.machine)
-	if err := l.waitForHelloOrExit(ctx, vm, vmmExit); err != nil {
+	controlConn, err := l.waitForHelloOrExit(ctx, vm, vmmExit)
+	if err != nil {
 		return nil, err
 	}
+
+	go WatchControl(vmCtx, controlConn, vm.setTerminalStatus)
 
 	l.activate(vm)
 
@@ -304,27 +310,51 @@ func waitForMachine(ctx context.Context, machine *firecracker.Machine) <-chan er
 // waitForHelloOrExit accepts the launch only if guestd sends hello before the
 // VMM exits. This avoids waiting for the full hello timeout after an early guest
 // panic or clean shutdown.
-func (l *Launcher) waitForHelloOrExit(ctx context.Context, vm *ActiveVM, vmmExit <-chan error) error {
-	hello := make(chan error, 1)
+func (l *Launcher) waitForHelloOrExit(ctx context.Context, vm *ActiveVM, vmmExit <-chan error) (*net.UnixConn, error) {
+	helloConn := make(chan *net.UnixConn, 1)
+	helloErr := make(chan error, 1)
 	go func() {
-		hello <- vm.listeners.WaitForHello(ctx)
+		conn, err := vm.listeners.WaitForHello(ctx)
+		if err != nil {
+			helloErr <- err
+			return
+		}
+		helloConn <- conn
 	}()
 
 	select {
-	case err := <-hello:
-		if err != nil {
-			err = fmt.Errorf("wait for guestd hello: %w", err)
-			l.logBootFailure(vm, "guestd hello failed", err)
-			return err
-		}
-		return nil
+	case conn := <-helloConn:
+		return conn, nil
+	case err := <-helloErr:
+		err = fmt.Errorf("wait for guestd hello: %w", err)
+		l.logBootFailure(vm, "guestd hello failed", err)
+		return nil, err
 	case err := <-vmmExit:
 		l.logBootFailure(vm, "microvm exited before guestd hello", err)
 		if err != nil {
-			return fmt.Errorf("microvm exited before guestd hello: %w", err)
+			return nil, fmt.Errorf("microvm exited before guestd hello: %w", err)
 		}
-		return errors.New("microvm exited before guestd hello")
+		return nil, errors.New("microvm exited before guestd hello")
 	}
+}
+
+func (vm *ActiveVM) setTerminalStatus(status WorkloadTerminalStatus) {
+	vm.terminalMu.Lock()
+	defer vm.terminalMu.Unlock()
+
+	vm.terminalStatus = &status
+}
+
+func (vm *ActiveVM) workloadTerminalStatus() *WorkloadTerminalStatus {
+	vm.terminalMu.Lock()
+	defer vm.terminalMu.Unlock()
+
+	if vm.terminalStatus == nil {
+		return nil
+	}
+
+	status := *vm.terminalStatus
+	return &status
 }
 
 // logBootFailure records paths to diagnostic files without dumping noisy jailer,
@@ -384,6 +414,14 @@ func (l *Launcher) removeActiveIfSame(vm *ActiveVM) {
 // watchVM handles Firecracker exiting after a successful hello.
 func (l *Launcher) watchVM(vm *ActiveVM, vmmExit <-chan error) {
 	err := <-vmmExit
+	if status := vm.workloadTerminalStatus(); status != nil {
+		l.logWorkloadTerminal(vm, *status)
+	} else if err == nil {
+		l.logger.Info("microvm exited without workload terminal status",
+			"microvm_id", vm.MicroVMID,
+		)
+	}
+
 	if err != nil {
 		l.logger.Warn("firecracker exited",
 			"microvm_id", vm.MicroVMID,
@@ -402,6 +440,29 @@ func (l *Launcher) watchVM(vm *ActiveVM, vmmExit <-chan error) {
 			"error", err,
 		)
 	}
+}
+
+func (l *Launcher) logWorkloadTerminal(vm *ActiveVM, status WorkloadTerminalStatus) {
+	args := []any{
+		"microvm_id", vm.MicroVMID,
+		"workload_succeeded", status.Succeeded(),
+	}
+	if status.Fatal != "" {
+		args = append(args, "fatal", status.Fatal)
+	}
+	if status.ExitCode != nil {
+		args = append(args, "exit_code", *status.ExitCode)
+	}
+	if status.Signal != nil {
+		args = append(args, "signal", *status.Signal)
+	}
+
+	if status.Failed() {
+		l.logger.Warn("workload exited", args...)
+		return
+	}
+
+	l.logger.Info("workload exited", args...)
 }
 
 // cleanupActive unwinds host-side resources owned by a VM. Failed launches keep

@@ -229,14 +229,18 @@ func TestWaitForHelloAcceptsValidControlFrame(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	require.NoError(t, listeners.WaitForHello(ctx))
+	controlConn, err := listeners.WaitForHello(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, controlConn)
+	t.Cleanup(func() { _ = controlConn.Close() })
 	require.NoError(t, requireAsyncErr(t, errCh))
 }
 
 func TestWaitForHelloRejectsUninitializedListener(t *testing.T) {
 	var listeners VSockListeners
 
-	err := listeners.WaitForHello(context.Background())
+	conn, err := listeners.WaitForHello(context.Background())
+	require.Nil(t, conn)
 	require.ErrorContains(t, err, "control listener is not initialized")
 }
 
@@ -285,12 +289,102 @@ func TestReadControlFrameHeaderRejectsShortRead(t *testing.T) {
 	require.ErrorContains(t, err, "read control frame header")
 }
 
+func TestReadControlFrameReadsExitPayload(t *testing.T) {
+	payload := []byte(`{"exit_code":42}`)
+	frame := validControlFrame(controlFrameKindExit, payload)
+
+	header, gotPayload, err := readControlFrame(bytes.NewReader(frame))
+	require.NoError(t, err)
+	require.Equal(t, controlFrameKindExit, header.Kind)
+	require.Equal(t, payload, gotPayload)
+}
+
+func TestParseExitPayloadAcceptsExitCode(t *testing.T) {
+	status, err := parseExitPayload([]byte(`{"exit_code":0}`))
+	require.NoError(t, err)
+	require.NotNil(t, status.ExitCode)
+	require.Equal(t, int32(0), *status.ExitCode)
+	require.Nil(t, status.Signal)
+	require.True(t, status.Succeeded())
+	require.False(t, status.Failed())
+}
+
+func TestParseExitPayloadAcceptsSignal(t *testing.T) {
+	status, err := parseExitPayload([]byte(`{"signal":15}`))
+	require.NoError(t, err)
+	require.Nil(t, status.ExitCode)
+	require.NotNil(t, status.Signal)
+	require.Equal(t, int32(15), *status.Signal)
+	require.False(t, status.Succeeded())
+	require.True(t, status.Failed())
+}
+
+func TestParseExitPayloadRejectsMissingFields(t *testing.T) {
+	_, err := parseExitPayload([]byte(`{}`))
+	require.ErrorContains(t, err, "missing exit_code or signal")
+}
+
+func TestWatchControlReadsExitAfterHelloOnSameConnection(t *testing.T) {
+	workspace := Workspace{
+		JailerRootDir: filepath.Join(shortTempDir(t), "root"),
+	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(workspace.VSockHostPath()), 0o755))
+
+	listeners, err := openVSockListeners(workspace, os.Getuid(), os.Getgid())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = listeners.Close()
+	})
+
+	errCh := make(chan error, 1)
+	go func() {
+		conn, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: listeners.ControlPath, Net: "unix"})
+		if err != nil {
+			errCh <- err
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		if _, err := conn.Write(validHelloFrame()); err != nil {
+			errCh <- err
+			return
+		}
+		_, err = conn.Write(validControlFrame(controlFrameKindExit, []byte(`{"exit_code":7}`)))
+		errCh <- err
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	controlConn, err := listeners.WaitForHello(ctx)
+	require.NoError(t, err)
+	require.NoError(t, requireAsyncErr(t, errCh))
+
+	statusCh := make(chan WorkloadTerminalStatus, 1)
+	WatchControl(ctx, controlConn, func(status WorkloadTerminalStatus) {
+		statusCh <- status
+	})
+
+	select {
+	case status := <-statusCh:
+		require.NotNil(t, status.ExitCode)
+		require.Equal(t, int32(7), *status.ExitCode)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for workload terminal status")
+	}
+}
+
 func validHelloFrame() []byte {
-	raw := make([]byte, controlFrameHeaderSize)
+	return validControlFrame(controlFrameKindHello, nil)
+}
+
+func validControlFrame(kind byte, payload []byte) []byte {
+	raw := make([]byte, controlFrameHeaderSize+len(payload))
 	copy(raw[0:4], controlFrameMagic[:])
 	raw[4] = controlFrameVersion
-	raw[5] = controlFrameKindHello
-	binary.BigEndian.PutUint32(raw[6:10], 0)
+	raw[5] = kind
+	binary.BigEndian.PutUint32(raw[6:10], uint32(len(payload)))
+	copy(raw[controlFrameHeaderSize:], payload)
 	return raw
 }
 
