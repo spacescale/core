@@ -16,7 +16,7 @@ require (
 	github.com/nats-io/nats.go v1.52.0
 	github.com/stretchr/testify v1.11.1
 	github.com/vishvananda/netlink v1.3.1
-	github.com/workos/workos-go/v9 v9.3.0
+	github.com/workos/workos-go/v9 v9.6.0
 	golang.org/x/crypto v0.53.0
 	google.golang.org/protobuf v1.36.11
 )
