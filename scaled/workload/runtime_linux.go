@@ -44,10 +44,6 @@ func Start(ctx context.Context, logger *slog.Logger, info node.Info, nc *nats.Cl
 		return fmt.Errorf("register launch handler: %w", err)
 	}
 
-	if err := microvm.CleanupStaleState(); err != nil {
-		return fmt.Errorf("cleanup stale microvm state: %w", err)
-	}
-
 	heartbeats, err := nc.EnsureNodeHeartbeatKV(ctx)
 	if err != nil {
 		return fmt.Errorf("init heartbeat kv: %w", err)

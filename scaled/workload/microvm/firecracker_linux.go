@@ -49,6 +49,7 @@ type firecrackerPlanJailer struct {
 	ExecFile      string
 	JailerBinary  string
 	CgroupVersion string
+	ParentCgroup  string
 }
 
 // buildFirecrackerPlan collects every host and jail-visible value for one VM
@@ -83,6 +84,7 @@ func (l *Launcher) buildFirecrackerPlan(req LaunchRequest, workspace Workspace, 
 			ExecFile:      l.runtimePaths.FirecrackerPath,
 			JailerBinary:  l.runtimePaths.JailerPath,
 			CgroupVersion: "2",
+			ParentCgroup:  spacescaleCgroupName,
 		},
 	}
 }
@@ -160,6 +162,7 @@ func firecrackerConfigFromPlan(plan firecrackerPlan, jailerOutput io.Writer) fir
 			Stdout:         jailerOutput,
 			Stderr:         jailerOutput,
 			CgroupVersion:  plan.Jailer.CgroupVersion,
+			ParentCgroup:   plan.Jailer.ParentCgroup,
 		},
 	}
 }

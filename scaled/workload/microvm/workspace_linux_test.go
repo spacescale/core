@@ -114,28 +114,3 @@ func TestWorkspacePrepareAndCleanup(t *testing.T) {
 	_, err = os.Stat(w.JailerDir)
 	require.True(t, os.IsNotExist(err))
 }
-
-func TestCleanupStaleStateRemovesMicroVMAndJailerState(t *testing.T) {
-	root := t.TempDir()
-	microVMRoot := filepath.Join(root, "microvms")
-	jailerRoot := filepath.Join(root, "j")
-
-	currentJailerTree := filepath.Join(jailerRoot, "firecracker-v1.15.1-x86_64", "vm-123")
-	otherJailerTree := filepath.Join(jailerRoot, "firecracker-v1.14.0-x86_64", "vm-456")
-
-	require.NoError(t, os.MkdirAll(filepath.Join(microVMRoot, "vm-123"), 0o755))
-	require.NoError(t, os.MkdirAll(currentJailerTree, 0o755))
-	require.NoError(t, os.MkdirAll(otherJailerTree, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(microVMRoot, "vm-123", "rootfs.ext4"), []byte("rootfs"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(currentJailerTree, "api.sock"), []byte("socket"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(otherJailerTree, "api.sock"), []byte("socket"), 0o644))
-
-	err := cleanupStaleState(microVMRoot, jailerRoot)
-	require.NoError(t, err)
-
-	_, err = os.Stat(microVMRoot)
-	require.True(t, os.IsNotExist(err))
-
-	_, err = os.Stat(jailerRoot)
-	require.True(t, os.IsNotExist(err))
-}

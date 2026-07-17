@@ -82,6 +82,7 @@ func firecrackerPlanFixture() firecrackerPlan {
 			ExecFile:      "/usr/bin/firecracker",
 			JailerBinary:  "/usr/bin/jailer",
 			CgroupVersion: "2",
+			ParentCgroup:  spacescaleCgroupName,
 		},
 	}
 }
@@ -115,6 +116,7 @@ func TestBuildFirecrackerPlanBuildsExpectedPlan(t *testing.T) {
 	require.Equal(t, paths.FirecrackerPath, plan.Jailer.ExecFile)
 	require.Equal(t, paths.JailerPath, plan.Jailer.JailerBinary)
 	require.Equal(t, "2", plan.Jailer.CgroupVersion)
+	require.Equal(t, spacescaleCgroupName, plan.Jailer.ParentCgroup)
 }
 
 func TestFirecrackerConfigFromPlanBuildsSDKConfig(t *testing.T) {
@@ -159,4 +161,5 @@ func TestFirecrackerConfigFromPlanBuildsSDKConfig(t *testing.T) {
 	require.Equal(t, plan.Jailer.ExecFile, cfg.JailerCfg.ExecFile)
 	require.Equal(t, plan.Jailer.JailerBinary, cfg.JailerCfg.JailerBinary)
 	require.Equal(t, plan.Jailer.CgroupVersion, cfg.JailerCfg.CgroupVersion)
+	require.Equal(t, plan.Jailer.ParentCgroup, cfg.JailerCfg.ParentCgroup)
 }

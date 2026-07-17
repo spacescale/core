@@ -15,6 +15,7 @@ import (
 
 	"github.com/spacescale/core/scaled/node"
 	"github.com/spacescale/core/scaled/workload"
+	"github.com/spacescale/core/scaled/workload/microvm"
 	"github.com/spacescale/core/shared/config"
 	"github.com/spacescale/core/shared/logger"
 	"github.com/spacescale/core/shared/nats"
@@ -30,20 +31,26 @@ func Run(ctx context.Context) error {
 
 	log := logger.Init(cfg.Environment)
 
+	info, err := node.Collect(ctx, log)
+	if err != nil {
+		return fmt.Errorf("collect node info: %w", err)
+	}
+
+	// Ignite workloads are stateless and are re-auctioned after a node is
+	// declared dead. Remove host resources left by a previous scaled process
+	// before this boot becomes visible to the workload fabric.
+	microvm.CleanupOrphanedIgniteState(ctx, log, info.JailerIdentity)
+
 	natsClient, err := nats.New(cfg.NATSURL, "scaled", log)
 	if err != nil {
 		return fmt.Errorf("nats init failed: %w", err)
 	}
 	defer func() { _ = natsClient.Drain() }()
 
-	return runDaemon(ctx, log, natsClient)
+	return runDaemon(ctx, log, info, natsClient)
 }
 
-func runDaemon(ctx context.Context, log *slog.Logger, natsClient *nats.Client) error {
-	info, err := node.Collect(ctx, log)
-	if err != nil {
-		return fmt.Errorf("collect node info: %w", err)
-	}
+func runDaemon(ctx context.Context, log *slog.Logger, info node.Info, natsClient *nats.Client) error {
 	if err := workload.Start(ctx, log, info, natsClient); err != nil {
 		return fmt.Errorf("start workload: %w", err)
 	}
