@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/base64"
+	"net/netip"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -37,6 +38,7 @@ func TestLoadControlReadsExplicitConfig(t *testing.T) {
 	t.Setenv("WORKOS_REDIRECT_URI", "https://example.com/workos/callback")
 	t.Setenv("WORKOS_POST_LOGIN_REDIRECT_URI", "https://example.com/app")
 	t.Setenv("WORKOS_LOGOUT_REDIRECT_URI", "https://example.com/logout")
+	t.Setenv("TRUSTED_PROXY_CIDRS", "173.245.48.0/20, 2400:cb00::/32, 10.0.0.5")
 
 	cfg, err := LoadControl()
 	require.NoError(t, err)
@@ -57,6 +59,29 @@ func TestLoadControlReadsExplicitConfig(t *testing.T) {
 	assert.Equal(t, "us-east", cfg.Placement.DefaultRegion)
 	assert.Contains(t, cfg.Placement.Regions, "us-east")
 	assert.Equal(t, []string{"ca-central", "ca-east", "us-east"}, cfg.Placement.GeoPriority["CA"])
+	assert.Equal(t, []netip.Prefix{
+		netip.MustParsePrefix("173.245.48.0/20"),
+		netip.MustParsePrefix("2400:cb00::/32"),
+		netip.MustParsePrefix("10.0.0.5/32"),
+	}, cfg.TrustedProxies)
+}
+
+func TestLoadControlDefaultsToNoTrustedProxies(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
+	setValidControlEnv(t, key)
+
+	cfg, err := LoadControl()
+	require.NoError(t, err)
+	assert.Empty(t, cfg.TrustedProxies)
+}
+
+func TestLoadControlRejectsInvalidTrustedProxyCIDR(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
+	setValidControlEnv(t, key)
+	t.Setenv("TRUSTED_PROXY_CIDRS", "not-a-cidr")
+
+	_, err := LoadControl()
+	require.ErrorContains(t, err, `invalid TRUSTED_PROXY_CIDRS entry "not-a-cidr"`)
 }
 
 func TestLoadControlReadsTrimmedConfig(t *testing.T) {

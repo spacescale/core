@@ -22,6 +22,13 @@ SET status = 'deploying',
 WHERE id = $1
 RETURNING *;
 
+-- name: UpdateWorkloadPrimaryRegion :one
+UPDATE workloads
+SET primary_region = $2,
+    updated_at = now()
+WHERE id = $1
+RETURNING *;
+
 -- name: MarkWorkloadRunning :one
 UPDATE workloads
 SET status = 'running',

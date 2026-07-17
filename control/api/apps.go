@@ -114,7 +114,7 @@ func (s *Server) handleCreateWorkload(responseWriter http.ResponseWriter, reques
 		})
 	}
 
-	_, country := requestOrigin(request)
+	_, country := requestOrigin(request, s.trustedProxies)
 	plan, err := s.placement.Resolve(req.PrimaryRegion, country)
 	if err != nil {
 		if errors.Is(err, placement.ErrUnknownRegion) {

@@ -102,6 +102,7 @@ func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 		DeploymentID: req.DeploymentID,
 		MicroVMID:    req.MicroVMID,
 		NodeID:       nodeID,
+		Region:       winner.Region,
 	}); err != nil {
 		return err
 	}

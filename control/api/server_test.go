@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"testing"
 	"time"
@@ -101,6 +102,12 @@ func newTestServerWithWorkOSClient(t *testing.T, workosClient *workos.Client) *t
 				PostLoginRedirectURI: "http://localhost:8080/healthz",
 				LogoutRedirectURI:    "http://localhost:8080/healthz",
 				CookieName:           testWorkOSCookieName,
+			},
+			// httptest requests arrive from loopback; trust it so tests can
+			// exercise Cloudflare header handling.
+			TrustedProxies: []netip.Prefix{
+				netip.MustParsePrefix("127.0.0.0/8"),
+				netip.MustParsePrefix("::1/128"),
 			},
 		},
 	})

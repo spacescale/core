@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -74,12 +75,37 @@ func clientIP(remoteAddr string) string {
 }
 
 // requestOrigin resolves the caller IP and optional Cloudflare country code.
-// CF headers are used when present so Geo-IP placement works behind Cloudflare
-// without requiring a local MaxMind database in the first revision.
-func requestOrigin(r *http.Request) (ip, country string) {
+// CF headers (CF-Connecting-IP, CF-IPCountry) are honored only when the direct
+// peer is inside a trusted proxy network, so untrusted clients cannot spoof
+// their origin to steer Geo-IP placement. With no trusted proxies configured
+// the headers are always ignored.
+func requestOrigin(r *http.Request, trustedProxies []netip.Prefix) (ip, country string) {
+	directIP := clientIP(r.RemoteAddr)
+	if !isTrustedProxy(directIP, trustedProxies) {
+		return directIP, ""
+	}
+
 	country = strings.ToUpper(strings.TrimSpace(r.Header.Get("CF-IPCountry")))
 	if connectingIP := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); connectingIP != "" {
 		return connectingIP, country
 	}
-	return clientIP(r.RemoteAddr), country
+	return directIP, country
+}
+
+// isTrustedProxy checks if an IP address is in a list of trusted proxy prefixes.
+func isTrustedProxy(ip string, trustedProxies []netip.Prefix) bool {
+	if len(trustedProxies) == 0 {
+		return false
+	}
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return false
+	}
+	addr = addr.Unmap()
+	for _, prefix := range trustedProxies {
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }

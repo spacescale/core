@@ -68,6 +68,10 @@ type DispatchAssignment struct {
 	DeploymentID uuid.UUID
 	MicroVMID    uuid.UUID
 	NodeID       uuid.UUID
+	// Region is the auction-selected region. It may differ from the region
+	// stored at creation time when automatic placement fell back to a later
+	// candidate, so MarkDeploying persists it as the effective placement.
+	Region string
 }
 
 // DispatchFailure records launch failure details for workload deployment state.
@@ -267,6 +271,21 @@ func (s *WorkloadService) MarkDeploying(ctx context.Context, params DispatchAssi
 
 	if _, err := txQueries.MarkWorkloadDeploying(ctx, params.WorkloadID); err != nil {
 		return err
+	}
+
+	if params.Region != "" {
+		if _, err := txQueries.UpdateWorkloadPrimaryRegion(ctx, sqlc.UpdateWorkloadPrimaryRegionParams{
+			ID:            params.WorkloadID,
+			PrimaryRegion: params.Region,
+		}); err != nil {
+			return err
+		}
+		if _, err := txQueries.UpdateMicroVMRegion(ctx, sqlc.UpdateMicroVMRegionParams{
+			ID:     params.MicroVMID,
+			Region: params.Region,
+		}); err != nil {
+			return err
+		}
 	}
 
 	return tx.Commit(ctx)

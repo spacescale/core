@@ -39,6 +39,14 @@ ORDER BY created_at ASC, id ASC;
 
 
 
+-- name: UpdateMicroVMRegion :one
+UPDATE microvms
+SET region     = $2,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
+
 -- name: MarkMicroVMStarting :one
 UPDATE microvms
 SET status        = 'starting',

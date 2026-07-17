@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -46,6 +47,11 @@ type Server struct {
 	// fabric dependencies
 	dispatcher *fabric.Dispatcher
 	placement  *placement.Catalog
+
+	// trustedProxies gates client-origin headers (CF-Connecting-IP,
+	// CF-IPCountry): they are honored only for requests arriving from these
+	// networks.
+	trustedProxies []netip.Prefix
 }
 
 // Principal is the authenticated identity stored in request context.
@@ -89,6 +95,8 @@ func NewServer(deps ServerDeps) *Server {
 		auth:       newWorkOSAuth(deps.Config, deps.Users, deps.WorkOSClient),
 		dispatcher: deps.Dispatcher,
 		placement:  deps.Placement,
+
+		trustedProxies: deps.Config.TrustedProxies,
 	}
 	server := new(http.Server)
 	server.Addr = deps.Config.ListenAddr

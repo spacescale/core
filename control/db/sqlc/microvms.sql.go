@@ -260,3 +260,39 @@ func (q *Queries) MarkMicroVMStarting(ctx context.Context, id uuid.UUID) (Microv
 	)
 	return i, err
 }
+
+const updateMicroVMRegion = `-- name: UpdateMicroVMRegion :one
+UPDATE microvms
+SET region     = $2,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING id, workspace_id, resource_type, resource_id, metadata, region, vcpu, ram_mb, cpu_mode, root_disk_mb, volume_mb, status, error_message, created_at, updated_at
+`
+
+type UpdateMicroVMRegionParams struct {
+	ID     uuid.UUID
+	Region string
+}
+
+func (q *Queries) UpdateMicroVMRegion(ctx context.Context, arg UpdateMicroVMRegionParams) (Microvm, error) {
+	row := q.db.QueryRow(ctx, updateMicroVMRegion, arg.ID, arg.Region)
+	var i Microvm
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ResourceType,
+		&i.ResourceID,
+		&i.Metadata,
+		&i.Region,
+		&i.Vcpu,
+		&i.RamMb,
+		&i.CpuMode,
+		&i.RootDiskMb,
+		&i.VolumeMb,
+		&i.Status,
+		&i.ErrorMessage,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

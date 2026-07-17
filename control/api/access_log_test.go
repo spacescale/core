@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 
@@ -62,15 +63,39 @@ func TestClientIP(t *testing.T) {
 	require.Equal(t, "bad-addr", clientIP("bad-addr"))
 }
 
-func TestRequestOriginUsesCloudflareHeaders(t *testing.T) {
+func TestRequestOriginUsesCloudflareHeadersFromTrustedProxy(t *testing.T) {
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/workloads", nil)
 	req.RemoteAddr = "10.0.0.1:443"
 	req.Header.Set("CF-Connecting-IP", "203.0.113.50")
 	req.Header.Set("CF-IPCountry", "ca")
 
-	ip, country := requestOrigin(req)
+	trusted := []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	ip, country := requestOrigin(req, trusted)
 	require.Equal(t, "203.0.113.50", ip)
 	require.Equal(t, "CA", country)
+}
+
+func TestRequestOriginIgnoresCloudflareHeadersFromUntrustedPeer(t *testing.T) {
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/workloads", nil)
+	req.RemoteAddr = "198.51.100.7:443"
+	req.Header.Set("CF-Connecting-IP", "203.0.113.50")
+	req.Header.Set("CF-IPCountry", "ca")
+
+	trusted := []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	ip, country := requestOrigin(req, trusted)
+	require.Equal(t, "198.51.100.7", ip)
+	require.Empty(t, country)
+}
+
+func TestRequestOriginIgnoresCloudflareHeadersWithoutTrustedProxies(t *testing.T) {
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/workloads", nil)
+	req.RemoteAddr = "10.0.0.1:443"
+	req.Header.Set("CF-Connecting-IP", "203.0.113.50")
+	req.Header.Set("CF-IPCountry", "ca")
+
+	ip, country := requestOrigin(req, nil)
+	require.Equal(t, "10.0.0.1", ip)
+	require.Empty(t, country)
 }
 
 func decodeJSONLogEntries(t *testing.T, buf *bytes.Buffer) []map[string]any {

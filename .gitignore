@@ -22,6 +22,9 @@ Thumbs.db
 coverage/
 /dist/
 
+# Local tool caches (sqlc, golangci-lint)
+/.cache/
+
 AGENTS.md
 pipe.sh
 context.txt

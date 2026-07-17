@@ -255,6 +255,40 @@ func (q *Queries) MarkWorkloadRunning(ctx context.Context, id uuid.UUID) (Worklo
 	return i, err
 }
 
+const updateWorkloadPrimaryRegion = `-- name: UpdateWorkloadPrimaryRegion :one
+UPDATE workloads
+SET primary_region = $2,
+    updated_at = now()
+WHERE id = $1
+RETURNING id, project_id, name, slug, subdomain, image_ref, target_replicas, primary_region, runtime_port, is_public, status, created_at, updated_at
+`
+
+type UpdateWorkloadPrimaryRegionParams struct {
+	ID            uuid.UUID
+	PrimaryRegion string
+}
+
+func (q *Queries) UpdateWorkloadPrimaryRegion(ctx context.Context, arg UpdateWorkloadPrimaryRegionParams) (Workload, error) {
+	row := q.db.QueryRow(ctx, updateWorkloadPrimaryRegion, arg.ID, arg.PrimaryRegion)
+	var i Workload
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Slug,
+		&i.Subdomain,
+		&i.ImageRef,
+		&i.TargetReplicas,
+		&i.PrimaryRegion,
+		&i.RuntimePort,
+		&i.IsPublic,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const upsertWorkloadRegistryCredential = `-- name: UpsertWorkloadRegistryCredential :exec
 INSERT INTO workload_registry_credentials (workload_id, registry_credential_id, created_at, last_used)
 VALUES ($1, $2, now(), NULL)

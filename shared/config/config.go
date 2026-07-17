@@ -2,6 +2,8 @@
 package config
 
 import (
+	"fmt"
+	"net/netip"
 	"strings"
 
 	"github.com/caarlos0/env/v11"
@@ -29,6 +31,11 @@ type Control struct {
 	Placement          PlacementConfig
 	EnvEncryptionKeyID string `validate:"required"`
 	EnvEncryptionKey   string `validate:"required,base64,min=44,max=44"`
+
+	// TrustedProxies lists source networks allowed to set client-origin
+	// headers (CF-Connecting-IP, CF-IPCountry). Requests from any other
+	// address have those headers ignored. Empty means no proxy is trusted.
+	TrustedProxies []netip.Prefix
 }
 
 // PlacementConfig holds Ignite region catalog and auto-placement policy.
@@ -72,6 +79,8 @@ type controlEnv struct {
 	PlacementRegions       string `env:"PLACEMENT_REGIONS"`
 	PlacementDefaultRegion string `env:"PLACEMENT_DEFAULT_REGION"`
 	PlacementGeoPriority   string `env:"PLACEMENT_GEO_PRIORITY"`
+
+	TrustedProxyCIDRs string `env:"TRUSTED_PROXY_CIDRS"`
 }
 
 type scaledEnv struct {
@@ -103,6 +112,11 @@ func LoadControl() (Control, error) {
 		EnvEncryptionKeyID: strings.TrimSpace(raw.EnvEncryptionKeyID),
 		EnvEncryptionKey:   strings.TrimSpace(raw.EnvEncryptionKey),
 	}
+	trustedProxies, err := parseTrustedProxies(raw.TrustedProxyCIDRs)
+	if err != nil {
+		return Control{}, err
+	}
+	cfg.TrustedProxies = trustedProxies
 	cfg.ListenAddr = defaultListenAddr
 	if err := configValidator.Struct(cfg); err != nil {
 		return Control{}, err
@@ -143,6 +157,30 @@ func splitCSV(raw string) []string {
 		out = append(out, part)
 	}
 	return out
+}
+
+// parseTrustedProxies parses a CSV of CIDRs or plain IPs into prefixes.
+// Plain IPs become single-address prefixes so operators can list either form.
+func parseTrustedProxies(raw string) ([]netip.Prefix, error) {
+	entries := splitCSV(raw)
+	if len(entries) == 0 {
+		return nil, nil
+	}
+
+	prefixes := make([]netip.Prefix, 0, len(entries))
+	for _, entry := range entries {
+		if prefix, err := netip.ParsePrefix(entry); err == nil {
+			prefixes = append(prefixes, prefix.Masked())
+			continue
+		}
+		addr, err := netip.ParseAddr(entry)
+		if err != nil {
+			return nil, fmt.Errorf("invalid TRUSTED_PROXY_CIDRS entry %q: %w", entry, err)
+		}
+		prefixes = append(prefixes, netip.PrefixFrom(addr, addr.BitLen()))
+	}
+
+	return prefixes, nil
 }
 
 // parseGeoPriority parses "CA:ca-central,us-east;US:us-east,us-west".
