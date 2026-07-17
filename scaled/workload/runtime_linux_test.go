@@ -103,6 +103,7 @@ func TestRunHeartbeatPublishesInitialHeartbeatAndStopsOnCancel(t *testing.T) {
 	heartbeat := requireNodeHeartbeat(t, entry.Value())
 	require.Equal(t, uint64(1), heartbeat.GetSeqNo())
 	require.Equal(t, "node-123", heartbeat.GetNodeId())
+	require.Equal(t, "us-east", heartbeat.GetRegion())
 }
 
 func TestStartWiresHandlersAndHeartbeatWithRealNATS(t *testing.T) {

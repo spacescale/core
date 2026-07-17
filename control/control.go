@@ -11,6 +11,7 @@ import (
 	"github.com/spacescale/core/control/api"
 	"github.com/spacescale/core/control/db/sqlc"
 	"github.com/spacescale/core/control/fabric"
+	"github.com/spacescale/core/control/placement"
 	"github.com/spacescale/core/control/tenant"
 	"github.com/spacescale/core/shared/config"
 	"github.com/spacescale/core/shared/logger"
@@ -58,6 +59,15 @@ func Run(ctx context.Context) error {
 	}
 	defer func() { _ = natsClient.Drain() }()
 
+	catalog, err := placement.NewCatalog(placement.Config{
+		Regions:       cfg.Placement.Regions,
+		DefaultRegion: cfg.Placement.DefaultRegion,
+		GeoPriority:   cfg.Placement.GeoPriority,
+	})
+	if err != nil {
+		return fmt.Errorf("placement catalog init failed: %w", err)
+	}
+
 	apiServer := api.NewServer(api.ServerDeps{
 		Users:      users,
 		Projects:   projects,
@@ -66,6 +76,7 @@ func Run(ctx context.Context) error {
 		Workloads:  workloads,
 		DBPool:     dbPool,
 		Config:     cfg,
+		Placement:  catalog,
 		Dispatcher: fabric.NewDispatcher(workloads, natsClient, log),
 	})
 
@@ -102,7 +113,7 @@ func openDB(ctx context.Context, cfg config.Control) (*pgxpool.Pool, error) {
 func runControlPlane(ctx context.Context, log *slog.Logger, listenAddr string, apiServer *api.Server) error {
 	serverErr := make(chan error, 1)
 	go func() {
-	log.Info("controlp listening", "addr", listenAddr)
+		log.Info("controlp listening", "addr", listenAddr)
 		serverErr <- apiServer.Start()
 	}()
 

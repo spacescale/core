@@ -216,7 +216,7 @@ func TestCreateWorkloadRejectsTooManyEnvVars(t *testing.T) {
 	require.Equal(t, "invalid input", out.Error)
 }
 
-func TestCreateWorkloadRequiresComputeAndPrimaryRegion(t *testing.T) {
+func TestCreateWorkloadRequiresCompute(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.close()
 
@@ -240,9 +240,95 @@ func TestCreateWorkloadRequiresComputeAndPrimaryRegion(t *testing.T) {
 	)
 
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, string(data))
+}
+
+func TestCreateWorkloadOmitsRegionUsesDefault(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.close()
+
+	identityKey := uniqueIdentityKey(t)
+	syncAuthUserForTest(t, ts, identityKey)
+
+	workspaceID := createWorkspaceForIdentity(t, ts, identityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
+	project := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("project-%d", time.Now().UnixNano()))
+
+	body := []byte(`{"name":"api","imageRef":"ghcr.io/acme/spacescale-api:latest","compute":{"vcpu":2,"memoryMb":2048,"dedicated":false}}`)
+	resp, data := doRequest(
+		t,
+		ts,
+		http.MethodPost,
+		fmt.Sprintf("/v1/workspaces/%s/projects/%s/workloads", workspaceID, project.ID),
+		body,
+		map[string]string{
+			"Cookie":       authCookieForIdentityKey(t, identityKey),
+			"Content-Type": "application/json",
+		},
+	)
+
+	require.Equal(t, http.StatusCreated, resp.StatusCode, string(data))
+	var out workloadResponse
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Equal(t, "us-east", out.PrimaryRegion)
+}
+
+func TestCreateWorkloadRejectsUnknownRegion(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.close()
+
+	identityKey := uniqueIdentityKey(t)
+	syncAuthUserForTest(t, ts, identityKey)
+
+	workspaceID := createWorkspaceForIdentity(t, ts, identityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
+	project := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("project-%d", time.Now().UnixNano()))
+
+	body := []byte(`{"name":"api","imageRef":"ghcr.io/acme/spacescale-api:latest","compute":{"vcpu":2,"memoryMb":2048,"dedicated":false},"primaryRegion":"mars-east"}`)
+	resp, data := doRequest(
+		t,
+		ts,
+		http.MethodPost,
+		fmt.Sprintf("/v1/workspaces/%s/projects/%s/workloads", workspaceID, project.ID),
+		body,
+		map[string]string{
+			"Cookie":       authCookieForIdentityKey(t, identityKey),
+			"Content-Type": "application/json",
+		},
+	)
+
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, string(data))
 	var out errorResponse
 	require.NoError(t, json.Unmarshal(data, &out))
-	require.Equal(t, "invalid input", out.Error)
+	require.Equal(t, "unknown region: mars-east", out.Error)
+}
+
+func TestCreateWorkloadUsesCloudflareCountryForAutoPlacement(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.close()
+
+	identityKey := uniqueIdentityKey(t)
+	syncAuthUserForTest(t, ts, identityKey)
+
+	workspaceID := createWorkspaceForIdentity(t, ts, identityKey, fmt.Sprintf("workspace-%d", time.Now().UnixNano()))
+	project := createProjectViaAPI(t, ts, identityKey, workspaceID, fmt.Sprintf("project-%d", time.Now().UnixNano()))
+
+	body := []byte(`{"name":"api","imageRef":"ghcr.io/acme/spacescale-api:latest","compute":{"vcpu":2,"memoryMb":2048,"dedicated":false}}`)
+	resp, data := doRequest(
+		t,
+		ts,
+		http.MethodPost,
+		fmt.Sprintf("/v1/workspaces/%s/projects/%s/workloads", workspaceID, project.ID),
+		body,
+		map[string]string{
+			"Cookie":           authCookieForIdentityKey(t, identityKey),
+			"Content-Type":     "application/json",
+			"CF-IPCountry":     "CA",
+			"CF-Connecting-IP": "203.0.113.10",
+		},
+	)
+
+	require.Equal(t, http.StatusCreated, resp.StatusCode, string(data))
+	var out workloadResponse
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Equal(t, "ca-central", out.PrimaryRegion)
 }
 
 func TestResolveCreateWorkloadAfterDispatch(t *testing.T) {

@@ -44,7 +44,14 @@ type Request struct {
 	MicroVMID    uuid.UUID
 	WorkspaceID  string
 
-	Region      string
+	// Region is the currently preferred/selected region. For automatic
+	// placement it starts as the first candidate and is updated when a later
+	// regional auction wins.
+	Region string
+	// Regions is the ordered auction candidate list. Explicit requests contain
+	// one region. Automatic requests may contain a geo-priority fallback chain.
+	Regions []string
+
 	Shape       *pb.MicroVMShape
 	ImageRef    string
 	Env         map[string]string
@@ -55,6 +62,7 @@ type Request struct {
 type Winner struct {
 	NodeID string
 	BootID string
+	Region string
 }
 
 // NewDispatcher creates a dispatcher bound to tenant lifecycle services and the
@@ -70,10 +78,12 @@ func NewDispatcher(workloads *tenant.WorkloadService, client *nats.Client, logge
 // Launch auctions a microVM placement, sends the launch command, and records dispatch state.
 func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 	startedAt := time.Now()
-	winner, err := d.auction(req)
+	winner, err := d.place(req)
 	if err != nil {
 		return returnLaunchError(err, d.markFailed(ctx, req, err.Error()))
 	}
+	req.Region = winner.Region
+
 	shapeAttrs := shapeLogAttrs(req.Shape)
 	launchArgs := make([]any, 0, launchLogAttrBaseCap+len(shapeAttrs))
 	launchArgs = append(launchArgs,
@@ -152,6 +162,47 @@ func (d *Dispatcher) Launch(ctx context.Context, req Request) error {
 	return nil
 }
 
+// place tries regional auctions in candidate order. Explicit placement has one
+// candidate. Automatic placement falls back only when a region returns no bids.
+func (d *Dispatcher) place(req Request) (Winner, error) {
+	candidates := req.Regions
+	if len(candidates) == 0 && req.Region != "" {
+		candidates = []string{req.Region}
+	}
+	if len(candidates) == 0 {
+		return Winner{}, ErrNoAuctionBids
+	}
+
+	var lastErr error
+	for _, region := range candidates {
+		regionReq := req
+		regionReq.Region = region
+		winner, err := auctionFn(d, regionReq)
+		if err == nil {
+			if region != req.Region && req.Region != "" {
+				d.logger.Info("automatic placement fell back to region",
+					"workload_id", req.WorkloadID,
+					"microvm_id", req.MicroVMID,
+					"requested_region", req.Region,
+					"selected_region", region,
+				)
+			}
+			return winner, nil
+		}
+		if !errors.Is(err, ErrNoAuctionBids) {
+			return Winner{}, err
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = ErrNoAuctionBids
+	}
+	return Winner{}, lastErr
+}
+
+// auctionFn is the regional auction implementation. Tests may replace it.
+var auctionFn = (*Dispatcher).auction
+
 func (d *Dispatcher) auction(req Request) (Winner, error) {
 	// Placement is intentionally first-response-wins for now. The NATS client arms
 	// the private inbox with AutoUnsubscribe(1) before publishing the auction, so the
@@ -180,7 +231,7 @@ func (d *Dispatcher) auction(req Request) (Winner, error) {
 		return Winner{}, errors.New("auction reply missing node identity")
 	}
 
-	return Winner{NodeID: reply.GetNodeId(), BootID: reply.GetBootId()}, nil
+	return Winner{NodeID: reply.GetNodeId(), BootID: reply.GetBootId(), Region: req.Region}, nil
 }
 
 func (d *Dispatcher) logNoAuctionBids(req Request) {

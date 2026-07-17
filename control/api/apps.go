@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spacescale/core/control/fabric"
+	"github.com/spacescale/core/control/placement"
 	"github.com/spacescale/core/control/tenant"
 )
 
@@ -30,7 +31,7 @@ type createWorkloadRequest struct {
 	Name                 string                        `json:"name" validate:"omitempty,notblank,max=63"`
 	ImageRef             string                        `json:"imageRef" validate:"required,notblank,max=1024,excludesall= \t\r\n"`
 	Compute              createWorkloadComputeRequest  `json:"compute" validate:"required"`
-	PrimaryRegion        string                        `json:"primaryRegion" validate:"required,notblank,max=32"`
+	PrimaryRegion        string                        `json:"primaryRegion" validate:"omitempty,notblank,max=32"`
 	RuntimePort          *int                          `json:"runtimePort" validate:"omitempty,min=1,max=65535"`
 	IsPublic             *bool                         `json:"isPublic"`
 	RegistryCredentialID string                        `json:"registryCredentialId" validate:"omitempty,uuid"`
@@ -113,6 +114,18 @@ func (s *Server) handleCreateWorkload(responseWriter http.ResponseWriter, reques
 		})
 	}
 
+	_, country := requestOrigin(request)
+	plan, err := s.placement.Resolve(req.PrimaryRegion, country)
+	if err != nil {
+		if errors.Is(err, placement.ErrUnknownRegion) {
+			Error(responseWriter, http.StatusBadRequest, err.Error())
+			return
+		}
+		Error(responseWriter, http.StatusInternalServerError, "internal error")
+		return
+	}
+	selectedRegion := plan.Candidates[0]
+
 	result, err := s.workloads.CreateWorkload(request.Context(), user.ID, workspaceID, projectID, tenant.CreateWorkloadParams{
 		Name:     req.Name,
 		ImageRef: req.ImageRef,
@@ -121,7 +134,7 @@ func (s *Server) handleCreateWorkload(responseWriter http.ResponseWriter, reques
 			MemoryMB:  req.Compute.MemoryMB,
 			Dedicated: req.Compute.Dedicated,
 		},
-		PrimaryRegion:        req.PrimaryRegion,
+		PrimaryRegion:        selectedRegion,
 		RuntimePort:          req.RuntimePort,
 		IsPublic:             req.IsPublic,
 		RegistryCredentialID: req.RegistryCredentialID,
@@ -143,7 +156,8 @@ func (s *Server) handleCreateWorkload(responseWriter http.ResponseWriter, reques
 			DeploymentID: result.DeploymentID,
 			MicroVMID:    result.MicroVMID,
 			WorkspaceID:  workspaceID,
-			Region:       result.Workload.PrimaryRegion,
+			Region:       selectedRegion,
+			Regions:      plan.Candidates,
 			Shape:        result.Shape,
 			ImageRef:     result.Workload.ImageRef,
 			Env:          result.Env,

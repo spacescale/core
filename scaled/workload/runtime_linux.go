@@ -92,6 +92,7 @@ func publishHeartbeat(ctx context.Context, logger *slog.Logger, info node.Info, 
 		SeqNo:          seqNo,
 		BootId:         info.Snapshot.BootID,
 		SentAtUnixNano: time.Now().UnixNano(),
+		Region:         info.Identity.Region,
 	}
 
 	if _, err := nats.PutProtoKV(ctx, kv, key, hb); err != nil {

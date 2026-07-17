@@ -54,6 +54,9 @@ func TestLoadControlReadsExplicitConfig(t *testing.T) {
 	assert.Equal(t, "https://example.com/app", cfg.WorkOS.PostLoginRedirectURI)
 	assert.Equal(t, "https://example.com/logout", cfg.WorkOS.LogoutRedirectURI)
 	assert.Equal(t, workOSCookieName, cfg.WorkOS.CookieName)
+	assert.Equal(t, "us-east", cfg.Placement.DefaultRegion)
+	assert.Contains(t, cfg.Placement.Regions, "us-east")
+	assert.Equal(t, []string{"ca-central", "ca-east", "us-east"}, cfg.Placement.GeoPriority["CA"])
 }
 
 func TestLoadControlReadsTrimmedConfig(t *testing.T) {

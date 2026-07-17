@@ -62,6 +62,17 @@ func TestClientIP(t *testing.T) {
 	require.Equal(t, "bad-addr", clientIP("bad-addr"))
 }
 
+func TestRequestOriginUsesCloudflareHeaders(t *testing.T) {
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/workloads", nil)
+	req.RemoteAddr = "10.0.0.1:443"
+	req.Header.Set("CF-Connecting-IP", "203.0.113.50")
+	req.Header.Set("CF-IPCountry", "ca")
+
+	ip, country := requestOrigin(req)
+	require.Equal(t, "203.0.113.50", ip)
+	require.Equal(t, "CA", country)
+}
+
 func decodeJSONLogEntries(t *testing.T, buf *bytes.Buffer) []map[string]any {
 	t.Helper()
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")

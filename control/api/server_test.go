@@ -15,6 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/control/db/sqlc"
+	"github.com/spacescale/core/control/placement"
 	"github.com/spacescale/core/control/tenant"
 	"github.com/spacescale/core/shared/config"
 	"github.com/spacescale/core/shared/secret"
@@ -70,6 +71,16 @@ func newTestServerWithWorkOSClient(t *testing.T, workosClient *workos.Client) *t
 	workspaces := tenant.NewWorkspaceService(queries)
 	bootstrap := tenant.NewBootstrapService(queries)
 	workloads := tenant.NewWorkloadService(queries, pool, envCipher)
+	catalog, err := placement.NewCatalog(placement.Config{
+		Regions:       []string{"us-east", "us-west", "eu-central", "eu-west", "ca-central", "ca-east"},
+		DefaultRegion: "us-east",
+		GeoPriority: map[string][]string{
+			"CA": {"ca-central", "ca-east", "us-east"},
+			"US": {"us-east", "us-west", "ca-central"},
+			"EU": {"eu-central", "eu-west", "us-east"},
+		},
+	})
+	require.NoError(t, err)
 	server := NewServer(ServerDeps{
 		Users:        users,
 		Projects:     projects,
@@ -78,6 +89,7 @@ func newTestServerWithWorkOSClient(t *testing.T, workosClient *workos.Client) *t
 		Workloads:    workloads,
 		DBPool:       pool,
 		WorkOSClient: workosClient,
+		Placement:    catalog,
 		Config: config.Control{
 			Environment: "development",
 			ListenAddr:  ":8080",

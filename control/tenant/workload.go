@@ -97,7 +97,7 @@ type CreateWorkloadParams struct {
 	Name                 string                // optional; derived from ImageRef when empty.
 	ImageRef             string                // required OCI image reference.
 	Compute              WorkloadComputeInput  // required to be resolved compute request.
-	PrimaryRegion        string                // required placement region.
+	PrimaryRegion        string                // placement region; empty means auto-placement at the API layer.
 	RuntimePort          *int                  // optional; nil uses defaultWorkloadRuntimePort.
 	IsPublic             *bool                 // optional; nil defaults to false.
 	RegistryCredentialID string                // optional; must belong to same project.

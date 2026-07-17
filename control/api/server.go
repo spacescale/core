@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/httprate"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacescale/core/control/fabric"
+	"github.com/spacescale/core/control/placement"
 	"github.com/spacescale/core/control/tenant"
 	"github.com/spacescale/core/shared/config"
 	"github.com/workos/workos-go/v9"
@@ -44,6 +45,7 @@ type Server struct {
 
 	// fabric dependencies
 	dispatcher *fabric.Dispatcher
+	placement  *placement.Catalog
 }
 
 // Principal is the authenticated identity stored in request context.
@@ -69,6 +71,7 @@ type ServerDeps struct {
 	DBPool       *pgxpool.Pool
 	Config       config.Control
 	Dispatcher   *fabric.Dispatcher
+	Placement    *placement.Catalog
 	WorkOSClient *workos.Client
 }
 
@@ -85,6 +88,7 @@ func NewServer(deps ServerDeps) *Server {
 		dbPool:     deps.DBPool,
 		auth:       newWorkOSAuth(deps.Config, deps.Users, deps.WorkOSClient),
 		dispatcher: deps.Dispatcher,
+		placement:  deps.Placement,
 	}
 	server := new(http.Server)
 	server.Addr = deps.Config.ListenAddr

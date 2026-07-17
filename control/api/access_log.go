@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -70,4 +71,15 @@ func clientIP(remoteAddr string) string {
 		return remoteAddr
 	}
 	return host
+}
+
+// requestOrigin resolves the caller IP and optional Cloudflare country code.
+// CF headers are used when present so Geo-IP placement works behind Cloudflare
+// without requiring a local MaxMind database in the first revision.
+func requestOrigin(r *http.Request) (ip, country string) {
+	country = strings.ToUpper(strings.TrimSpace(r.Header.Get("CF-IPCountry")))
+	if connectingIP := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); connectingIP != "" {
+		return connectingIP, country
+	}
+	return clientIP(r.RemoteAddr), country
 }
